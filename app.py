@@ -42,6 +42,131 @@ SESIONES = {}   # sesion_id -> dict con ruta_mp3, ruta_wav16k, nombre_base, dura
 WHISPER_CACHE = {}  # (motor, modelo) -> instancia cargada
 WHISPER_LOCK = threading.Lock()
 VOCES_LOCK = threading.Lock()
+GIT_LOCK = threading.Lock()
+GIT_ESTADO = {
+    "disponible": False,
+    "tiene_remote": False,
+    "remote_url": "",
+    "rama": "",
+    "ahead": 0,
+    "behind": 0,
+    "estado": "verificando",
+    "mensaje": "Verificando sincronización con GitHub…",
+    "ultima_sinc": ""
+}
+
+
+# ==============================================================================
+# SINCRONIZADOR AUTOMÁTICO DE GITHUB (PULL / PUSH AL INICIAR Y EN VIVO)
+# ==============================================================================
+
+def ejecutar_git(*args, timeout=25) -> tuple[int, str, str]:
+    try:
+        r = subprocess.run(
+            ["git", "-C", BASE_DIR, *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout
+        )
+        return r.returncode, r.stdout.strip(), r.stderr.strip()
+    except Exception as e:
+        return -1, "", str(e)
+
+
+def verificar_y_sincronizar_git(accion_automatica: bool = True) -> dict:
+    """Verifica si el repositorio local está conectado a GitHub y realiza pull o push si corresponde."""
+    with GIT_LOCK:
+        code, out, _ = ejecutar_git("rev-parse", "--is-inside-work-tree")
+        if code != 0:
+            GIT_ESTADO.update({
+                "disponible": False,
+                "tiene_remote": False,
+                "estado": "sin_git",
+                "mensaje": "La carpeta no está inicializada con Git."
+            })
+            return dict(GIT_ESTADO)
+
+        GIT_ESTADO["disponible"] = True
+
+        code_b, rama, _ = ejecutar_git("branch", "--show-current")
+        GIT_ESTADO["rama"] = rama or "main"
+
+        code_rem, remote_url, _ = ejecutar_git("remote", "get-url", "origin")
+        if code_rem != 0 or not remote_url:
+            GIT_ESTADO.update({
+                "tiene_remote": False,
+                "remote_url": "",
+                "estado": "sin_remote",
+                "mensaje": "Repositorio local listo, pero aún no tiene un remoto 'origin' configurado en GitHub."
+            })
+            return dict(GIT_ESTADO)
+
+        GIT_ESTADO["tiene_remote"] = True
+        GIT_ESTADO["remote_url"] = remote_url
+
+        # Hacer fetch para enterarnos de cambios en GitHub desde otra PC
+        code_f, _, err_f = ejecutar_git("fetch", "origin", timeout=30)
+        if code_f != 0:
+            GIT_ESTADO.update({
+                "estado": "error_fetch",
+                "mensaje": f"No se pudo conectar a GitHub ({err_f[:120]}). Revisá conexión a internet o credenciales."
+            })
+            return dict(GIT_ESTADO)
+
+        # Contar commits ahead (locales no subidos) y behind (en GitHub listos para pull)
+        code_rev, counts, _ = ejecutar_git("rev-list", "--left-right", "--count", f"{GIT_ESTADO['rama']}...origin/{GIT_ESTADO['rama']}")
+        ahead, behind = 0, 0
+        if code_rev == 0 and counts:
+            partes = counts.split()
+            if len(partes) == 2:
+                ahead, behind = int(partes[0]), int(partes[1])
+
+        GIT_ESTADO["ahead"] = ahead
+        GIT_ESTADO["behind"] = behind
+
+        # Sincronización automática
+        if accion_automatica:
+            if behind > 0 and ahead == 0:
+                # Caso ideal: hay cambios nuevos desde la otra PC -> hacer pull automático
+                GIT_ESTADO["mensaje"] = f"Descargando {behind} cambios nuevos desde GitHub…"
+                code_pull, out_p, err_p = ejecutar_git("pull", "--rebase", "origin", GIT_ESTADO["rama"])
+                if code_pull == 0:
+                    GIT_ESTADO["behind"] = 0
+                    GIT_ESTADO["estado"] = "sincronizado"
+                    GIT_ESTADO["mensaje"] = f"✔ Actualizado con éxito: se descargaron {behind} cambios desde la otra PC."
+                    GIT_ESTADO["ultima_sinc"] = time.strftime("%H:%M:%S")
+                else:
+                    GIT_ESTADO["estado"] = "error_pull"
+                    GIT_ESTADO["mensaje"] = f"Conflicto al hacer pull: {err_p[:120]}"
+                return dict(GIT_ESTADO)
+
+            elif ahead > 0 and behind == 0:
+                # Hay cambios locales listos para subir a GitHub
+                GIT_ESTADO["mensaje"] = f"Subiendo {ahead} cambios locales a GitHub…"
+                code_push, _, err_push = ejecutar_git("push", "origin", GIT_ESTADO["rama"])
+                if code_push == 0:
+                    GIT_ESTADO["ahead"] = 0
+                    GIT_ESTADO["estado"] = "sincronizado"
+                    GIT_ESTADO["mensaje"] = f"✔ Sincronizado: se subieron {ahead} cambios a GitHub para tus otras PCs."
+                    GIT_ESTADO["ultima_sinc"] = time.strftime("%H:%M:%S")
+                else:
+                    GIT_ESTADO["estado"] = "error_push"
+                    GIT_ESTADO["mensaje"] = f"Error al hacer push: {err_push[:120]}"
+                return dict(GIT_ESTADO)
+
+            elif ahead > 0 and behind > 0:
+                GIT_ESTADO["estado"] = "divergencia"
+                GIT_ESTADO["mensaje"] = f"Hay {ahead} cambios locales y {behind} cambios en GitHub. Hacé clic en sincronizar."
+                return dict(GIT_ESTADO)
+
+        if ahead == 0 and behind == 0:
+            GIT_ESTADO["estado"] = "sincronizado"
+            GIT_ESTADO["mensaje"] = "✔ Todo al día. Sincronizado con GitHub."
+            GIT_ESTADO["ultima_sinc"] = time.strftime("%H:%M:%S")
+
+        return dict(GIT_ESTADO)
 
 
 # ==============================================================================
@@ -1775,6 +1900,17 @@ button:disabled {
     <h1>🎙️ Estudio Local para Aislar Voz, Recortar por Frases y Transcribir</h1>
     <p>Extraé unos minutos donde solo se escuche tu voz, o detectá la marca de tiempo de una frase de inicio y otra de cierre para recortar esa parte.</p>
   </div>
+  <!-- Barra de estado de GitHub -->
+  <div id="git-bar" style="background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:8px 12px;font-size:0.83rem;display:flex;align-items:center;gap:10px;box-shadow:0 1px 2px rgba(0,0,0,0.03)">
+    <div style="display:flex;align-items:center;gap:6px">
+      <span style="font-size:1rem">🐙</span>
+      <strong id="git-estado-txt">GitHub: Verificando…</strong>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button type="button" class="btn-outline btn-xs" id="btn-git-sinc" title="Verificar cambios en GitHub o forzar pull/push">🔄 Sincronizar</button>
+      <button type="button" class="btn-outline btn-xs" id="btn-git-cfg" style="display:none" title="Conectar repositorio remoto">⚙️ Configurar</button>
+    </div>
+  </div>
 </header>
 
 <!-- PASO 1: SELECCIONAR ARCHIVOS (NO ARRANCA SOLO) -->
@@ -1908,6 +2044,80 @@ const zonaEstudios = document.getElementById('zona-estudios');
 
 let cola = [];
 const sesiones = {};
+
+// Sincronizador de GitHub en el frontend
+async function consultarGitEstado(forzarVerificar = false) {
+  try {
+    const r = await fetch('/api/git_estado?verificar=' + (forzarVerificar ? '1' : '0'));
+    if (!r.ok) return;
+    const st = await r.json();
+    const txt = document.getElementById('git-estado-txt');
+    const btnCfg = document.getElementById('btn-git-cfg');
+    if (!txt) return;
+
+    if (!st.tiene_remote) {
+      txt.innerHTML = '<span style="color:#d97706">Local (Sin GitHub remoto)</span>';
+      btnCfg.style.display = 'inline-block';
+      btnCfg.onclick = () => configurarGitRemote();
+      return;
+    }
+
+    btnCfg.style.display = 'none';
+    if (st.estado === 'sincronizado') {
+      txt.innerHTML = `<span style="color:#15803d">✔ Al día (${escHtml(st.rama)})</span>`;
+    } else if (st.behind > 0) {
+      txt.innerHTML = `<span style="color:#2563eb">📥 ${st.behind} cambios en GitHub (Click Sincronizar)</span>`;
+    } else if (st.ahead > 0) {
+      txt.innerHTML = `<span style="color:#0891b2">📤 ${st.ahead} cambios locales pendientes</span>`;
+    } else {
+      txt.innerHTML = `<span>${escHtml(st.mensaje || st.estado)}</span>`;
+    }
+  } catch (e) {
+    console.error('Error git estado:', e);
+  }
+}
+
+async function sincronizarGitManual() {
+  const btn = document.getElementById('btn-git-sinc');
+  const txt = document.getElementById('git-estado-txt');
+  btn.disabled = true;
+  txt.textContent = 'Sincronizando con GitHub…';
+  try {
+    const r = await fetch('/api/git_sincronizar', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ accion: 'auto' })
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const res = await r.json();
+    alert(res.mensaje || 'Sincronización completada.');
+    consultarGitEstado(false);
+  } catch (e) {
+    alert('Error al sincronizar con GitHub: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function configurarGitRemote() {
+  const url = prompt('Pegá la URL de tu repositorio en GitHub (HTTPS o SSH):\nEjemplo: https://github.com/tu-usuario/extraer-audio.git');
+  if (!url || !url.trim()) return;
+  try {
+    const r = await fetch('/api/git_sincronizar', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ accion: 'configurar_remote', remote_url: url.trim() })
+    });
+    if (!r.ok) throw new Error(await r.text());
+    alert('¡Remoto de GitHub conectado con éxito! Ahora tus cambios se sincronizarán automáticamente.');
+    consultarGitEstado(true);
+  } catch (e) {
+    alert('Error al conectar remoto: ' + e.message);
+  }
+}
+
+document.getElementById('btn-git-sinc').onclick = () => sincronizarGitManual();
+consultarGitEstado(false);
 
 function fmtHMS(seg) {
   if (seg === null || seg === undefined || isNaN(seg)) return '--:--';
@@ -3122,6 +3332,16 @@ class Handler(BaseHTTPRequestHandler):
         if p.path == "/":
             return self._send_text(200, HTML, "text/html; charset=utf-8")
 
+        if p.path == "/api/git_estado":
+            # Si se pasa ?verificar=1 fuerza fetch y check de estado
+            q = urllib.parse.parse_qs(p.query)
+            if q.get("verificar", ["0"])[0] == "1":
+                st = verificar_y_sincronizar_git(accion_automatica=False)
+            else:
+                with GIT_LOCK:
+                    st = dict(GIT_ESTADO)
+            return self._send_json(200, st)
+
         if p.path == "/api/audios_existentes":
             archivos = []
             if os.path.isdir(SALIDA):
@@ -3170,6 +3390,50 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = urllib.parse.urlparse(self.path)
+
+        if p.path == "/api/git_sincronizar":
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            body = {}
+            if largo > 0:
+                try:
+                    body = json.loads(self.rfile.read(largo).decode("utf-8"))
+                except Exception:
+                    body = {}
+            accion = body.get("accion", "auto")  # "auto", "pull", "push", "configurar_remote"
+            url_remote = (body.get("remote_url") or "").strip()
+
+            if accion == "configurar_remote" and url_remote:
+                code_r, _, _ = ejecutar_git("remote", "remove", "origin")
+                code_a, _, err_a = ejecutar_git("remote", "add", "origin", url_remote)
+                if code_a != 0:
+                    return self._send_text(400, f"Error al configurar remote: {err_a}")
+                # Hacer commit de archivos si hay cambios pendientes antes de sincronizar
+                ejecutar_git("add", ".gitignore", "app.py", "README.md", "Extraer audio.bat", "voces_registradas.json")
+                ejecutar_git("commit", "-m", "chore: guardar estado local antes de sincronizar con remote")
+
+            if accion == "pull":
+                with GIT_LOCK:
+                    code_p, _, err_p = ejecutar_git("pull", "--rebase", "origin", GIT_ESTADO.get("rama", "main"))
+                    if code_p == 0:
+                        verificar_y_sincronizar_git(accion_automatica=False)
+                        return self._send_json(200, {"ok": True, "mensaje": "Pull realizado con éxito desde GitHub."})
+                    else:
+                        return self._send_text(500, f"Error en git pull: {err_p}")
+
+            if accion == "push":
+                with GIT_LOCK:
+                    ejecutar_git("add", ".gitignore", "app.py", "README.md", "Extraer audio.bat", "voces_registradas.json")
+                    ejecutar_git("commit", "-m", "chore: actualizar cambios locales")
+                    code_p, _, err_p = ejecutar_git("push", "origin", GIT_ESTADO.get("rama", "main"))
+                    if code_p == 0:
+                        verificar_y_sincronizar_git(accion_automatica=False)
+                        return self._send_json(200, {"ok": True, "mensaje": "Push realizado con éxito a GitHub."})
+                    else:
+                        return self._send_text(500, f"Error en git push: {err_p}")
+
+            # Accion auto
+            res = verificar_y_sincronizar_git(accion_automatica=True)
+            return self._send_json(200, res)
 
         if p.path == "/api/iniciar":
             q = urllib.parse.parse_qs(p.query)
@@ -3401,7 +3665,18 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"Abriendo http://localhost:{PORT}  (Ctrl+C para cerrar)")
+    print(f"Iniciando Estudio de Audio en http://localhost:{PORT}  (Ctrl+C para cerrar)")
+    
+    # Sincronización automática de GitHub en segundo plano al arrancar
+    def _sinc_inicio():
+        try:
+            res = verificar_y_sincronizar_git(accion_automatica=True)
+            print(f"[GitHub Sync] {res.get('mensaje', '')}")
+        except Exception as e:
+            print(f"[GitHub Sync Error] {e}")
+
+    threading.Thread(target=_sinc_inicio, daemon=True).start()
+
     if not os.environ.get("SIN_NAVEGADOR"):
         threading.Timer(1, lambda: webbrowser.open(f"http://localhost:{PORT}")).start()
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
