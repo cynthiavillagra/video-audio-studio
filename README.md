@@ -4,7 +4,8 @@ Aplicación web local (`http://localhost:8765`) pensada para:
 1. **Aislar solo tu voz** (limpia, sin silencios ni ruidos) para entrenar modelos de voz (XTTS, RVC, ElevenLabs, etc.).
 2. **Registro de Voces Conocidas (Auto-etiquetado automático)**: guardar perfiles de voces en una clase o reunión para que en grabaciones futuras reconozca quién habla y le asigne su nombre automáticamente.
 3. **Detectar marcas de tiempo por frase de inicio y fin** para recortar tramos exactos.
-4. **Transcribir y generar subtítulos** con marcas de tiempo interactivas.
+4. **Sincronizador automático de GitHub**: detecta al iniciar si hay cambios nuevos en GitHub hechos desde otra PC y hace `pull` automático (o sube cambios con `push`).
+5. **Transcribir y generar subtítulos** con marcas de tiempo interactivas.
 
 Todo corre 100% de manera local y privada en tu PC.
 
@@ -12,12 +13,19 @@ Todo corre 100% de manera local y privada en tu PC.
 
 - **Python 3.10+** con `openai-whisper` (o `faster-whisper`), `numpy` y `scipy`.
 - **ffmpeg** en el PATH (`ffmpeg -version`).
+- **git** instalado en el sistema.
 
 ## Uso paso a paso
 
-### 1. Iniciar la aplicación
+### 1. Iniciar la aplicación y sincronización
 - Hacé doble clic en `Extraer audio.bat` (o ejecutá `python app.py` en la terminal).
-- Se abre la interfaz web en `http://localhost:8765`.
+- **Sincronización automática de GitHub**:
+  - Al abrirse, comprueba automáticamente contra GitHub. Si hiciste cambios o grabaste nuevas voces desde otra PC, hace `git pull` automático para tener todo al día.
+  - En la barra superior derecha de la web tenés el botón **`🔄 Sincronizar`** para forzar pull/push en cualquier momento.
+  - Si aún no creaste o vinculaste tu repositorio remoto en GitHub, tenés el botón **`⚙️ Configurar`** (o podés hacer `git remote add origin https://github.com/tu-usuario/tu-repo.git`).
+  - *.gitignore ya está configurado* para sincronizar el código y el registro de voces (`voces_registradas.json`) protegiendo y omitiendo los audios pesados de la carpeta `audios/`.
+
+---
 
 ### 2. Cargar videos o audios (No arranca solo)
 - Arrastrá tus archivos (`.mkv`, `.mp4`, `.mov`, `.mp3`, `.wav`, etc.) a la zona de carga o elegí un audio previo de la carpeta `audios/`.
@@ -31,7 +39,7 @@ Todo corre 100% de manera local y privada en tu PC.
   1. En las tarjetas de hablantes, escuchá los fragmentos con **▶ Ejemplo** para identificar quién es quién.
   2. Escribí el nombre de la persona en la tarjeta (ej. `Kevin`, `Martina`, `Profesor`).
   3. Hacé clic en **`💾 Guardar voz`**: esto calcula la huella acústica (timbre, formantes y tono vocal) y la guarda de forma permanente en `voces_registradas.json`.
-- **En las siguientes grabaciones**:
+- **En las siguientes grabaciones (incluso en otra PC gracias a la sincronización)**:
   - Al procesar una nueva clase, la aplicación compara las voces detectadas contra el registro. Si coincide con una persona guardada, le asigna su nombre automáticamente y le coloca la etiqueta **`🧠 Reconocido`**.
   - En la parte superior tenés el panel desplegable **"Ver voces guardadas"** donde podés revisar cuántas personas tenés registradas y eliminar perfiles si lo deseás.
 
