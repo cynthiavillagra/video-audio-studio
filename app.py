@@ -2477,12 +2477,18 @@ function montarEstudio(datos) {
     </div>
 
     <!-- Hablantes detectados -->
-    <h3 style="font-size:1rem;margin:0 0 8px">
-      Hablantes detectados
-      <span style="font-weight:400;font-size:0.84rem;color:var(--muted)">
-        — Elegí <strong>"⭐ Es mi voz"</strong> para silenciar automáticamente a todos los demás
-      </span>
-    </h3>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+      <h3 style="font-size:1rem;margin:0">
+        Hablantes detectados
+        <span style="font-weight:400;font-size:0.84rem;color:var(--muted)">
+          — Silenciá o excluís a quienes no quieras escuchar en el audio/transcripción
+        </span>
+      </h3>
+      <div style="display:flex;gap:6px">
+        <button type="button" class="btn-outline btn-xs" id="btn-silenciar-todos-${sid}">🔇 Silenciar a todos</button>
+        <button type="button" class="btn-outline btn-xs" id="btn-activar-todos-${sid}">🔊 Activar a todos</button>
+      </div>
+    </div>
     <div class="hablantes-grid" id="hablantes-grid-${sid}"></div>
 
     <!-- Transcripción interactiva -->
@@ -2689,6 +2695,22 @@ function montarEstudio(datos) {
   };
 
   document.getElementById('btn-export-mp3-' + sid).onclick = () => exportarAudioFiltrado(sid);
+
+  document.getElementById('btn-silenciar-todos-' + sid).onclick = () => {
+    const st = sesiones[sid];
+    for (const h of st.hablantes) h.silenciado = true;
+    for (const s of st.segmentos) delete s.override_mute;
+    renderHablantes(sid);
+    renderSegmentos(sid);
+  };
+
+  document.getElementById('btn-activar-todos-' + sid).onclick = () => {
+    const st = sesiones[sid];
+    for (const h of st.hablantes) h.silenciado = false;
+    for (const s of st.segmentos) delete s.override_mute;
+    renderHablantes(sid);
+    renderSegmentos(sid);
+  };
 
   for (const b of card.querySelectorAll('[data-fmt]')) {
     b.onclick = () => descargarTranscripcion(sid, b.dataset.fmt);
