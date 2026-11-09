@@ -3798,7 +3798,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <div>
         <h2 style="margin:0;color:#1e1b4b">🧠 Laboratorio ML: Entrenar Mi Estilo de Habla y Convertir Guiones</h2>
         <p style="font-size:0.86rem;color:#3730a3;margin:4px 0 0">
-          Entrená un modelo propio con tus transcripciones (aprende tus muletillas, conectores, ritmo de frase, voseo y vocabulario real) y enviale cualquier guión o apunte para que lo reescriba exactamente como hablás vos.
+          Entrená un modelo propio con tus transcripciones (aprende tus muletillas, conectores, ritmo de frase, voseo y vocabulario real) y enviale cualquier guión o texto para que lo reescriba exactamente como hablás vos.
         </p>
       </div>
       <span class="badge badge-azul" id="p5-badge-estado" style="font-size:0.85rem;padding:6px 12px">Cargando estado del modelo…</span>
