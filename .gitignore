@@ -1,0 +1,23 @@
+# Ignorar archivos temporales y generados
+audios/
+transcripciones/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+env/
+.env
+
+# Ignorar audios de prueba sueltos o zip
+*.mp3
+*.wav
+*.mkv
+*.mp4
+*.zip
+
+# NO ignorar el código ni el registro de voces
+!voces_registradas.json
+!README.md
+!app.py
+!Extraer audio.bat
+!.gitignore
