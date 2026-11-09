@@ -1320,83 +1320,121 @@ HTML = r"""<!doctype html>
 <title>Estudio de Voz · Aislar Mi Voz, Recortar por Frases y Transcribir</title>
 <style>
 :root {
-  --bg: #f3f4f6;
+  --bg: #f8fafc;
   --card: #ffffff;
-  --text: #111827;
-  --muted: #6b7280;
-  --border: #e5e7eb;
+  --text: #0f172a;
+  --muted: #64748b;
+  --border: #e2e8f0;
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
+  --primary-light: #eff6ff;
   --secondary: #0f766e;
   --secondary-hover: #115e59;
+  --accent: #4f46e5;
   --danger: #dc2626;
   --danger-bg: #fef2f2;
-  --ok: #15803d;
+  --danger-border: #fecaca;
+  --ok: #16a34a;
   --ok-bg: #f0fdf4;
+  --ok-border: #bbf7d0;
+  --gold: #d97706;
+  --gold-bg: #fffbeb;
   --radius: 12px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
 }
 * { box-sizing: border-box; }
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  max-width: 1120px;
+  max-width: 1140px;
   margin: 0 auto;
-  padding: 24px 16px 60px;
+  padding: 24px 16px 80px;
   background: var(--bg);
   color: var(--text);
-  line-height: 1.45;
+  line-height: 1.5;
 }
 header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 14px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
 }
 header h1 {
-  font-size: 1.55rem;
+  font-size: 1.6rem;
   margin: 0;
   display: flex;
   align-items: center;
   gap: 10px;
+  color: #0f172a;
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 header p {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: 0.94rem;
+}
+#git-bar {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 0.84rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: var(--shadow-sm);
 }
 .card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
+  padding: 22px;
   margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s;
 }
-.card h2 {
-  font-size: 1.12rem;
-  margin: 0 0 14px;
+.card-header-line {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.card-header-line h2 {
+  font-size: 1.18rem;
+  margin: 0;
+  display: flex;
+  align-items: center;
   gap: 8px;
+  color: #1e293b;
+  font-weight: 700;
+}
+.card-badge-info {
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 
-/* Zona Drag & Drop */
+/* Paso 1: Carga */
 .fuentes-grid {
   display: grid;
-  grid-template-columns: 1.5fr 1fr;
+  grid-template-columns: 1.45fr 1fr;
   gap: 16px;
 }
-@media (max-width: 740px) {
+@media (max-width: 760px) {
   .fuentes-grid { grid-template-columns: 1fr; }
 }
 #zona {
-  border: 2px dashed #9ca3af;
+  border: 2px dashed #94a3b8;
   border-radius: var(--radius);
-  padding: 28px 20px;
+  padding: 30px 20px;
   text-align: center;
-  background: #f9fafb;
+  background: #f8fafc;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -1405,47 +1443,48 @@ header p {
   background: #eff6ff;
 }
 #zona .icono {
-  font-size: 2rem;
+  font-size: 2.2rem;
   margin-bottom: 6px;
 }
 #zona .titulo-z {
-  font-weight: 600;
-  font-size: 1rem;
-  color: #1f2937;
+  font-weight: 700;
+  font-size: 1.02rem;
+  color: #1e293b;
 }
 #zona .sub-z {
   font-size: 0.84rem;
   color: var(--muted);
-  margin-top: 4px;
+  margin-top: 6px;
 }
 .panel-existentes {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px;
-  background: #f9fafb;
+  padding: 16px;
+  background: #f8fafc;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 .panel-existentes label {
-  font-weight: 600;
-  font-size: 0.88rem;
-  color: #374151;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #1e293b;
 }
 
 /* Cola de archivos */
 #cola-box {
-  margin-top: 16px;
+  margin-top: 18px;
   display: none;
 }
 .cola-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-  font-size: 0.9rem;
-  font-weight: 600;
+  margin-bottom: 10px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #334155;
 }
 .cola-lista {
   list-style: none;
@@ -1459,12 +1498,13 @@ header p {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   padding: 10px 14px;
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 0.92rem;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
 }
 .cola-item .info {
   display: flex;
@@ -1479,48 +1519,93 @@ header p {
   text-overflow: ellipsis;
 }
 .badge {
-  font-size: 0.75rem;
+  font-size: 0.74rem;
   padding: 2px 8px;
   border-radius: 999px;
   background: #e2e8f0;
   color: #334155;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
 }
 .badge-azul {
   background: #dbeafe;
   color: #1e40af;
 }
+.badge-verde {
+  background: #dcfce7;
+  color: #15803d;
+}
 
-/* Grilla de opciones */
+/* Paso 2: Selección de Modo y Configuración */
+.modos-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+@media (max-width: 760px) {
+  .modos-grid { grid-template-columns: 1fr; }
+}
+.modo-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  transition: all 0.15s;
+}
+.modo-card.destacado {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+.modo-card h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  color: #1e3a8a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.modo-card p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
 .opciones-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 14px;
   margin-bottom: 14px;
-}
-.frases-init-box {
-  background: #f8fafc;
-  border: 1px dashed #cbd5e1;
+  background: #ffffff;
+  padding: 14px;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 12px 14px;
-  margin-bottom: 14px;
 }
 .campo label {
   display: block;
-  font-size: 0.84rem;
-  font-weight: 600;
-  color: #374151;
+  font-size: 0.83rem;
+  font-weight: 700;
+  color: #334155;
   margin-bottom: 5px;
 }
 input[type="text"], input[type="number"], select {
   width: 100%;
   font-size: 0.92rem;
   padding: 8px 10px;
-  border: 1px solid #d1d5db;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #fff;
   color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+input[type="text"]:focus, input[type="number"]:focus, select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(37,99,235,0.12);
 }
 .check-inline {
   display: flex;
@@ -1529,7 +1614,6 @@ input[type="text"], input[type="number"], select {
   font-size: 0.9rem;
   cursor: pointer;
   user-select: none;
-  padding-top: 6px;
 }
 .check-inline input {
   width: 16px;
@@ -1537,26 +1621,34 @@ input[type="text"], input[type="number"], select {
   cursor: pointer;
 }
 
-/* Botones */
-.acciones-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+.frases-init-box {
+  background: #f0f7ff;
+  border: 1px dashed #93c5fd;
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 14px;
 }
+.sub-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 650px) {
+  .sub-grid-2 { grid-template-columns: 1fr; }
+}
+
+/* Botones */
 button {
   font-family: inherit;
-  font-size: 0.94rem;
+  font-size: 0.92rem;
   font-weight: 600;
-  padding: 10px 16px;
+  padding: 9px 15px;
   border-radius: 8px;
   border: 1px solid transparent;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   transition: all 0.15s ease;
 }
 button:disabled {
@@ -1579,36 +1671,41 @@ button:disabled {
 }
 .btn-outline {
   background: #fff;
-  color: #374151;
-  border-color: #d1d5db;
+  color: #334155;
+  border-color: #cbd5e1;
 }
 .btn-outline:hover:not(:disabled) {
-  background: #f3f4f6;
+  background: #f1f5f9;
 }
 .btn-gold {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border-color: #93c5fd;
-  padding: 5px 10px;
-  font-size: 0.8rem;
+  background: var(--gold-bg);
+  color: #b45309;
+  border-color: #fde68a;
+  padding: 6px 12px;
+  font-size: 0.82rem;
 }
 .btn-gold:hover:not(:disabled) {
-  background: #dbeafe;
+  background: #fef3c7;
+}
+.btn-gold.activo {
+  background: #16a34a;
+  color: #fff;
+  border-color: #16a34a;
 }
 .btn-danger-soft {
   background: var(--danger-bg);
   color: var(--danger);
-  border-color: #fecaca;
+  border-color: var(--danger-border);
   padding: 6px 10px;
   font-size: 0.82rem;
 }
 .btn-sm {
-  padding: 6px 10px;
-  font-size: 0.82rem;
+  padding: 6px 11px;
+  font-size: 0.83rem;
 }
 .btn-xs {
-  padding: 4px 7px;
-  font-size: 0.75rem;
+  padding: 4px 8px;
+  font-size: 0.77rem;
   border-radius: 6px;
 }
 
@@ -1617,19 +1714,20 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px;
-  margin-bottom: 12px;
-  background: #f9fafb;
+  margin-bottom: 14px;
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
 }
 .progreso-top {
   display: flex;
   justify-content: space-between;
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 0.92rem;
+  font-weight: 700;
   margin-bottom: 8px;
 }
 .barra-fondo {
   height: 10px;
-  background: #e5e7eb;
+  background: #e2e8f0;
   border-radius: 999px;
   overflow: hidden;
 }
@@ -1640,79 +1738,157 @@ button:disabled {
   transition: width 0.25s ease;
 }
 
-/* Estudio de Hablantes y Transcripción */
+/* ========================================================================== */
+/* ESTUDIO INTERACTIVO ORGANIZADO POR PESTAÑAS (TABS) */
+/* ========================================================================== */
 .estudio-card {
   border: 2px solid #cbd5e1;
+  background: #ffffff;
+  padding: 20px;
 }
+
+/* Reproductor fijo superior */
 .player-sticky {
   position: sticky;
-  top: 8px;
-  z-index: 20;
-  background: #1e293b;
+  top: 10px;
+  z-index: 30;
+  background: #0f172a;
   color: #f8fafc;
   padding: 12px 16px;
-  border-radius: 10px;
+  border-radius: 12px;
   margin-bottom: 18px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  gap: 12px;
+  box-shadow: 0 8px 20px -3px rgba(0,0,0,0.25);
+  border: 1px solid #334155;
 }
 .player-sticky audio {
   flex: 1;
-  min-width: 240px;
-  height: 36px;
+  min-width: 250px;
+  height: 38px;
+}
+.player-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.player-chip {
+  font-size: 0.78rem;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #1e293b;
+  border: 1px solid #475569;
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+.player-chip.destacado {
+  background: #065f46;
+  border-color: #059669;
+  color: #ecfdf5;
+  font-weight: 700;
 }
 .player-info {
-  font-size: 0.85rem;
-  color: #cbd5e1;
-  min-width: 180px;
+  font-size: 0.83rem;
+  color: #94a3b8;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Panel detector de marca de tiempo por frases */
-.frases-cut-panel {
-  border: 1px solid #bfdbfe;
-  background: #f0f7ff;
+/* Navegación por pestañas */
+.tabs-nav {
+  display: flex;
+  gap: 6px;
+  background: #f1f5f9;
+  padding: 6px;
   border-radius: 10px;
-  padding: 14px;
   margin-bottom: 18px;
+  border: 1px solid var(--border);
+  overflow-x: auto;
 }
-.frases-cut-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: 12px;
-  align-items: end;
+.tab-btn {
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 15px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #475569;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  transition: all 0.15s ease;
 }
-@media (max-width: 780px) {
-  .frases-cut-grid { grid-template-columns: 1fr; }
+.tab-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
 }
-.match-pill {
-  margin-top: 6px;
-  font-size: 0.8rem;
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: #fff;
-  border: 1px solid #cbd5e1;
+.tab-btn.activo {
+  background: #ffffff;
+  color: var(--primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.tab-btn .tab-badge {
+  font-size: 0.72rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-weight: 700;
+}
+.tab-btn.activo .tab-badge {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.tab-pane {
+  display: none;
+  animation: tabFadeIn 0.15s ease-out;
+}
+.tab-pane.activo {
+  display: block;
+}
+@keyframes tabFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Pestaña 1: Hablantes */
+.hablantes-intro-banner {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
-
-/* Tarjetas de hablantes */
+.hablantes-intro-banner p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #166534;
+}
 .hablantes-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
   margin-bottom: 18px;
 }
 .spk-card {
   border: 2px solid var(--border);
   border-radius: 10px;
-  padding: 12px;
-  background: #fff;
+  padding: 14px;
+  background: #ffffff;
   transition: all 0.15s ease;
+  box-shadow: var(--shadow-sm);
 }
 .spk-card.es-mi-voz {
   border-color: #16a34a;
@@ -1727,7 +1903,7 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 .spk-dot {
   width: 14px;
@@ -1737,7 +1913,7 @@ button:disabled {
 }
 .spk-name-input {
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 0.96rem;
   padding: 4px 8px !important;
   border: 1px solid transparent !important;
   background: transparent !important;
@@ -1748,9 +1924,9 @@ button:disabled {
   background: #fff !important;
 }
 .spk-meta {
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   color: var(--muted);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .spk-actions {
   display: flex;
@@ -1768,7 +1944,7 @@ button:disabled {
   border-radius: 6px;
   cursor: pointer;
   border: 1px solid #d1d5db;
-  background: #f9fafb;
+  background: #f8fafc;
 }
 .spk-card.silenciado .mute-toggle {
   background: #dc2626;
@@ -1776,40 +1952,72 @@ button:disabled {
   border-color: #dc2626;
 }
 
-/* Lista de segmentos de transcripción */
+/* Memoria de Voces */
+.panel-memoria {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 18px;
+}
+
+/* Pestaña 2: Recorte por Frases */
+.box-recorte {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.match-pill {
+  margin-top: 6px;
+  font-size: 0.82rem;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Pestaña 3: Transcripción */
 .trans-toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
 }
 .segmentos-wrap {
-  max-height: 420px;
+  max-height: 480px;
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #f9fafb;
-  padding: 8px;
+  background: #f8fafc;
+  padding: 10px;
 }
 .seg-row {
   display: grid;
-  grid-template-columns: auto 145px 1fr auto;
+  grid-template-columns: auto 150px 1fr auto;
   gap: 10px;
   align-items: start;
-  padding: 8px 10px;
+  padding: 9px 12px;
   border-radius: 8px;
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e2e8f0;
   margin-bottom: 6px;
-  transition: background 0.15s;
+  transition: all 0.15s;
 }
-@media (max-width: 680px) {
+@media (max-width: 720px) {
   .seg-row { grid-template-columns: 1fr; }
 }
 .seg-row.seg-silenciado {
-  opacity: 0.5;
+  opacity: 0.45;
   background: #fef2f2;
   border-color: #fecaca;
 }
@@ -1817,14 +2025,14 @@ button:disabled {
   text-decoration: line-through;
 }
 .seg-row.fuera-de-rango {
-  opacity: 0.38;
-  background: #f3f4f6;
+  opacity: 0.35;
+  background: #f1f5f9;
 }
 .seg-row.marca-inicio {
-  border-left: 4px solid #16a34a;
+  border-left: 5px solid #16a34a;
 }
 .seg-row.marca-fin {
-  border-right: 4px solid #dc2626;
+  border-right: 5px solid #dc2626;
 }
 .seg-time-btn {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -1842,7 +2050,7 @@ button:disabled {
 .seg-spk-select {
   font-size: 0.82rem !important;
   padding: 5px 6px !important;
-  font-weight: 600;
+  font-weight: 700;
 }
 .seg-texto {
   font-size: 0.92rem;
@@ -1856,14 +2064,39 @@ button:disabled {
   background: #fff;
 }
 
-/* Panel de exportación */
+/* Pestaña 4: Exportación */
+.export-presets-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.preset-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.preset-card:hover {
+  border-color: var(--primary);
+  background: #eff6ff;
+}
+.preset-card strong {
+  font-size: 0.88rem;
+  display: block;
+  color: #1e3a8a;
+  margin-bottom: 2px;
+}
+.preset-card span {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
 .export-grid {
   display: grid;
   grid-template-columns: 1.35fr 1fr;
   gap: 16px;
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
 }
 @media (max-width: 820px) {
   .export-grid { grid-template-columns: 1fr; }
@@ -1875,18 +2108,16 @@ button:disabled {
   background: #f8fafc;
 }
 .export-box h3 {
-  font-size: 1rem;
+  font-size: 1.02rem;
   margin: 0 0 12px;
-}
-.sub-grid-2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 10px;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .resultado-mp3-box {
-  margin-top: 12px;
-  padding: 12px;
+  margin-top: 14px;
+  padding: 14px;
   border-radius: 8px;
   background: var(--ok-bg);
   border: 1px solid #86efac;
@@ -1897,13 +2128,13 @@ button:disabled {
 
 <header>
   <div>
-    <h1>🎙️ Estudio Local para Aislar Voz, Recortar por Frases y Transcribir</h1>
-    <p>Extraé unos minutos donde solo se escuche tu voz, o detectá la marca de tiempo de una frase de inicio y otra de cierre para recortar esa parte.</p>
+    <h1>🎙️ Estudio de Voz, Recorte y Transcripción</h1>
+    <p>Aislar tu voz limpia para clonación (XTTS/RVC) · Recortar por frases de inicio/fin · Diarización y subtítulos</p>
   </div>
   <!-- Barra de estado de GitHub -->
-  <div id="git-bar" style="background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:8px 12px;font-size:0.83rem;display:flex;align-items:center;gap:10px;box-shadow:0 1px 2px rgba(0,0,0,0.03)">
+  <div id="git-bar">
     <div style="display:flex;align-items:center;gap:6px">
-      <span style="font-size:1rem">🐙</span>
+      <span style="font-size:1.1rem">🐙</span>
       <strong id="git-estado-txt">GitHub: Verificando…</strong>
     </div>
     <div style="display:flex;gap:6px">
@@ -1913,41 +2144,72 @@ button:disabled {
   </div>
 </header>
 
-<!-- PASO 1: SELECCIONAR ARCHIVOS (NO ARRANCA SOLO) -->
+<!-- PASO 1: SELECCIONAR ARCHIVOS (COLA DE TRABAJO) -->
 <div class="card">
-  <h2>1. Cargar videos o audios</h2>
+  <div class="card-header-line">
+    <h2>1. Cargar videos o audios</h2>
+    <span class="card-badge-info">No arranca solo: podés cargar varios archivos, configurar y luego iniciar</span>
+  </div>
   <div class="fuentes-grid">
     <div id="zona">
       <div class="icono">📥</div>
-      <div class="titulo-z">Arrastrá tus videos/audios acá o hacé clic para elegirlos</div>
-      <div class="sub-z">Soporta MKV, MP4, MOV, AVI, MP3, WAV, M4A · <strong>No arranca solo</strong>: primero armás la lista y configurás.</div>
+      <div class="titulo-z">Arrastrá tus archivos acá o hacé clic para explorar</div>
+      <div class="sub-z">Soporta MKV, MP4, MOV, AVI, MP3, WAV, M4A</div>
       <input type="file" id="arch" accept=".mkv,.mp4,.mov,.avi,.webm,.mp3,.wav,.m4a,video/*,audio/*" multiple hidden>
     </div>
 
     <div class="panel-existentes">
       <div>
-        <label for="sel-existente">📂 O elegir un MP3/WAV ya extraído en <code>audios/</code></label>
-        <p style="font-size:0.8rem;color:var(--muted);margin:4px 0 8px">Si ya convertiste un video antes, podés elegir su audio directo sin volver a subir el video.</p>
+        <label for="sel-existente">📂 O elegir un audio ya extraído en <code>audios/</code></label>
+        <p style="font-size:0.82rem;color:var(--muted);margin:4px 0 8px">Si ya convertiste un video antes, podés abrirlo directo sin volver a subir el archivo pesado.</p>
         <select id="sel-existente">
           <option value="">Cargando lista de audios…</option>
         </select>
       </div>
-      <button type="button" class="btn-outline btn-sm" id="btn-agregar-existente" style="align-self:flex-start">➕ Agregar a la cola de trabajo</button>
+      <button type="button" class="btn-outline btn-sm" id="btn-agregar-existente" style="align-self:flex-start">➕ Agregar a la cola</button>
     </div>
   </div>
 
   <div id="cola-box">
     <div class="cola-header">
       <span id="cola-titulo">Archivos listos para procesar (0)</span>
-      <button type="button" class="btn-danger-soft" id="btn-limpiar-cola">Vaciar lista</button>
+      <button type="button" class="btn-danger-soft" id="btn-limpiar-cola">Vaciar cola</button>
     </div>
     <ul class="cola-lista" id="cola-lista"></ul>
   </div>
 </div>
 
-<!-- PASO 2: CONFIGURACIÓN Y BOTONES DE ACCIÓN -->
+<!-- PASO 2: ELEGIR MODO Y CONFIGURAR -->
 <div class="card">
-  <h2>2. Configurar opciones y recorte inicial</h2>
+  <div class="card-header-line">
+    <h2>2. Configuración y Modo de Ejecución</h2>
+    <span id="aviso-cola" style="font-size:0.85rem;color:var(--muted)">Cargá al menos un archivo arriba para activar los botones.</span>
+  </div>
+
+  <!-- Tarjetas de Modo -->
+  <div class="modos-grid">
+    <div class="modo-card destacado">
+      <div>
+        <h3>🧠 Modo Estudio Completo con IA (Recomendado)</h3>
+        <p>Transcribe con Whisper, detecta cada hablante, reconoce tu voz, busca marcas por frases y abre el <strong>Estudio Interactivo</strong> para aislar tu voz limpia o recortar.</p>
+      </div>
+      <button type="button" class="btn-primary" id="btn-analizar" disabled style="width:100%;justify-content:center">
+        🚀 Iniciar Estudio Completo
+      </button>
+    </div>
+
+    <div class="modo-card">
+      <div>
+        <h3>⚡ Modo Rápido: Solo Extraer Audio</h3>
+        <p>Extrae el audio directo a MP3 o WAV a máxima velocidad sin transcripción ni análisis de hablantes.</p>
+      </div>
+      <button type="button" class="btn-secondary" id="btn-solo-mp3" disabled style="width:100%;justify-content:center">
+        🎵 Extraer Audio Directo
+      </button>
+    </div>
+  </div>
+
+  <!-- Opciones y Ajustes -->
   <div class="opciones-grid">
     <div class="campo">
       <label for="cal">Calidad MP3</label>
@@ -1955,23 +2217,11 @@ button:disabled {
         <option value="64k">64 kbps (liviano)</option>
         <option value="128k">128 kbps</option>
         <option value="192k" selected>192 kbps (recomendado)</option>
-        <option value="320k">320 kbps (alta calidad para voz)</option>
+        <option value="320k">320 kbps (alta fidelidad)</option>
       </select>
     </div>
     <div class="campo">
-      <label for="desde">Empezar desde tiempo (opcional)</label>
-      <input id="desde" type="text" placeholder="ej. 02:00 o 00:10:00">
-    </div>
-    <div class="campo">
-      <label for="hasta">Terminar en tiempo (opcional)</label>
-      <input id="hasta" type="text" placeholder="ej. 12:00">
-    </div>
-    <div class="campo">
-      <label for="mb">Tamaño máx. MB (opcional)</label>
-      <input id="mb" type="number" min="1" step="0.5" placeholder="vacío = sin límite">
-    </div>
-    <div class="campo">
-      <label for="modelo">Modelo de transcripción</label>
+      <label for="modelo">Modelo de transcripción IA</label>
       <select id="modelo">
         <option value="base">Whisper Base (más rápido)</option>
         <option value="small" selected>Whisper Small (más preciso)</option>
@@ -1989,15 +2239,27 @@ button:disabled {
         <option value="6">6 hablantes</option>
       </select>
     </div>
+    <div class="campo">
+      <label for="desde">Desde tiempo (opcional)</label>
+      <input id="desde" type="text" placeholder="ej. 02:00">
+    </div>
+    <div class="campo">
+      <label for="hasta">Hasta tiempo (opcional)</label>
+      <input id="hasta" type="text" placeholder="ej. 15:30">
+    </div>
+    <div class="campo">
+      <label for="mb">Tamaño máx. MB (opcional)</label>
+      <input id="mb" type="number" min="1" step="0.5" placeholder="sin límite">
+    </div>
   </div>
 
-  <!-- Opción de frases de inicio y cierre desde antes de analizar (y también disponible después en vivo) -->
+  <!-- Opción de frases iniciales -->
   <div class="frases-init-box">
     <div style="font-size:0.86rem;font-weight:700;color:#1e3a8a;margin-bottom:8px">
-      🔎 Opcional: Detectar marca de tiempo cuando decís una frase de inicio y otra de cierre para recortar esa parte
-      <span style="font-weight:400;color:var(--muted)">(también podés buscarlas o cambiarlas después de transcribir)</span>
+      🔎 Opcional: Detectar marcas de tiempo por frase de inicio y fin desde el inicio
+      <span style="font-weight:400;color:var(--muted)">(también disponible en vivo dentro del estudio)</span>
     </div>
-    <div class="sub-grid-2" style="margin-bottom:0">
+    <div class="sub-grid-2">
       <div class="campo">
         <label for="frase-ini-global">⛳ Frase donde empieza el recorte (opcional)</label>
         <input id="frase-ini-global" type="text" placeholder='ej. "bueno empezamos con la clase"'>
@@ -2009,20 +2271,10 @@ button:disabled {
     </div>
   </div>
 
-  <label class="check-inline" style="margin-bottom:14px">
+  <label class="check-inline">
     <input type="checkbox" id="mono" checked>
-    <span>Convertir a <strong>Mono</strong> (recomendado para entrenar modelos de voz y pesa la mitad)</span>
+    <span>Convertir a <strong>Mono</strong> (recomendado para entrenar modelos de voz: pesa la mitad y evita desfases)</span>
   </label>
-
-  <div class="acciones-bar">
-    <button type="button" class="btn-primary" id="btn-analizar" disabled>
-      🗣️ Transcribir, detectar hablantes y buscar frases
-    </button>
-    <button type="button" class="btn-secondary" id="btn-solo-mp3" disabled>
-      🎵 Solo extraer MP3 directo (sin transcribir)
-    </button>
-    <span id="aviso-cola" style="font-size:0.85rem;color:var(--muted)">Agregá al menos un video o audio arriba para habilitar los botones.</span>
-  </div>
 </div>
 
 <!-- PROGRESO Y RESULTADOS DIRECTOS -->
@@ -2356,7 +2608,7 @@ async function ejecutarItem(item, paramsBase) {
 }
 
 // ==============================================================================
-// ESTUDIO INTERACTIVO DE HABLANTES, MARCAS DE TIEMPO POR FRASE Y VOZ LIMPIA
+// ESTUDIO INTERACTIVO ORGANIZADO EN 4 PESTAÑAS (TABS)
 // ==============================================================================
 
 function montarEstudio(datos) {
@@ -2379,16 +2631,17 @@ function montarEstudio(datos) {
   card.className = 'card estudio-card';
   card.id = 'estudio-' + sid;
   card.innerHTML = `
+    <!-- Encabezado del Estudio -->
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
       <div>
-        <h2 style="margin:0">🎙️ ${escHtml(datos.nombre_original)}</h2>
-        <div style="font-size:0.84rem;color:var(--muted)">
+        <h2 style="margin:0;font-size:1.25rem">🎙️ ${escHtml(datos.nombre_original)}</h2>
+        <div style="font-size:0.84rem;color:var(--muted);margin-top:2px">
           Duración analizada: <strong>${fmtHMS(datos.duracion)}</strong> · Modelo: <strong>Whisper ${escHtml(datos.modelo)}</strong> ·
           Audio base: <a href="/audios/${encodeURIComponent(datos.nombre_mp3)}" download>${escHtml(datos.nombre_mp3)}</a>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <label style="font-size:0.83rem;font-weight:600">Re-agrupar voces:</label>
+        <label style="font-size:0.83rem;font-weight:700">Re-agrupar voces:</label>
         <select id="recluster-sel-${sid}" style="width:auto;padding:5px 8px;font-size:0.84rem">
           <option value="0">Automático</option>
           <option value="1">1 hablante</option>
@@ -2402,189 +2655,299 @@ function montarEstudio(datos) {
       </div>
     </div>
 
-    <!-- Reproductor fijo -->
+    <!-- Barra de Reproducción Fija (Sticky) con Indicadores de Estado -->
     <div class="player-sticky">
       <audio id="audio-${sid}" controls preload="metadata" src="/audios/${encodeURIComponent(datos.nombre_mp3)}"></audio>
-      <div class="player-info" id="pinfo-${sid}">Escuchá muestras con ▶, elegí <strong>"⭐ Es mi voz"</strong> o buscá una frase de inicio y fin para recortar.</div>
+      <div class="player-chips">
+        <span class="player-chip" id="chip-voz-${sid}">⭐ Voz: Sin asignar</span>
+        <span class="player-chip" id="chip-rango-${sid}">📏 Rango: Completo</span>
+      </div>
+      <div class="player-info" id="pinfo-${sid}">Elegí tu voz con <strong>"⭐ Es mi voz"</strong> o marcá frases de recorte para comenzar.</div>
     </div>
 
-    <!-- PANEL: DETECTAR MARCA DE TIEMPO DE FRASE DE INICIO Y FRASE DE FIN PARA RECORTAR -->
-    <div class="frases-cut-panel">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-        <div style="font-weight:700;font-size:0.95rem;color:#1e3a8a">
-          ✂️ Recortar por Frase de Inicio y Frase de Fin (detecta la marca de tiempo exacta)
+    <!-- Barra de Pestañas (Workflow organizado) -->
+    <div class="tabs-nav" id="tabs-nav-${sid}">
+      <button type="button" class="tab-btn activo" data-tab="hablantes">
+        👥 1. Hablantes & Mi Voz <span class="tab-badge" id="badge-tab-spk-${sid}">${datos.hablantes.length}</span>
+      </button>
+      <button type="button" class="tab-btn" data-tab="recorte">
+        ✂️ 2. Recorte por Frases & Tiempo <span class="tab-badge" id="badge-tab-cut-${sid}">Auto</span>
+      </button>
+      <button type="button" class="tab-btn" data-tab="transcripcion">
+        📝 3. Transcripción <span class="tab-badge" id="badge-tab-trans-${sid}">${datos.segmentos.length}</span>
+      </button>
+      <button type="button" class="tab-btn" data-tab="exportar">
+        💾 4. Exportar Audio & Subtítulos
+      </button>
+    </div>
+
+    <!-- PESTAÑA 1: HABLANTES Y MI VOZ -->
+    <div class="tab-pane activo" data-pane="hablantes">
+      <div class="hablantes-intro-banner">
+        <div>
+          <p>🎯 <strong>Objetivo de clonación:</strong> Hacé clic en <strong>"⭐ Es mi voz"</strong> en tu tarjeta para dejarte a vos como único hablante activo y silenciar automáticamente a los demás.</p>
         </div>
-        <div style="font-size:0.8rem;color:#475569">
-          También podés hacer clic en <strong>⛳ Inicio</strong> o <strong>🏁 Fin</strong> en cualquier línea de la transcripción abajo.
+        <div style="display:flex;gap:6px">
+          <button type="button" class="btn-outline btn-xs" id="btn-silenciar-todos-${sid}">🔇 Silenciar a todos</button>
+          <button type="button" class="btn-outline btn-xs" id="btn-activar-todos-${sid}">🔊 Activar a todos</button>
         </div>
       </div>
 
-      <div class="frases-cut-grid">
-        <div class="campo">
-          <label for="f-ini-${sid}">⛳ Cuando digo la frase de inicio:</label>
-          <input type="text" id="f-ini-${sid}" value="${escHtml(rd.frase_ini || '')}" placeholder='Escribí la frase con la que empezás…'>
-          <div id="pill-ini-${sid}"></div>
+      <!-- Memoria de Voces Conocidas -->
+      <div class="panel-memoria">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div>
+            <strong style="font-size:0.92rem;color:#0f172a">🧠 Registro de Voces Conocidas (Memoria Inteligente)</strong>
+            <span style="font-size:0.82rem;color:var(--muted);margin-left:6px" id="lbl-voces-reg-cont">Cargando perfiles…</span>
+          </div>
+          <button type="button" class="btn-outline btn-xs" id="btn-toggle-panel-voces">Ver voces guardadas</button>
         </div>
-        <div class="campo">
-          <label for="f-fin-${sid}">🏁 Cuando finalizo con la frase:</label>
-          <input type="text" id="f-fin-${sid}" value="${escHtml(rd.frase_fin || '')}" placeholder='Escribí la frase con la que terminás…'>
-          <div id="pill-fin-${sid}"></div>
+        <div id="panel-voces-lista" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed #cbd5e1">
+          <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px">
+            Las voces guardadas se usarán para reconocer y auto-etiquetar a las personas en grabaciones futuras. Podés guardar la voz de cada hablante haciendo clic en <strong>"💾 Guardar voz"</strong> en su tarjeta.
+          </div>
+          <div id="lista-voces-tags" style="display:flex;flex-wrap:wrap;gap:8px"></div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:6px">
+      </div>
+
+      <!-- Tarjetas de Hablantes -->
+      <div class="hablantes-grid" id="hablantes-grid-${sid}"></div>
+
+      <div style="background:#f1f5f9;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <span style="font-size:0.85rem;color:#334155">¿Ya elegiste tu voz? Podés definir marcas de inicio y fin en el recorte o ir directo a exportar.</span>
+        <button type="button" class="btn-primary btn-sm btn-nav-goto" data-goto="exportar">👉 Ir al paso 4: Exportar Audio Limpio</button>
+      </div>
+    </div>
+
+    <!-- PESTAÑA 2: RECORTE POR FRASES Y TIEMPO -->
+    <div class="tab-pane" data-pane="recorte">
+      <div class="box-recorte">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <div style="font-weight:700;font-size:0.98rem;color:#1e3a8a">
+            🔎 Detección Automática por Frases Habladas (Inicio y Fin)
+          </div>
+          <div style="font-size:0.8rem;color:#475569">
+            El sistema busca las marcas de tiempo exactas donde pronunciás estas frases.
+          </div>
+        </div>
+
+        <div class="sub-grid-2" style="margin-bottom:12px">
+          <div class="campo">
+            <label for="f-ini-${sid}">⛳ Cuando digo la frase de inicio:</label>
+            <input type="text" id="f-ini-${sid}" value="${escHtml(rd.frase_ini || '')}" placeholder='ej. "bueno empezamos con la clase"'>
+            <div id="pill-ini-${sid}"></div>
+          </div>
+          <div class="campo">
+            <label for="f-fin-${sid}">🏁 Cuando finalizo con la frase:</label>
+            <input type="text" id="f-fin-${sid}" value="${escHtml(rd.frase_fin || '')}" placeholder='ej. "hasta acá llegamos hoy"'>
+            <div id="pill-fin-${sid}"></div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
           <button type="button" class="btn-primary btn-sm" id="btn-buscar-frases-${sid}">
-            🔍 Detectar marcas de tiempo
+            🔍 Detectar marcas de tiempo por frases
           </button>
           <button type="button" class="btn-outline btn-sm" id="btn-limpiar-rango-${sid}">
-            ✕ Quitar recorte (${fmtHMS(0)} → ${fmtHMS(datos.duracion)})
+            ✕ Quitar recorte (usar audio completo)
           </button>
         </div>
       </div>
 
-      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:12px;padding-top:10px;border-top:1px solid #dbeafe">
-        <div style="font-size:0.86rem;font-weight:600;color:#1e293b">
-          ⏱️ Rango activo a recortar:
+      <div class="box-recorte" style="background:#ffffff">
+        <div style="font-weight:700;font-size:0.95rem;color:#1e293b;margin-bottom:10px">
+          ⏱️ Ajuste Manual del Rango Activo y Descarga Rápida
         </div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <span style="font-size:0.82rem">Desde:</span>
-          <input type="text" id="t-ini-man-${sid}" placeholder="00:00" style="width:90px;padding:5px 8px;font-family:monospace;font-size:0.85rem">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="font-size:0.84rem;font-weight:700">Desde:</label>
+            <input type="text" id="t-ini-man-${sid}" placeholder="00:00" style="width:90px;padding:6px 8px;font-family:monospace;font-size:0.88rem">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="font-size:0.84rem;font-weight:700">Hasta:</label>
+            <input type="text" id="t-fin-man-${sid}" placeholder="${fmtHMS(datos.duracion)}" style="width:90px;padding:6px 8px;font-family:monospace;font-size:0.88rem">
+          </div>
+          <button type="button" class="btn-outline btn-sm" id="btn-preview-rango-${sid}">▶ Escuchar inicio del recorte</button>
+          <button type="button" class="btn-secondary btn-sm" id="btn-export-rango-directo-${sid}">
+            ✂️ Descargar este tramo directo (MP3)
+          </button>
         </div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <span style="font-size:0.82rem">Hasta:</span>
-          <input type="text" id="t-fin-man-${sid}" placeholder="${fmtHMS(datos.duracion)}" style="width:90px;padding:5px 8px;font-family:monospace;font-size:0.85rem">
-        </div>
-        <button type="button" class="btn-outline btn-xs" id="btn-preview-rango-${sid}">▶ Escuchar inicio del recorte</button>
-        <button type="button" class="btn-secondary btn-xs" id="btn-export-rango-directo-${sid}" title="Descarga directamente el tramo entre inicio y fin tal cual se escucha">
-          ✂️ Descargar este recorte directo (MP3)
-        </button>
+        <p style="font-size:0.8rem;color:var(--muted);margin:8px 0 0">
+          💡 Tip: También podés hacer clic en los botones <strong>⛳ Inicio</strong> o <strong>🏁 Fin</strong> en cualquier línea de la pestaña <strong>Transcripción</strong> para fijar los límites.
+        </p>
       </div>
     </div>
 
-    <!-- Panel Registro de Voces -->
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:18px">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <div>
-          <strong style="font-size:0.92rem;color:#0f172a">🧠 Registro de Voces Conocidas (Memoria)</strong>
-          <span style="font-size:0.82rem;color:var(--muted);margin-left:6px" id="lbl-voces-reg-cont">Cargando perfiles…</span>
+    <!-- PESTAÑA 3: TRANSCRIPCIÓN INTERACTIVA -->
+    <div class="tab-pane" data-pane="transcripcion">
+      <div class="trans-toolbar">
+        <div style="display:flex;align-items:center;gap:8px">
+          <strong style="font-size:0.95rem">Fragmentos:</strong>
+          <span class="badge" id="cont-seg-${sid}">${datos.segmentos.length}</span>
         </div>
-        <button type="button" class="btn-outline btn-xs" id="btn-toggle-panel-voces">Ver voces guardadas</button>
-      </div>
-      <div id="panel-voces-lista" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed #cbd5e1">
-        <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px">
-          Las voces guardadas se usarán para reconocer y auto-etiquetar a las personas en grabaciones futuras. Podés guardar la voz de cada hablante haciendo clic en <strong>"💾 Guardar voz"</strong> en su tarjeta abajo.
-        </div>
-        <div id="lista-voces-tags" style="display:flex;flex-wrap:wrap;gap:8px"></div>
-      </div>
-    </div>
-
-    <!-- Hablantes detectados -->
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-      <h3 style="font-size:1rem;margin:0">
-        Hablantes detectados
-        <span style="font-weight:400;font-size:0.84rem;color:var(--muted)">
-          — Silenciá o excluís a quienes no quieras escuchar en el audio/transcripción
-        </span>
-      </h3>
-      <div style="display:flex;gap:6px">
-        <button type="button" class="btn-outline btn-xs" id="btn-silenciar-todos-${sid}">🔇 Silenciar a todos</button>
-        <button type="button" class="btn-outline btn-xs" id="btn-activar-todos-${sid}">🔊 Activar a todos</button>
-      </div>
-    </div>
-    <div class="hablantes-grid" id="hablantes-grid-${sid}"></div>
-
-    <!-- Transcripción interactiva -->
-    <div class="trans-toolbar">
-      <h3 style="font-size:1rem;margin:0">Transcripción con marcas de tiempo (<span id="cont-seg-${sid}">${datos.segmentos.length}</span> fragmentos)</h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <input type="text" id="buscar-${sid}" placeholder="🔍 Filtrar texto…" style="width:190px;padding:6px 10px;font-size:0.84rem">
-        <select id="filtro-spk-${sid}" style="width:165px;padding:6px 10px;font-size:0.84rem">
-          <option value="">Todos los hablantes</option>
-        </select>
-        <button type="button" class="btn-outline btn-sm" id="btn-nuevo-spk-${sid}">➕ Nuevo hablante</button>
-      </div>
-    </div>
-    <div class="segmentos-wrap" id="seg-wrap-${sid}"></div>
-
-    <!-- Exportación de Audio (Entrenamiento de Voz / Silenciado / Rango) y Transcripción -->
-    <div class="export-grid">
-      <div class="export-box">
-        <h3>🎯 Extraer audio con mi voz limpia (dentro del rango elegido)</h3>
-        <div class="campo" style="margin-bottom:10px">
-          <label for="modo-mute-${sid}">Modo de extracción</label>
-          <select id="modo-mute-${sid}">
-            <option value="aislar" selected>🎯 Aislar SOLO la voz activa (Ideal para entrenar modelo de voz: une solo tus frases limpias)</option>
-            <option value="recortar">✂️ Recortar fragmentos silenciados (acorta el audio conservando pausas intermedias)</option>
-            <option value="silenciar">🔇 Silenciar a volumen 0 (mantiene la duración del tramo)</option>
-            <option value="rango_directo">📏 Solo recortar entre la marca de inicio y fin (sin filtrar hablantes)</option>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input type="text" id="buscar-${sid}" placeholder="🔍 Filtrar texto…" style="width:190px;padding:6px 10px;font-size:0.84rem">
+          <select id="filtro-spk-${sid}" style="width:165px;padding:6px 10px;font-size:0.84rem">
+            <option value="">Todos los hablantes</option>
           </select>
+          <button type="button" class="btn-outline btn-sm" id="btn-nuevo-spk-${sid}">➕ Nuevo hablante</button>
         </div>
+      </div>
+      <div class="segmentos-wrap" id="seg-wrap-${sid}"></div>
+    </div>
 
-        <div class="sub-grid-2" id="opciones-entreno-${sid}">
-          <div class="campo">
-            <label for="max-min-${sid}">Duración máxima a extraer</label>
-            <select id="max-min-${sid}">
-              <option value="0" selected>Todo el tiempo disponible en el rango</option>
-              <option value="1">Los mejores 1 min de mi voz</option>
-              <option value="2">Los mejores 2 min de mi voz</option>
-              <option value="3">Los mejores 3 min de mi voz</option>
-              <option value="5">Los mejores 5 min de mi voz</option>
-              <option value="10">Los mejores 10 min de mi voz</option>
-            </select>
-          </div>
-          <div class="campo">
-            <label for="min-seg-${sid}">Ignorar frases muy cortas</label>
-            <select id="min-seg-${sid}">
-              <option value="0">Conservar todas las frases</option>
-              <option value="1.0" selected>Ignorar &lt; 1 seg (muletillas: "sí", "claro")</option>
-              <option value="2.0">Ignorar &lt; 2 seg (solo frases completas)</option>
-            </select>
-          </div>
+    <!-- PESTAÑA 4: EXPORTAR AUDIO Y SUBTÍTULOS -->
+    <div class="tab-pane" data-pane="exportar">
+      <!-- Barra de Presets Rápidos -->
+      <div style="margin-bottom:12px;font-size:0.86rem;font-weight:700;color:#334155">
+        ⚡ Presets Rápidos de Exportación:
+      </div>
+      <div class="export-presets-bar">
+        <div class="preset-card" id="preset-entreno-${sid}">
+          <strong>🎯 Entrenar Voz (XTTS / RVC)</strong>
+          <span>Aísla solo tu voz limpia en WAV sin pérdida y descarta frases menores a 1 seg.</span>
         </div>
-
-        <div class="sub-grid-2">
-          <div class="campo">
-            <label for="fmt-audio-${sid}">Formato del archivo de salida</label>
-            <select id="fmt-audio-${sid}">
-              <option value="mp3" selected>MP3 (liviano, compatible con todo)</option>
-              <option value="wav">WAV 44.1 kHz sin pérdida (máxima fidelidad para entrenar)</option>
-              <option value="zip">📦 Dataset ZIP (clips WAV + metadata.csv para XTTS/RVC/SoVITS)</option>
-            </select>
-          </div>
-          <div class="campo">
-            <label for="pausa-seg-${sid}">Pausa limpia entre frases</label>
-            <select id="pausa-seg-${sid}">
-              <option value="0.15">0.15 seg (continua)</option>
-              <option value="0.30" selected>0.30 seg (natural, recomendado)</option>
-              <option value="0.60">0.60 seg (pausada)</option>
-            </select>
-          </div>
+        <div class="preset-card" id="preset-limpio-${sid}">
+          <strong>✂️ Audio Silenciado (MP3)</strong>
+          <span>Mantiene el audio completo pero silencia a los demás hablantes.</span>
         </div>
-
-        <div id="resumen-mute-${sid}" style="font-size:0.85rem;color:#1e40af;background:#eff6ff;padding:8px 10px;border-radius:8px;margin-bottom:12px"></div>
-        <button type="button" class="btn-primary" id="btn-export-mp3-${sid}">
-          💾 Generar audio procesado
-        </button>
-        <div id="res-mp3-${sid}"></div>
+        <div class="preset-card" id="preset-recorte-${sid}">
+          <strong>📏 Solo Tramo Recortado</strong>
+          <span>Descarga exactamente el lapso entre la marca de inicio y la de fin.</span>
+        </div>
       </div>
 
-      <div class="export-box">
-        <h3>📄 Descargar Transcripción y Subtítulos</h3>
-        <label class="check-inline" style="margin-bottom:6px">
-          <input type="checkbox" id="inc-sil-${sid}">
-          <span>Incluir hablantes/frases silenciados en el archivo</span>
-        </label>
-        <label class="check-inline" style="margin-bottom:12px">
-          <input type="checkbox" id="inc-nom-${sid}" checked>
-          <span>Incluir nombre del hablante en cada intervención</span>
-        </label>
-        <div style="display:flex;flex-wrap:wrap;gap:8px">
-          <button type="button" class="btn-outline btn-sm" data-fmt="txt_ts">⬇ TXT (con tiempos)</button>
-          <button type="button" class="btn-outline btn-sm" data-fmt="txt">⬇ TXT (texto corrido)</button>
-          <button type="button" class="btn-outline btn-sm" data-fmt="srt">⬇ Subtítulos SRT</button>
+      <div class="export-grid">
+        <!-- Panel de Audio -->
+        <div class="export-box">
+          <h3>🎯 Exportar Audio con mi Voz Limpia</h3>
+          <div class="campo" style="margin-bottom:10px">
+            <label for="modo-mute-${sid}">Modo de extracción</label>
+            <select id="modo-mute-${sid}">
+              <option value="aislar" selected>🎯 Aislar SOLO la voz activa (Ideal entrenamiento de voz: concatena solo tus frases limpias)</option>
+              <option value="recortar">✂️ Recortar fragmentos silenciados (acorta el audio eliminando voces ajenas)</option>
+              <option value="silenciar">🔇 Silenciar a volumen 0 (conserva la duración original)</option>
+              <option value="rango_directo">📏 Solo recortar entre marca de inicio y fin (sin filtrar hablantes)</option>
+            </select>
+          </div>
+
+          <div class="sub-grid-2" id="opciones-entreno-${sid}">
+            <div class="campo">
+              <label for="max-min-${sid}">Duración máxima a extraer</label>
+              <select id="max-min-${sid}">
+                <option value="0" selected>Todo el tiempo disponible en el rango</option>
+                <option value="1">Los mejores 1 min de mi voz</option>
+                <option value="2">Los mejores 2 min de mi voz</option>
+                <option value="3">Los mejores 3 min de mi voz</option>
+                <option value="5">Los mejores 5 min de mi voz</option>
+                <option value="10">Los mejores 10 min de mi voz</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="min-seg-${sid}">Ignorar frases muy cortas</label>
+              <select id="min-seg-${sid}">
+                <option value="0">Conservar todas las frases</option>
+                <option value="1.0" selected>Ignorar &lt; 1 seg (muletillas: "sí", "claro")</option>
+                <option value="2.0">Ignorar &lt; 2 seg (solo frases completas)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="sub-grid-2">
+            <div class="campo">
+              <label for="fmt-audio-${sid}">Formato del archivo de salida</label>
+              <select id="fmt-audio-${sid}">
+                <option value="mp3" selected>MP3 (liviano, universal)</option>
+                <option value="wav">WAV 44.1 kHz sin pérdida (máxima fidelidad para entrenar)</option>
+                <option value="zip">📦 Dataset ZIP (clips WAV + metadata.csv para XTTS/RVC)</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="pausa-seg-${sid}">Pausa limpia entre frases</label>
+              <select id="pausa-seg-${sid}">
+                <option value="0.15">0.15 seg (continua)</option>
+                <option value="0.30" selected>0.30 seg (natural, recomendado)</option>
+                <option value="0.60">0.60 seg (pausada)</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="resumen-mute-${sid}" style="font-size:0.86rem;color:#1e40af;background:#eff6ff;padding:10px 12px;border-radius:8px;margin-bottom:12px;border:1px solid #bfdbfe"></div>
+          <button type="button" class="btn-primary" id="btn-export-mp3-${sid}" style="width:100%;justify-content:center">
+            💾 Generar y Descargar Audio Procesado
+          </button>
+          <div id="res-mp3-${sid}"></div>
+        </div>
+
+        <!-- Panel de Subtítulos y Transcripción -->
+        <div class="export-box">
+          <h3>📄 Transcripción y Subtítulos</h3>
+          <p style="font-size:0.84rem;color:var(--muted);margin-top:0">Exportá el texto de la grabación respetando el rango y los hablantes activos.</p>
+          <label class="check-inline" style="margin-bottom:8px">
+            <input type="checkbox" id="inc-sil-${sid}">
+            <span>Incluir fragmentos silenciados en el archivo</span>
+          </label>
+          <label class="check-inline" style="margin-bottom:16px">
+            <input type="checkbox" id="inc-nom-${sid}" checked>
+            <span>Incluir nombre del hablante en cada línea</span>
+          </label>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button type="button" class="btn-outline btn-sm" data-fmt="srt" style="justify-content:center">
+              🎬 Subtítulos SRT (Para YouTube, Premiere o VLC)
+            </button>
+            <button type="button" class="btn-outline btn-sm" data-fmt="txt_ts" style="justify-content:center">
+              ⏱️ TXT con marcas de tiempo [MM:SS]
+            </button>
+            <button type="button" class="btn-outline btn-sm" data-fmt="txt" style="justify-content:center">
+              📝 TXT de texto corrido
+            </button>
+          </div>
         </div>
       </div>
     </div>
   `;
   zonaEstudios.prepend(card);
+
+  // Manejo de cambio de pestañas (Tabs)
+  const navTabs = card.querySelector('#tabs-nav-' + sid);
+  function cambiarTab(tabKey) {
+    navTabs.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('activo', b.dataset.tab === tabKey));
+    card.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('activo', p.dataset.pane === tabKey));
+  }
+  navTabs.querySelectorAll('.tab-btn').forEach(b => {
+    b.onclick = () => cambiarTab(b.dataset.tab);
+  });
+  card.querySelectorAll('.btn-nav-goto').forEach(b => {
+    b.onclick = () => cambiarTab(b.dataset.goto);
+  });
+
+  // Presets rápidos de exportación
+  const pEntreno = document.getElementById('preset-entreno-' + sid);
+  if (pEntreno) {
+    pEntreno.onclick = () => {
+      document.getElementById('modo-mute-' + sid).value = 'aislar';
+      document.getElementById('fmt-audio-' + sid).value = 'wav';
+      document.getElementById('min-seg-' + sid).value = '1.0';
+      document.getElementById('pausa-seg-' + sid).value = '0.30';
+      actualizarResumenMute(sid);
+    };
+  }
+  const pLimpio = document.getElementById('preset-limpio-' + sid);
+  if (pLimpio) {
+    pLimpio.onclick = () => {
+      document.getElementById('modo-mute-' + sid).value = 'recortar';
+      document.getElementById('fmt-audio-' + sid).value = 'mp3';
+      actualizarResumenMute(sid);
+    };
+  }
+  const pRecorte = document.getElementById('preset-recorte-' + sid);
+  if (pRecorte) {
+    pRecorte.onclick = () => {
+      document.getElementById('modo-mute-' + sid).value = 'rango_directo';
+      document.getElementById('fmt-audio-' + sid).value = 'mp3';
+      actualizarResumenMute(sid);
+    };
+  }
 
   const audioEl = document.getElementById('audio-' + sid);
   const pInfo = document.getElementById('pinfo-' + sid);
@@ -2618,11 +2981,13 @@ function montarEstudio(datos) {
 
   document.getElementById('t-ini-man-' + sid).onchange = e => {
     sesiones[sid].rangoInicio = parseTiempoCliente(e.target.value);
+    sincronizarInputsRango(sid);
     renderSegmentos(sid);
     actualizarResumenMute(sid);
   };
   document.getElementById('t-fin-man-' + sid).onchange = e => {
     sesiones[sid].rangoFin = parseTiempoCliente(e.target.value);
+    sincronizarInputsRango(sid);
     renderSegmentos(sid);
     actualizarResumenMute(sid);
   };
@@ -2635,6 +3000,7 @@ function montarEstudio(datos) {
   };
 
   document.getElementById('btn-export-rango-directo-' + sid).onclick = () => {
+    cambiarTab('exportar');
     document.getElementById('modo-mute-' + sid).value = 'rango_directo';
     actualizarResumenMute(sid);
     exportarAudioFiltrado(sid);
@@ -2643,6 +3009,7 @@ function montarEstudio(datos) {
   document.getElementById('modo-mute-' + sid).onchange = () => actualizarResumenMute(sid);
   document.getElementById('min-seg-' + sid).onchange = () => actualizarResumenMute(sid);
   document.getElementById('max-min-' + sid).onchange = () => actualizarResumenMute(sid);
+  document.getElementById('fmt-audio-' + sid).onchange = () => actualizarResumenMute(sid);
 
   document.getElementById('buscar-' + sid).oninput = e => {
     sesiones[sid].filtroTexto = e.target.value.toLowerCase();
@@ -2745,18 +3112,18 @@ async function actualizarListaVocesRegistradasGlobal() {
     const lbl = document.getElementById('lbl-voces-reg-cont');
     const tags = document.getElementById('lista-voces-tags');
     if (lbl) {
-      lbl.textContent = perfiles.length === 1 ? '1 persona guardada' : `${perfiles.length} personas guardadas`;
+      lbl.textContent = perfiles.length === 1 ? '1 persona registrada' : `${perfiles.length} personas registradas`;
     }
     if (tags) {
       if (!perfiles.length) {
-        tags.innerHTML = '<span style="font-size:0.82rem;color:var(--muted)">Todavía no registraste ninguna voz. Hacé clic en "💾 Guardar voz" en la tarjeta de cualquier persona abajo para recordarla.</span>';
+        tags.innerHTML = '<span style="font-size:0.82rem;color:var(--muted)">Todavía no registraste ninguna voz. Hacé clic en "💾 Guardar voz" en la tarjeta de cualquier persona para recordarla automáticamente en el futuro.</span>';
         return;
       }
       tags.innerHTML = perfiles.map(p => `
-        <span class="badge" style="background:#e0f2fe;color:#0369a1;display:inline-flex;align-items:center;gap:6px;padding:4px 8px;font-size:0.83rem">
-          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${escHtml(p.color || '#0284c7')}"></span>
+        <span class="badge" style="background:#e0f2fe;color:#0369a1;display:inline-flex;align-items:center;gap:6px;padding:5px 9px;font-size:0.83rem">
+          <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${escHtml(p.color || '#0284c7')}"></span>
           <strong>${escHtml(p.nombre)}</strong> (${p.n_muestras || 1})
-          <button type="button" class="btn-xs btn-del-voz" data-nombre="${escHtml(p.nombre)}" style="background:transparent;border:none;cursor:pointer;color:#dc2626;font-size:0.85rem;padding:0 2px" title="Eliminar de la memoria">✕</button>
+          <button type="button" class="btn-xs btn-del-voz" data-nombre="${escHtml(p.nombre)}" style="background:transparent;border:none;cursor:pointer;color:#dc2626;font-size:0.88rem;padding:0 3px" title="Eliminar de la memoria">✕</button>
         </span>
       `).join('');
 
@@ -2784,9 +3151,25 @@ function sincronizarInputsRango(sid) {
   const inFin = document.getElementById('t-fin-man-' + sid);
   const pillIni = document.getElementById('pill-ini-' + sid);
   const pillFin = document.getElementById('pill-fin-' + sid);
+  const chipRango = document.getElementById('chip-rango-' + sid);
+  const badgeCut = document.getElementById('badge-tab-cut-' + sid);
 
   inIni.value = st.rangoInicio !== null ? fmtHMS(st.rangoInicio) : '';
   inFin.value = st.rangoFin !== null ? fmtHMS(st.rangoFin) : '';
+
+  if (chipRango) {
+    if (st.rangoInicio !== null || st.rangoFin !== null) {
+      const r0 = st.rangoInicio ?? 0;
+      const r1 = st.rangoFin ?? st.duracion;
+      chipRango.className = 'player-chip destacado';
+      chipRango.innerHTML = `✂️ Recorte: [${fmtHMS(r0)} → ${fmtHMS(r1)}]`;
+      if (badgeCut) badgeCut.textContent = `${fmtHMS(r0)} → ${fmtHMS(r1)}`;
+    } else {
+      chipRango.className = 'player-chip';
+      chipRango.innerHTML = `📏 Audio completo (${fmtHMS(st.duracion)})`;
+      if (badgeCut) badgeCut.textContent = 'Completo';
+    }
+  }
 
   if (st.matchIni) {
     pillIni.innerHTML = `
@@ -2820,7 +3203,7 @@ async function detectarMarcasPorFrase(sid) {
   const fIni = document.getElementById('f-ini-' + sid).value.trim();
   const fFin = document.getElementById('f-fin-' + sid).value.trim();
   if (!fIni && !fFin) {
-    alert('Escribí al menos una frase de inicio o una frase de finalización para buscar su marca de tiempo.');
+    alert('Escribí al menos una frase de inicio o una frase de cierre para buscar su marca de tiempo.');
     return;
   }
 
@@ -2931,11 +3314,11 @@ function actualizarResumenMute(sid) {
 
   const el = document.getElementById('resumen-mute-' + sid);
   if (modo === 'rango_directo') {
-    el.innerHTML = `📏 <strong>Recorte directo entre marcas:</strong> desde <strong>${fmtHMS(r0)}</strong> hasta <strong>${fmtHMS(r1)}</strong> (Duración resultante: <strong>${fmtHMS(durRango)}</strong>).`;
+    el.innerHTML = `📏 <strong>Recorte directo:</strong> desde <strong>${fmtHMS(r0)}</strong> hasta <strong>${fmtHMS(r1)}</strong> (Duración estimada: <strong>${fmtHMS(durRango)}</strong>).`;
   } else if (modo === 'aislar') {
     el.innerHTML = `✨ <strong>Voz activa lista para extraer${txtRango}:</strong> ${activos.length} frases limpias · Duración estimada: <strong>${fmtHMS(durActiva)}</strong>.`;
   } else {
-    el.innerHTML = `🔇 Se silenciarán/recortarán <strong>${silenciados.length} fragmentos</strong> (<strong>${fmtHMS(durSil)}</strong>)${txtRango} y quedarán <strong>${fmtHMS(Math.max(0, durRango - durSil))}</strong>.`;
+    el.innerHTML = `🔇 Se silenciarán <strong>${silenciados.length} fragmentos</strong> (<strong>${fmtHMS(durSil)}</strong>)${txtRango} y quedarán <strong>${fmtHMS(Math.max(0, durRango - durSil))}</strong>.`;
   }
 }
 
@@ -2944,10 +3327,25 @@ function renderHablantes(sid) {
   recalcularEstadisticasHablantes(sid);
   const grid = document.getElementById('hablantes-grid-' + sid);
   const selFiltro = document.getElementById('filtro-spk-' + sid);
+  const chipVoz = document.getElementById('chip-voz-' + sid);
+  const badgeSpk = document.getElementById('badge-tab-spk-' + sid);
   const filtroActual = selFiltro.value;
 
   selFiltro.innerHTML = '<option value="">Todos los hablantes</option>';
   grid.innerHTML = '';
+
+  const miHablante = st.hablantes.find(x => x.id === st.miVozId && !x.silenciado);
+  if (chipVoz) {
+    if (miHablante) {
+      chipVoz.className = 'player-chip destacado';
+      chipVoz.innerHTML = `⭐ Mi Voz: <strong>${escHtml(miHablante.nombre)}</strong>`;
+      if (badgeSpk) badgeSpk.textContent = `⭐ ${miHablante.nombre}`;
+    } else {
+      chipVoz.className = 'player-chip';
+      chipVoz.innerHTML = '⚪ Voz: Sin asignar';
+      if (badgeSpk) badgeSpk.textContent = `${st.hablantes.length}`;
+    }
+  }
 
   for (const h of st.hablantes) {
     const opt = document.createElement('option');
@@ -2964,6 +3362,7 @@ function renderHablantes(sid) {
         <span class="spk-dot" style="background:${h.color}"></span>
         <input type="text" class="spk-name-input" value="${escHtml(h.nombre)}" title="Hacé clic para renombrar a este hablante">
         ${esAuto ? '<span class="badge badge-azul" title="Reconocido automáticamente desde el registro de voces">🧠 Reconocido</span>' : ''}
+        ${esMiVoz ? '<span class="badge badge-verde">⭐ Tu Voz</span>' : ''}
       </div>
       <div class="spk-meta">
         ${h.cantidad} intervenciones · <strong>${fmtHMS(h.duracion)}</strong> hablados
@@ -2972,11 +3371,11 @@ function renderHablantes(sid) {
         <button type="button" class="btn-outline btn-sm btn-muestra" ${h.muestras.length ? '' : 'disabled'}>
           ▶ Ejemplo
         </button>
-        <button type="button" class="btn-gold btn-aislar" title="Dejar activa SOLO esta voz y silenciar a todos los demás">
-          ${esMiVoz ? '⭐ Es mi voz' : '⭐ Es mi voz (aislar)'}
+        <button type="button" class="btn-gold btn-aislar ${esMiVoz ? 'activo' : ''}" title="Dejar activa SOLO esta voz y silenciar a todos los demás">
+          ${esMiVoz ? '✔ Es mi voz' : '⭐ Es mi voz'}
         </button>
         <button type="button" class="btn-outline btn-sm btn-guardar-voz" title="Guardar la huella acústica de esta persona para auto-etiquetarla en grabaciones futuras">
-          💾 Guardar voz
+          💾 Guardar
         </button>
         <label class="mute-toggle">
           <input type="checkbox" class="chk-mute" ${h.silenciado ? 'checked' : ''} hidden>
@@ -3021,7 +3420,7 @@ function renderHablantes(sid) {
         alert('Error al registrar voz: ' + e.message);
       } finally {
         btnGuardarVoz.disabled = false;
-        btnGuardarVoz.textContent = '💾 Guardar voz';
+        btnGuardarVoz.textContent = '💾 Guardar';
       }
     };
 
@@ -3084,6 +3483,8 @@ function renderSegmentos(sid) {
   });
 
   document.getElementById('cont-seg-' + sid).textContent = filtrados.length;
+  const badgeTrans = document.getElementById('badge-tab-trans-' + sid);
+  if (badgeTrans) badgeTrans.textContent = `${filtrados.length}`;
 
   for (const seg of filtrados) {
     const sil = esSegmentoSilenciado(st, seg);
@@ -3111,9 +3512,9 @@ function renderSegmentos(sid) {
       </select>
       <div class="seg-texto" contenteditable="true" spellcheck="false">${escHtml(seg.texto)}</div>
       <div style="display:flex;gap:4px;align-items:center">
-        <button type="button" class="btn-outline btn-xs btn-set-ini" title="Marcar el inicio del recorte en esta frase (${fmtHMS(seg.inicio)})">⛳ Inicio</button>
-        <button type="button" class="btn-outline btn-xs btn-set-fin" title="Marcar el fin del recorte al terminar esta frase (${fmtHMS(seg.fin)})">🏁 Fin</button>
-        <button type="button" class="btn-outline btn-xs btn-seg-mute" title="Silenciar o incluir esta frase puntual">
+        <button type="button" class="btn-outline btn-xs btn-set-ini" title="Fijar inicio del recorte acá (${fmtHMS(seg.inicio)})">⛳ Inicio</button>
+        <button type="button" class="btn-outline btn-xs btn-set-fin" title="Fijar fin del recorte acá (${fmtHMS(seg.fin)})">🏁 Fin</button>
+        <button type="button" class="btn-outline btn-xs btn-seg-mute" title="Silenciar o activar este fragmento puntual">
           ${sil ? '🔇' : '🔊'}
         </button>
       </div>
