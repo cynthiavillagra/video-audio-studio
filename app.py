@@ -453,6 +453,75 @@ def extraer_mp3_ffmpeg(entrada: str, salida_mp3: str, cal: str = "192k",
         raise RuntimeError("ffmpeg falló: " + r.stderr[-400:])
 
 
+def recortar_video_ffmpeg(entrada: str, salida_mp4: str,
+                          desde: str = "", hasta: str = "",
+                          recodificar: bool = False) -> None:
+    """Recorta un archivo de video entre `desde` (mm:ss / hh:mm:ss) y `hasta` (mm:ss / hh:mm:ss)."""
+    extra_in = []
+    extra_out = []
+    t_desde = 0.0
+    if desde:
+        t_desde = parsear_tiempo(desde) or 0.0
+        extra_in += ["-ss", f"{t_desde:.2f}"]
+    if hasta:
+        t_hasta = parsear_tiempo(hasta)
+        if t_hasta is not None and t_hasta > t_desde:
+            extra_out += ["-t", f"{t_hasta - t_desde:.2f}"]
+
+    if not recodificar:
+        cmd_copy = [
+            "ffmpeg", "-y", *extra_in, "-i", entrada,
+            *extra_out, "-c", "copy", "-movflags", "+faststart", salida_mp4
+        ]
+        r = subprocess.run(cmd_copy, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if r.returncode == 0 and os.path.exists(salida_mp4) and os.path.getsize(salida_mp4) > 1024:
+            return
+
+    cmd_enc = [
+        "ffmpeg", "-y", *extra_in, "-i", entrada,
+        *extra_out, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", salida_mp4
+    ]
+    r2 = subprocess.run(cmd_enc, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if r2.returncode != 0:
+        raise RuntimeError("ffmpeg (recortar video) falló: " + r2.stderr[-400:])
+
+
+def recortar_segmentos_por_tiempo(segmentos: list[dict], desde_seg: float | None,
+                                  hasta_seg: float | None,
+                                  reiniciar_reloj: bool = False) -> tuple[list[dict], list[int], float]:
+    """Filtra y recorta los segmentos de transcripción entre [desde_seg, hasta_seg] (en segundos).
+    Devuelve (nuevos_segmentos, indices_originales, nueva_duracion)."""
+    t0 = float(desde_seg) if desde_seg is not None and desde_seg > 0 else 0.0
+    t1 = float(hasta_seg) if hasta_seg is not None and hasta_seg > 0 else None
+
+    nuevos = []
+    indices = []
+    for idx, s in enumerate(segmentos):
+        ini = float(s.get("inicio", 0.0))
+        fin = float(s.get("fin", ini))
+        if fin <= t0:
+            continue
+        if t1 is not None and ini >= t1:
+            continue
+        n_ini = max(t0, ini)
+        n_fin = min(t1, fin) if t1 is not None else fin
+        if n_fin <= n_ini:
+            continue
+        if reiniciar_reloj and t0 > 0:
+            n_ini = max(0.0, n_ini - t0)
+            n_fin = max(n_ini + 0.1, n_fin - t0)
+        copia = dict(s)
+        copia["id"] = len(nuevos)
+        copia["inicio"] = round(n_ini, 2)
+        copia["fin"] = round(n_fin, 2)
+        nuevos.append(copia)
+        indices.append(idx)
+
+    dur = round(max((float(x["fin"]) for x in nuevos), default=0.0), 2)
+    return nuevos, indices, dur
+
+
 def convertir_a_wav16k(entrada_audio: str, salida_wav: str) -> None:
     """Convierte cualquier audio/video a WAV mono 16kHz PCM 16-bit para Whisper y análisis de voz."""
     cmd = [
@@ -1197,6 +1266,7 @@ def _worker_analizar(job_id: str, ruta_entrada: str, es_temporal: bool,
         mono = bool(params.get("mono", False))
         mb = float(params.get("mb", 0) or 0)
         solo_extraer = bool(params.get("solo_extraer", False))
+        modo_p1 = params.get("modo_p1", "mp3")
         modelo = params.get("modelo", "small")
         if modelo not in ("tiny", "base", "small", "medium"):
             modelo = "small"
@@ -1205,13 +1275,37 @@ def _worker_analizar(job_id: str, ruta_entrada: str, es_temporal: bool,
         usar_mp3_existente = bool(params.get("usar_mp3_existente", False))
 
         base = os.path.splitext(nombre_original)[0]
+        suf_tramo = ""
+        if desde or hasta:
+            d_lbl = (desde or "00-00").replace(":", "-")
+            h_lbl = (hasta or "fin").replace(":", "-")
+            suf_tramo = f"_recorte_{d_lbl}_a_{h_lbl}"
+
+        nombre_video_out = ""
+        nombre_mp3 = ""
+        ruta_mp3 = ""
+
+        if solo_extraer and modo_p1 in ("video_mp4", "ambos"):
+            _actualizar_job(job_id, progreso=15, mensaje="Recortando video MP4 en el minuto y segundo indicados…")
+            nombre_video_out = nombre_unico(SALIDA, base + (suf_tramo or "_recortado"), ".mp4")
+            ruta_video_out = os.path.join(SALIDA, nombre_video_out)
+            recortar_video_ffmpeg(ruta_entrada, ruta_video_out, desde=desde, hasta=hasta)
+            if modo_p1 == "video_mp4":
+                _actualizar_job(
+                    job_id,
+                    estado="completado",
+                    progreso=100,
+                    mensaje="Video recortado correctamente.",
+                    resultado={"modo": "solo_video", "nombre_video": nombre_video_out, "nombre_mp3": ""}
+                )
+                return
 
         if usar_mp3_existente and not desde and not hasta and mb <= 0:
             nombre_mp3 = os.path.basename(ruta_entrada)
             ruta_mp3 = ruta_entrada
         else:
-            _actualizar_job(job_id, progreso=5, mensaje="Extrayendo audio MP3 con ffmpeg…")
-            nombre_mp3 = nombre_unico(SALIDA, base, ".mp3")
+            _actualizar_job(job_id, progreso=45 if nombre_video_out else 5, mensaje="Extrayendo / recortando audio MP3 con ffmpeg…")
+            nombre_mp3 = nombre_unico(SALIDA, base + suf_tramo, ".mp3")
             ruta_mp3 = os.path.join(SALIDA, nombre_mp3)
             extraer_mp3_ffmpeg(ruta_entrada, ruta_mp3, cal=cal, desde=desde, hasta=hasta, mb=mb, mono=mono)
 
@@ -1220,8 +1314,8 @@ def _worker_analizar(job_id: str, ruta_entrada: str, es_temporal: bool,
                 job_id,
                 estado="completado",
                 progreso=100,
-                mensaje="MP3 extraído correctamente.",
-                resultado={"modo": "solo_mp3", "nombre_mp3": nombre_mp3}
+                mensaje="Procesamiento completado.",
+                resultado={"modo": "solo_mp3", "nombre_mp3": nombre_mp3, "nombre_video": nombre_video_out}
             )
             return
 
@@ -1319,6 +1413,510 @@ import xml.etree.ElementTree as ET
 
 SESIONES_DIR = os.path.join(BASE_DIR, "transcripciones")
 os.makedirs(SESIONES_DIR, exist_ok=True)
+
+
+
+# ==============================================================================
+# MOTOR DE MACHINE LEARNING: ENTRENAR ESTILO DE HABLA Y CONVERTIR GUIONES
+# ==============================================================================
+
+ESTILO_MODELO_FILE = os.path.join(BASE_DIR, "estilo_habla_modelo.json")
+ESTILO_LOCK = threading.Lock()
+
+STOPWORDS_ES = {
+    "el", "la", "los", "las", "un", "una", "unos", "unas", "de", "del", "al", "a",
+    "en", "con", "por", "para", "sin", "sobre", "entre", "hasta", "desde", "que",
+    "y", "e", "o", "u", "pero", "sino", "como", "cuando", "donde", "quien", "cual",
+    "se", "me", "te", "le", "nos", "les", "lo", "su", "sus", "mi", "mis", "tu", "tus",
+    "es", "son", "fue", "era", "ser", "esta", "estan", "este", "esta", "estos", "estas",
+    "eso", "esa", "ese", "esos", "esas", "aquel", "todo", "toda", "todos", "todas",
+    "mas", "menos", "muy", "ya", "no", "si", "tambien", "solo", "porque", "pues",
+    "hay", "tiene", "tienen", "hacer", "hace", "puede", "pueden", "ir", "va", "van"
+}
+
+PATRONES_MARCADORES_CLASE = [
+    "vamos a ver", "vamos a hacer", "vamos a poner", "vamos a crear", "vamos a usar",
+    "lo que vamos a", "entonces vamos a", "yo les voy a", "les voy a", "lo voy a",
+    "voy a crear", "voy a hacer", "voy a poner", "van a tener", "van a ver",
+    "o sea", "por ejemplo", "digamos", "básicamente", "basicamente", "entonces",
+    "fíjense que", "fijense que", "fíjense", "fijate que", "fijate", "miren que",
+    "vieron que", "acá tenemos", "aca tenemos", "acá", "aca", "un montón de",
+    "un monton de", "no sé si", "no se si", "es lo mismo", "dentro de la",
+    "a través de", "a traves de", "en este caso", "por otro lado", "de alguna manera",
+    "qué pasa si", "que pasa si", "se entiende", "me explico", "está bien", "esta bien",
+    "bueno", "claro", "exacto", "joya", "genial", "perfecto", "cuestión que"
+]
+
+REEMPLAZOS_BASE_ESTILO = [
+    (r"\ba continuación veremos\b", "ahora vamos a ver"),
+    (r"\ba continuación\b", "ahora"),
+    (r"\bes importante destacar que\b", "fíjense que"),
+    (r"\bes importante mencionar que\b", "tengan en cuenta que"),
+    (r"\bcabe destacar que\b", "fíjense que"),
+    (r"\bdebemos considerar\b", "tenemos que tener en cuenta"),
+    (r"\bdebemos\b", "tenemos que"),
+    (r"\bdebes\b", "tenés que"),
+    (r"\bpuedes\b", "podés"),
+    (r"\btienes\b", "tenés"),
+    (r"\bquieres\b", "querés"),
+    (r"\bsabes\b", "sabés"),
+    (r"\bhaces\b", "hacés"),
+    (r"\bpones\b", "ponés"),
+    (r"\bves\b", "ves"),
+    (r"\bobserva\b", "fijate"),
+    (r"\bobserven\b", "fíjense"),
+    (r"\bmira\b", "mirá"),
+    (r"\bpiensa\b", "pensá"),
+    (r"\brecuerda\b", "acordate"),
+    (r"\butilizaremos\b", "vamos a usar"),
+    (r"\butilizar\b", "usar"),
+    (r"\brealizaremos\b", "vamos a hacer"),
+    (r"\bcrearemos\b", "vamos a crear"),
+    (r"\bveremos\b", "vamos a ver"),
+    (r"\banalizaremos\b", "vamos a analizar"),
+    (r"\bdefiniremos\b", "vamos a definir"),
+    (r"\bimplementaremos\b", "vamos a implementar"),
+    (r"\btendremos\b", "vamos a tener"),
+    (r"\btendrán\b", "van a tener"),
+    (r"\bpodrán\b", "van a poder"),
+    (r"\baquí\b", "acá"),
+    (r"\bmuchísimos\b", "un montón de"),
+    (r"\bmuchas cosas\b", "un montón de cosas"),
+    (r"\bpor consiguiente\b", "entonces"),
+    (r"\bpor lo tanto\b", "así que"),
+    (r"\bsin embargo\b", "pero"),
+    (r"\bno obstante\b", "igual"),
+    (r"\bes decir\b", "o sea"),
+    (r"\ben conclusión\b", "en resumen"),
+    (r"\bfinalmente\b", "y por último"),
+]
+
+
+def cargar_modelo_estilo() -> dict:
+    with ESTILO_LOCK:
+        if not os.path.exists(ESTILO_MODELO_FILE):
+            return {"entrenado": False}
+        try:
+            with open(ESTILO_MODELO_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {"entrenado": False}
+
+
+def guardar_modelo_estilo(modelo: dict) -> None:
+    with ESTILO_LOCK:
+        try:
+            with open(ESTILO_MODELO_FILE, "w", encoding="utf-8") as f:
+                json.dump(modelo, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Error guardando modelo de estilo: {e}")
+
+
+def _limpiar_oracion_oral(texto: str) -> str:
+    t = re.sub(r"\s+", " ", (texto or "").strip())
+    # Quitar repeticiones tartamudeadas inmediatas ("sí sí sí" -> "sí", "el el" -> "el")
+    t = re.sub(r"\b(\w+)(\s+\1){1,}\b", r"\1", t, flags=re.IGNORECASE)
+    return t.strip()
+
+
+def entrenar_modelo_estilo_ml(textos_oraciones: list[str], duraciones_seg: list[float] | None = None,
+                              fuentes: list[str] | None = None) -> dict:
+    """Entrena un modelo estilométrico + estadístico N-gramas + índice TF-IDF sobre las transcripciones del usuario."""
+    oraciones_limpias = []
+    for t in textos_oraciones:
+        limpio = _limpiar_oracion_oral(t)
+        if len(limpio.split()) >= 3:
+            oraciones_limpias.append(limpio)
+
+    if not oraciones_limpias:
+        raise ValueError("No hay suficientes frases con contenido para entrenar el modelo.")
+
+    texto_completo = " ".join(oraciones_limpias)
+    texto_lower = texto_completo.lower()
+    palabras_todas = re.findall(r"[a-záéíóúüñ]+", texto_lower)
+    total_palabras = max(1, len(palabras_todas))
+    dur_total = sum(duraciones_seg) if duraciones_seg else (total_palabras / 2.3)
+    ppm = round((total_palabras / max(10.0, dur_total)) * 60.0, 1)
+
+    longitudes = [len(o.split()) for o in oraciones_limpias]
+    long_media = round(float(np.mean(longitudes)), 1)
+    long_mediana = round(float(np.median(longitudes)), 1)
+
+    # 1. Conteo de marcadores discursivos y muletillas reales del usuario
+    marcadores_conteo = {}
+    for m in PATRONES_MARCADORES_CLASE:
+        c = len(re.findall(r"\b" + re.escape(m) + r"\b", texto_lower))
+        if c > 0:
+            # Unificar variantes sin tilde
+            clave = (
+                m.replace("basicamente", "básicamente")
+                 .replace("fijense", "fíjense")
+                 .replace("aca", "acá")
+                 .replace("monton", "montón")
+                 .replace("no se si", "no sé si")
+                 .replace("a traves de", "a través de")
+                 .replace("que pasa si", "qué pasa si")
+                 .replace("esta bien", "está bien")
+            )
+            marcadores_conteo[clave] = marcadores_conteo.get(clave, 0) + c
+
+    # 2. Descubrir N-gramas (2, 3 y 4 palabras) propios más frecuentes automáticamente
+    from collections import Counter
+    bigramas = Counter(zip(palabras_todas, palabras_todas[1:]))
+    trigramas = Counter(zip(palabras_todas, palabras_todas[1:], palabras_todas[2:]))
+    cuatrigramas = Counter(zip(palabras_todas, palabras_todas[1:], palabras_todas[2:], palabras_todas[3:]))
+
+    frases_frecuentes = []
+    vistos_frases = set()
+    for gram_counter, min_c in ((cuatrigramas, 3), (trigramas, 4), (bigramas, 8)):
+        for tup, cnt in gram_counter.most_common(40):
+            frase = " ".join(tup)
+            if all(w in STOPWORDS_ES for w in tup) and frase not in ("o sea", "lo que", "para que", "es que", "si no"):
+                continue
+            if frase not in vistos_frases and cnt >= min_c:
+                vistos_frases.add(frase)
+                frases_frecuentes.append({"frase": frase, "frecuencia": int(cnt)})
+
+    top_marcadores = sorted(
+        [{"frase": k, "frecuencia": v} for k, v in marcadores_conteo.items()],
+        key=lambda x: -x["frecuencia"]
+    )[:25]
+
+    # 3. Extraer aperturas reales de oración (cómo empieza a explicar una idea)
+    aperturas_counter = Counter()
+    cierres_counter = Counter()
+    for o in oraciones_limpias:
+        toks = re.findall(r"[a-záéíóúüñ]+", o.lower())
+        if len(toks) >= 6:
+            ap2 = " ".join(toks[:2])
+            ap3 = " ".join(toks[:3])
+            if ap3 in ("vamos a ver", "vamos a hacer", "lo que vamos", "entonces vamos a", "por otro lado", "en este caso", "fijense que aca", "fíjense que acá", "la idea es", "aca lo que", "acá lo que"):
+                aperturas_counter[ap3.capitalize()] += 1
+            elif ap2 in ("entonces", "bueno", "ahora", "fíjense", "fijense", "digamos", "básicamente", "basicamente", "acá", "aca", "por ejemplo", "o sea", "vean que"):
+                aperturas_counter[ap2.capitalize()] += 1
+            ci2 = " ".join(toks[-2:])
+            if ci2 in ("se entiende", "está bien", "esta bien", "o no", "me explico", "digamos", "por ejemplo", "básicamente", "es lo mismo"):
+                cierres_counter[ci2] += 1
+
+    aperturas_tipicas = [k for k, _ in aperturas_counter.most_common(12)]
+    if not aperturas_tipicas:
+        aperturas_tipicas = ["Bueno, entonces", "Ahora vamos a ver", "Fíjense que", "Básicamente", "En este caso"]
+
+    cierres_tipicos = [k for k, _ in cierres_counter.most_common(8)]
+    if not cierres_tipicos:
+        cierres_tipicos = ["¿se entiende?", "¿está bien?", "digamos", "por ejemplo"]
+
+    # 4. Vocabulario distintivo del hablante (TF alto excluyendo stopwords comunes)
+    vocab_counter = Counter(w for w in palabras_todas if len(w) >= 4 and w not in STOPWORDS_ES)
+    vocab_frecuente = [{"palabra": w, "frecuencia": int(c)} for w, c in vocab_counter.most_common(40)]
+
+    # 5. Construir bloques explicativos reales (de 25 a 65 palabras) para RAG (Retrieval-Augmented Style Transfer)
+    bloques_rag = []
+    buf = []
+    buf_words = 0
+    for o in oraciones_limpias:
+        n_w = len(o.split())
+        buf.append(o)
+        buf_words += n_w
+        if buf_words >= 32:
+            bloque_txt = " ".join(buf)
+            kws = list(set(w for w in re.findall(r"[a-záéíóúüñ]{4,}", bloque_txt.lower()) if w not in STOPWORDS_ES))
+            bloques_rag.append({"texto": bloque_txt, "keywords": kws[:25]})
+            buf = []
+            buf_words = 0
+    if buf and buf_words >= 12:
+        bloque_txt = " ".join(buf)
+        kws = list(set(w for w in re.findall(r"[a-záéíóúüñ]{4,}", bloque_txt.lower()) if w not in STOPWORDS_ES))
+        bloques_rag.append({"texto": bloque_txt, "keywords": kws[:25]})
+
+    # Conservar hasta 250 bloques representativos
+    bloques_rag = bloques_rag[:250]
+
+    # Preservar muletillas personalizadas si ya existían
+    previo = cargar_modelo_estilo()
+    muletillas_custom = previo.get("muletillas_personalizadas", [])
+    if not muletillas_custom:
+        muletillas_custom = [m["frase"] for m in top_marcadores[:10]] or ["vamos a ver", "o sea", "por ejemplo", "entonces", "acá", "un montón de"]
+
+    modelo = {
+        "entrenado": True,
+        "fecha_entrenamiento": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "fuentes": fuentes or ["Transcripción de sesión"],
+        "metricas": {
+            "total_intervenciones": len(oraciones_limpias),
+            "total_palabras": total_palabras,
+            "palabras_por_oracion_media": long_media,
+            "palabras_por_oracion_mediana": long_mediana,
+            "palabras_por_minuto": ppm,
+            "total_bloques_rag": len(bloques_rag),
+        },
+        "top_marcadores": top_marcadores,
+        "frases_frecuentes": frases_frecuentes[:25],
+        "aperturas_tipicas": aperturas_tipicas,
+        "cierres_tipicos": cierres_tipicos,
+        "vocabulario_frecuente": vocab_frecuente,
+        "muletillas_personalizadas": muletillas_custom,
+        "bloques_rag": bloques_rag,
+    }
+    guardar_modelo_estilo(modelo)
+    return modelo
+
+
+def recuperar_ejemplos_similares_rag(texto_consulta: str, modelo: dict, top_k: int = 4) -> list[str]:
+    """Busca en el corpus entrenado del usuario los fragmentos reales más parecidos al guión actual."""
+    bloques = modelo.get("bloques_rag", [])
+    if not bloques:
+        return []
+    kws_q = set(w for w in re.findall(r"[a-záéíóúüñ]{4,}", (texto_consulta or "").lower()) if w not in STOPWORDS_ES)
+    puntuados = []
+    for idx, b in enumerate(bloques):
+        kws_b = set(b.get("keywords", []))
+        inter = len(kws_q & kws_b)
+        # Bonus si el bloque tiene marcadores conversacionales ricos
+        txt_b = b.get("texto", "")
+        bonus = sum(0.35 for m in modelo.get("muletillas_personalizadas", [])[:8] if m.lower() in txt_b.lower())
+        score = inter * 2.0 + bonus
+        puntuados.append((score, idx, txt_b))
+    puntuados.sort(key=lambda x: (-x[0], x[1]))
+    return [x[2] for x in puntuados[:top_k]]
+
+
+def _adaptar_oracion_a_estilo(oracion: str, idx_oracion: int, total_oraciones: int,
+                              intensidad: str, muletillas: list[str], aperturas: list[str],
+                              cierres: list[str]) -> str:
+    txt = oracion.strip()
+    if not txt:
+        return ""
+
+    # 1. Aplicar transformaciones léxicas (formal/neutro -> voseo y expresiones propias del usuario)
+    for patron, reemplazo in REEMPLAZOS_BASE_ESTILO:
+        def _repl(match):
+            orig = match.group(0)
+            if orig[0].isupper():
+                return reemplazo[0].upper() + reemplazo[1:]
+            return reemplazo
+        txt = re.sub(patron, _repl, txt, flags=re.IGNORECASE)
+
+    # 2. Si la oración es excesivamente larga y formal (con ";" o ":"), dividirla al ritmo oral del usuario
+    if ";" in txt:
+        partes_pc = [p.strip() for p in txt.split(";") if p.strip()]
+        if len(partes_pc) > 1:
+            conector = "o sea, " if "o sea" in [m.lower() for m in muletillas] else "entonces, "
+            txt = ". ".join(p[0].upper() + p[1:] if p else "" for p in partes_pc)
+
+    # 3. Inyectar aperturas y conectores reales aprendidos según intensidad
+    ya_empieza_oral = any(
+        txt.lower().startswith(pref)
+        for pref in ("bueno", "entonces", "ahora", "fíjense", "fijate", "mirá", "o sea", "acá", "básicamente", "vamos a")
+    )
+
+    if not ya_empieza_oral and len(txt.split()) >= 5:
+        if idx_oracion == 0 and intensidad in ("equilibrado", "conversacional"):
+            ap = "Bueno, hoy vamos a ver " if txt.lower().startswith(("el ", "la ", "los ", "las ")) and intensidad == "conversacional" else "Bueno, entonces "
+            if ap.endswith("ver "):
+                txt = ap + txt[0].lower() + txt[1:]
+            else:
+                txt = ap + txt[0].lower() + txt[1:]
+        elif idx_oracion > 0:
+            if intensidad == "conversacional" and idx_oracion % 2 == 1:
+                conectores = [
+                    "Entonces, ",
+                    "Fíjense que ",
+                    "Y acá lo que vamos a ver es que ",
+                    "O sea, ",
+                    "Básicamente, ",
+                ]
+                elegido = conectores[idx_oracion % len(conectores)]
+                txt = elegido + txt[0].lower() + txt[1:]
+            elif intensidad == "equilibrado" and idx_oracion % 3 == 1:
+                conectores_eq = ["Entonces, ", "Fíjense que ", "O sea, ", "Además, acá "]
+                elegido = conectores_eq[idx_oracion % len(conectores_eq)]
+                txt = elegido + txt[0].lower() + txt[1:]
+
+    # 4. Si en el medio hay comas explicativas y la intensidad es conversacional/equilibrada, usar marcadores propios
+    if intensidad in ("equilibrado", "conversacional") and "por ejemplo" not in txt.lower():
+        txt = re.sub(r",\s*como puede ser\b", ", por ejemplo,", txt, flags=re.IGNORECASE)
+        txt = re.sub(r"\btales como\b", "como por ejemplo", txt, flags=re.IGNORECASE)
+
+    # 5. Cierre de bloque en modo conversacional
+    if intensidad == "conversacional" and idx_oracion == total_oraciones - 1 and not txt.endswith("?"):
+        if not txt.endswith("."):
+            txt += "."
+        cierre_add = " ¿Se entiende la idea?" if "se entiende" in " ".join(cierres).lower() else " ¿Vamos bien hasta acá?"
+        txt = txt + cierre_add
+
+    return txt
+
+
+def convertir_guion_a_mi_estilo(guion_original: str, intensidad: str = "equilibrado",
+                                formato_salida: str = "fluido",
+                                usar_ollama: bool = False, modelo_ollama: str = "llama3") -> dict:
+    """Convierte un guión o apunte teórico al estilo de habla aprendido en el modelo ML."""
+    guion_original = (guion_original or "").strip()
+    if not guion_original:
+        raise ValueError("Escribí o pegá un guión para convertirlo a tu estilo.")
+
+    modelo = cargar_modelo_estilo()
+    if not modelo.get("entrenado"):
+        # Intentar auto-entrenar con las sesiones disponibles si aún no se entrenó
+        textos_auto = []
+        durs_auto = []
+        fuentes_auto = []
+        with JOBS_LOCK:
+            for sid, ses in SESIONES.items():
+                segs = ses.get("segmentos", [])
+                if segs:
+                    # Usar el hablante principal (SPK_1) o todos los activos
+                    spk1 = [s for s in segs if s.get("hablante") == "SPK_1"] or segs
+                    for s in spk1:
+                        textos_auto.append(s.get("texto", ""))
+                        durs_auto.append(max(0.5, float(s.get("fin", 0)) - float(s.get("inicio", 0))))
+                    fuentes_auto.append(ses.get("nombre_original", sid))
+        if textos_auto:
+            modelo = entrenar_modelo_estilo_ml(textos_auto, durs_auto, fuentes_auto)
+
+    muletillas = modelo.get("muletillas_personalizadas") or ["vamos a ver", "o sea", "por ejemplo", "entonces", "acá"]
+    aperturas = modelo.get("aperturas_tipicas") or ["Bueno, entonces", "Vamos a ver"]
+    cierres = modelo.get("cierres_tipicos") or ["¿se entiende?"]
+    ejemplos_rag = recuperar_ejemplos_similares_rag(guion_original, modelo, top_k=4)
+
+    # Construir el Prompt Maestro con el ADN de estilo + RAG (útil tanto para Ollama como para copiar)
+    top_m_str = ", ".join(f'"{m}"' for m in muletillas[:12])
+    ejemplos_str = "\n".join(f'- "{ej}"' for ej in ejemplos_rag[:4])
+    prompt_adn = (
+        "Sos un clon exacto de mi forma de hablar y dar clases en español rioplatense (Argentina).\n"
+        f"Mi ritmo promedio es de {modelo.get('metricas', {}).get('palabras_por_oracion_media', 15)} palabras por oración "
+        f"({modelo.get('metricas', {}).get('palabras_por_minuto', 135)} palabras por minuto).\n"
+        f"Expresiones y conectores reales que más uso al hablar: {top_m_str}.\n"
+        "Uso voseo natural (tenés, fijate, mirá, vamos a ver, vamos a crear, les voy a mostrar, acá, un montón de).\n\n"
+        "Ejemplos reales extraídos de mis clases grabadas (imitá este tono, ritmo y estructura sintáctica):\n"
+        f"{ejemplos_str}\n\n"
+        "TAREA: Reescribí el siguiente guión para que suene 100% dicho por mí de forma oral y natural, "
+        "manteniendo todos los conceptos técnicos pero hablándolo exactamente con mi estilo:\n\n"
+        f"GUIÓN ORIGINAL:\n{guion_original}"
+    )
+
+    # Si el usuario activó Ollama local, intentar generar con el modelo local primero
+    usado_motor = "Motor ML Estilométrico Local + RAG"
+    if usar_ollama:
+        try:
+            req_data = json.dumps({
+                "model": modelo_ollama or "llama3",
+                "prompt": prompt_adn,
+                "stream": False
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                "http://127.0.0.1:11434/api/generate",
+                data=req_data,
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                r_json = json.loads(resp.read().decode("utf-8"))
+                resp_txt = (r_json.get("response") or "").strip()
+                if resp_txt:
+                    return {
+                        "guion_convertido": resp_txt,
+                        "ejemplos_referencia": ejemplos_rag,
+                        "prompt_adn": prompt_adn,
+                        "motor": f"Ollama Local ({modelo_ollama}) + RAG de tus transcripciones",
+                        "palabras_salida": len(resp_txt.split()),
+                        "duracion_estimada_seg": round(len(resp_txt.split()) / max(1.5, (modelo.get("metricas", {}).get("palabras_por_minuto", 135) / 60.0)), 1)
+                    }
+        except Exception:
+            usado_motor = "Motor ML Estilométrico Local + RAG (Ollama no detectado en puerto 11434, se usó el motor local directo)"
+
+    # Motor ML Estilométrico Local: procesa párrafo por párrafo y oración por oración
+    parrafos = [p.strip() for p in re.split(r"\n\s*\n|\n", guion_original) if p.strip()]
+    parrafos_convertidos = []
+    idx_global = 0
+    total_oraciones_est = sum(len(re.split(r"(?<=[.?!])\s+", p)) for p in parrafos)
+
+    for p_idx, parrafo in enumerate(parrafos):
+        oraciones = [o.strip() for o in re.split(r"(?<=[.?!])\s+", parrafo) if o.strip()]
+        nuevas_oraciones = []
+        for o in oraciones:
+            adaptada = _adaptar_oracion_a_estilo(
+                o, idx_global, max(1, total_oraciones_est),
+                intensidad=intensidad,
+                muletillas=muletillas,
+                aperturas=aperturas,
+                cierres=cierres
+            )
+            if adaptada:
+                nuevas_oraciones.append(adaptada)
+                idx_global += 1
+
+        if formato_salida == "teleprompter":
+            parrafos_convertidos.extend(nuevas_oraciones)
+        else:
+            parrafos_convertidos.append(" ".join(nuevas_oraciones))
+
+    sep_out = "\n\n• " if formato_salida == "teleprompter" else "\n\n"
+    texto_final = ("• " + sep_out.join(parrafos_convertidos)) if formato_salida == "teleprompter" else sep_out.join(parrafos_convertidos)
+    n_pal_out = len(texto_final.split())
+    ppm_usr = float(modelo.get("metricas", {}).get("palabras_por_minuto", 135) or 135)
+    dur_est = round((n_pal_out / max(60.0, ppm_usr)) * 60.0, 1)
+
+    return {
+        "guion_convertido": texto_final,
+        "ejemplos_referencia": ejemplos_rag,
+        "prompt_adn": prompt_adn,
+        "motor": usado_motor,
+        "palabras_salida": n_pal_out,
+        "duracion_estimada_seg": dur_est
+    }
+
+
+def _neutralizar_para_dataset(texto_oral: str) -> str:
+    """Genera una versión neutra/formal sintética de un fragmento oral real para armar pares (Guión neutro -> Mi Estilo) de Fine-Tuning."""
+    t = texto_oral
+    inversos = [
+        (r"\bbueno,?\s+entonces\b", ""),
+        (r"\bo sea,?\s*", "es decir, "),
+        (r"\bfíjense que\b", "es importante observar que"),
+        (r"\bfijense que\b", "es importante observar que"),
+        (r"\bfijate que\b", "observa que"),
+        (r"\bvamos a ver\b", "veremos"),
+        (r"\bvamos a hacer\b", "realizaremos"),
+        (r"\bvamos a crear\b", "crearemos"),
+        (r"\bvamos a poner\b", "colocaremos"),
+        (r"\bvamos a usar\b", "utilizaremos"),
+        (r"\bun montón de\b", "muchos"),
+        (r"\bacá\b", "aquí"),
+        (r"\btenés\b", "tienes"),
+        (r"\bpodés\b", "puedes"),
+        (r"\bquerés\b", "quieres"),
+        (r"\bdigamos,?\s*", ""),
+        (r"\bbásicamente,?\s*", ""),
+    ]
+    for pat, rep in inversos:
+        t = re.sub(pat, rep, t, flags=re.IGNORECASE)
+    t = re.sub(r"\s+", " ", t).strip(" ,.-")
+    if t:
+        t = t[0].upper() + t[1:]
+    return t
+
+
+def generar_dataset_finetuning_jsonl(modelo: dict) -> str:
+    """Exporta un archivo JSONL con pares (system, user=guión neutro, assistant=mi estilo real) para Fine-Tuning de LLMs."""
+    bloques = modelo.get("bloques_rag", [])
+    lineas = []
+    sys_msg = "Sos un asistente que convierte guiones formales al estilo oral y natural de clase de la autora."
+    for b in bloques:
+        real = b.get("texto", "").strip()
+        if len(real.split()) < 12:
+            continue
+        neutro = _neutralizar_para_dataset(real)
+        obj = {
+            "messages": [
+                {"role": "system", "content": sys_msg},
+                {"role": "user", "content": f"Convertí este guión a mi estilo de habla:\n{neutro}"},
+                {"role": "assistant", "content": real}
+            ]
+        }
+        lineas.append(json.dumps(obj, ensure_ascii=False))
+    return "\n".join(lineas)
 
 
 # ==============================================================================
@@ -2104,11 +2702,11 @@ header p {
   gap: 10px;
 }
 
-/* Navegador Principal de 4 Pasos */
+/* Navegador Principal de 5 Pestañas */
 .pasos-stepper {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
   margin-bottom: 20px;
 }
 @media (max-width: 860px) {
@@ -2515,16 +3113,21 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     <span class="step-title">🎬 Subtítulos y Video</span>
     <span class="step-sub">Sincronizar transcripción con video sin audio (Drive)</span>
   </button>
+  <button type="button" class="step-btn" data-step="5">
+    <span class="step-num">Pestaña 5 · IA</span>
+    <span class="step-title">🧠 Mi Estilo (ML) y Guiones</span>
+    <span class="step-sub">Entrenar modelo con mis transcripciones y convertir guiones</span>
+  </button>
 </nav>
 
 <!-- ====================================================================== -->
-<!-- PASO 1: CARGAR VIDEO O AUDIO Y CONVERTIR A MP3 CON RECORTE POR MINUTO  -->
+<!-- PASO 1: CARGAR VIDEO O AUDIO · EXTRAER MP3 O RECORTAR VIDEO (MM:SS)    -->
 <!-- ====================================================================== -->
 <section class="step-section activo" id="step-1">
   <div class="card">
-    <h2>Paso 1: Cargar archivo de Video o Audio y obtener MP3</h2>
+    <h2>Paso 1: Cargar Video o Audio · Extraer MP3 o Recortar Video por Minuto y Segundo</h2>
     <p class="sub-desc">
-      Si subís un <strong>video</strong> (MP4, MKV, MOV, AVI), extrae el audio en MP3. Si subís un <strong>audio en otro formato</strong> (WAV, M4A, OGG), lo convierte a MP3. Podés recortarlo opcionalmente indicando minuto de inicio y fin.
+      Cargá un <strong>video</strong> (MP4, MKV, MOV, AVI) o un <strong>audio</strong> (WAV, M4A, MP3). Podés indicar el <strong>minuto y segundo de inicio y fin</strong> (<code>mm:ss</code> o <code>hh:mm:ss</code>) para obtener el <strong>Audio MP3 recortado</strong>, el <strong>Video MP4 recortado</strong> o ambos.
     </p>
 
     <div class="grid-2" style="margin-bottom:16px">
@@ -2537,15 +3140,23 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
       <div style="background:#f8fafc;border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;justify-content:space-between;gap:12px">
         <div>
-          <strong style="font-size:0.92rem">✂️ Opciones de conversión y recorte por minuto</strong>
+          <strong style="font-size:0.95rem;color:#1e3a8a">✂️ Recorte por Minuto y Segundo (Video o Voz/Audio)</strong>
           <div class="grid-2" style="margin-top:10px;gap:10px">
             <div class="campo">
-              <label for="p1-desde">Minuto de inicio (opcional)</label>
-              <input id="p1-desde" type="text" placeholder="ej. 02:00 o 00:10:00">
+              <label for="p1-desde">⏱️ Desde (minuto:segundo)</label>
+              <input id="p1-desde" type="text" placeholder="ej. 02:15 o 00:10:30" style="font-family:monospace;font-weight:700">
             </div>
             <div class="campo">
-              <label for="p1-hasta">Minuto de fin (opcional)</label>
-              <input id="p1-hasta" type="text" placeholder="ej. 45:00">
+              <label for="p1-hasta">⏱️ Hasta (minuto:segundo)</label>
+              <input id="p1-hasta" type="text" placeholder="ej. 45:20 o 01:05:00" style="font-family:monospace;font-weight:700">
+            </div>
+            <div class="campo">
+              <label for="p1-modo-salida">¿Qué querés obtener?</label>
+              <select id="p1-modo-salida" style="font-weight:700">
+                <option value="mp3" selected>🎵 Audio MP3 (extraer / recortar voz)</option>
+                <option value="video_mp4">🎬 Video MP4 recortado (entre Desde y Hasta)</option>
+                <option value="ambos">⚡ Ambos: Audio MP3 + Video MP4 recortado</option>
+              </select>
             </div>
             <div class="campo">
               <label for="p1-cal">Calidad MP3</label>
@@ -2555,19 +3166,21 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
                 <option value="320k">320 kbps (alta calidad)</option>
               </select>
             </div>
-            <div class="campo">
-              <label for="p1-mb">Límite MB (opcional)</label>
-              <input id="p1-mb" type="number" min="1" step="0.5" placeholder="sin límite">
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:10px">
+            <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;cursor:pointer">
+              <input type="checkbox" id="p1-mono" checked>
+              <span>Canal <strong>Mono</strong> en MP3 (recomendado para voz)</span>
+            </label>
+            <div style="display:flex;align-items:center;gap:6px;font-size:0.82rem">
+              <span>Límite MB:</span>
+              <input id="p1-mb" type="number" min="1" step="0.5" placeholder="sin límite" style="width:90px;padding:5px 8px">
             </div>
           </div>
-          <label style="display:flex;align-items:center;gap:8px;font-size:0.86rem;margin-top:10px;cursor:pointer">
-            <input type="checkbox" id="p1-mono" checked>
-            <span>Convertir a canal <strong>Mono</strong> (recomendado para voz)</span>
-          </label>
         </div>
 
         <button type="button" class="btn-primary" id="btn-p1-convertir" disabled style="width:100%;justify-content:center">
-          🎵 Extraer / Convertir a MP3
+          🚀 Procesar / Recortar Archivo(s)
         </button>
       </div>
     </div>
@@ -2583,11 +3196,20 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     <div id="p1-progreso"></div>
   </div>
 
+  <!-- Recortar rápido un archivo que ya está en /audios sin volver a subirlo -->
   <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-      <div>
-        <h3 style="margin:0">📂 Tus MP3 ya listos en la carpeta <code>audios/</code></h3>
-        <p style="font-size:0.84rem;color:var(--muted);margin:2px 0 0">Si ya extrajiste el MP3 antes, podés ir directo al Paso 2 sin volver a convertir.</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+      <div style="flex:1;min-width:260px">
+        <h3 style="margin:0">📂 Archivos ya guardados en <code>audios/</code> (Recortar por minuto:segundo o ir al Paso 2)</h3>
+        <p style="font-size:0.83rem;color:var(--muted);margin:3px 0 8px">
+          Podés elegir un audio o video que ya esté en tu carpeta <code>audios/</code> y recortarlo por minuto y segundo (arriba) sin volver a subirlo, o pasar directo al Paso 2.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select id="p1-sel-existente" style="max-width:340px"></select>
+          <button type="button" class="btn-outline btn-sm" id="btn-p1-recortar-existente">
+            ✂️ Recortar este archivo con el Desde / Hasta de arriba
+          </button>
+        </div>
       </div>
       <button type="button" class="btn-secondary btn-sm" onclick="irAPaso(2)">👉 Ir directo al Paso 2: Transcripción</button>
     </div>
@@ -2648,6 +3270,21 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         </div>
       </div>
 
+      <!-- Recorte opcional de audio antes de transcribir -->
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:12px">
+        <strong style="font-size:0.82rem;display:block;margin-bottom:6px">✂️ Opcional: Transcribir solo un tramo por minuto y segundo</strong>
+        <div class="grid-2" style="gap:8px">
+          <div class="campo">
+            <label for="p2-desde" style="font-size:0.78rem">⏱️ Desde (min:seg)</label>
+            <input type="text" id="p2-desde" placeholder="ej. 03:15 (vacío = desde 00:00)" style="font-family:monospace">
+          </div>
+          <div class="campo">
+            <label for="p2-hasta" style="font-size:0.78rem">⏱️ Hasta (min:seg)</label>
+            <input type="text" id="p2-hasta" placeholder="ej. 28:40 (vacío = hasta el final)" style="font-family:monospace">
+          </div>
+        </div>
+      </div>
+
       <button type="button" class="btn-primary" id="btn-p2-transcribir" style="width:100%;justify-content:center">
         🚀 Transcribir Audio y Pasar al Paso 3
       </button>
@@ -2669,11 +3306,30 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         <input type="file" id="arch-p2-trans" accept=".txt,.srt,.vtt,.sbv,.docx,.pdf,.json" hidden>
       </div>
 
-      <div class="campo" style="margin-bottom:12px">
+      <div class="campo" style="margin-bottom:10px">
         <label for="p2-trans-mp3">Opcional: Vincular con un audio MP3 de <code>audios/</code> (si querés escuchar las voces)</label>
         <select id="p2-trans-mp3">
           <option value="">— Sin audio (solo trabajar con la transcripción y subtítulos) —</option>
         </select>
+      </div>
+
+      <!-- Recorte opcional de transcripción al subir -->
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:12px">
+        <strong style="font-size:0.82rem;display:block;margin-bottom:6px">✂️ Opcional: Recortar la transcripción al subirla por minuto y segundo</strong>
+        <div class="grid-2" style="gap:8px;margin-bottom:6px">
+          <div class="campo">
+            <label for="p2-trans-desde" style="font-size:0.78rem">⏱️ Desde (min:seg)</label>
+            <input type="text" id="p2-trans-desde" placeholder="ej. 05:00" style="font-family:monospace">
+          </div>
+          <div class="campo">
+            <label for="p2-trans-hasta" style="font-size:0.78rem">⏱️ Hasta (min:seg)</label>
+            <input type="text" id="p2-trans-hasta" placeholder="ej. 40:00" style="font-family:monospace">
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.8rem;cursor:pointer">
+          <input type="checkbox" id="p2-trans-reset">
+          <span>Reiniciar tiempos a <code>00:00</code> desde el minuto de inicio</span>
+        </label>
       </div>
 
       <button type="button" class="btn-secondary" id="btn-p2-subir-trans" disabled style="width:100%;justify-content:center">
@@ -2815,47 +3471,89 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <div class="hablantes-grid" id="p3-hablantes-grid"></div>
     </div>
 
-    <!-- RECORTE POR FRASE DE INICIO Y FIN + EXTRACCIÓN DE AUDIO (MI VOZ / SILENCIAR HABLANTES) -->
+    <!-- RECORTE POR MINUTO Y SEGUNDO (VOZ + TRANSCRIPCIÓN) Y EXTRACCIÓN DE AUDIO -->
     <div class="grid-2">
-      <!-- Recorte por frases -->
+      <!-- Tarjeta Izquierda: Recorte de Tiempo (Minuto y Segundo + Frases) y Recorte de Transcripción -->
       <div class="card">
-        <h3>✂️ Recortar por Frase de Inicio y Frase de Fin (Opcional)</h3>
-        <p style="font-size:0.83rem;color:var(--muted);margin-top:0">
-          Detecta la marca de tiempo exacta de cuando decís una frase para empezar y otra al terminar.
+        <h3 style="color:#1e3a8a;margin-bottom:4px">✂️ 1. Recortar Voz y Transcripción por Minuto y Segundo (o por Frase)</h3>
+        <p style="font-size:0.82rem;color:var(--muted);margin-top:0">
+          Escribí el <strong>minuto y segundo</strong> de inicio y fin (ej. <code>04:15</code> a <code>32:40</code> o <code>01:02:10</code>). Este rango recorta tanto el <strong>Audio/Voz</strong> como la <strong>Transcripción</strong>.
         </p>
-        <div class="grid-2" style="gap:10px;margin-bottom:10px">
-          <div class="campo">
-            <label for="p3-f-ini">⛳ Frase de inicio:</label>
-            <input type="text" id="p3-f-ini" placeholder='ej. "bueno empezamos"'>
-            <div id="p3-pill-ini"></div>
+
+        <!-- Bloque principal: Minuto y Segundo -->
+        <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px;margin-bottom:12px">
+          <strong style="font-size:0.86rem;color:#1e3a8a;display:block;margin-bottom:8px">⏱️ Indicar Minuto y Segundo exacto de recorte:</strong>
+          <div class="grid-2" style="gap:10px;margin-bottom:8px">
+            <div class="campo">
+              <label for="p3-t-ini">Desde (minuto:segundo):</label>
+              <div style="display:flex;gap:4px">
+                <input type="text" id="p3-t-ini" placeholder="00:00 (ej. 03:25)" style="font-family:monospace;font-weight:700;font-size:0.95rem">
+                <button type="button" class="btn-outline btn-xs" id="btn-p3-tomar-ini-audio" title="Tomar el segundo actual del reproductor de audio">📍 Actual</button>
+              </div>
+            </div>
+            <div class="campo">
+              <label for="p3-t-fin">Hasta (minuto:segundo):</label>
+              <div style="display:flex;gap:4px">
+                <input type="text" id="p3-t-fin" placeholder="fin (ej. 28:50)" style="font-family:monospace;font-weight:700;font-size:0.95rem">
+                <button type="button" class="btn-outline btn-xs" id="btn-p3-tomar-fin-audio" title="Tomar el segundo actual del reproductor de audio">📍 Actual</button>
+              </div>
+            </div>
           </div>
-          <div class="campo">
-            <label for="p3-f-fin">🏁 Frase de fin:</label>
-            <input type="text" id="p3-f-fin" placeholder='ej. "hasta acá llegamos"'>
-            <div id="p3-pill-fin"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn-primary btn-xs" id="btn-p3-aplicar-rango">✅ Aplicar minuto y segundo</button>
+            <button type="button" class="btn-outline btn-xs" id="btn-p3-limpiar-rango">✕ Quitar recorte (Usar todo)</button>
+            <span id="p3-badge-rango" class="badge badge-azul">Tramo activo: Todo el archivo</span>
           </div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <button type="button" class="btn-primary btn-sm" id="btn-p3-buscar-frases">🔍 Detectar marcas de tiempo</button>
-          <span style="font-size:0.82rem">Desde:</span>
-          <input type="text" id="p3-t-ini" placeholder="00:00" style="width:78px;padding:4px 6px;font-family:monospace">
-          <span style="font-size:0.82rem">Hasta:</span>
-          <input type="text" id="p3-t-fin" placeholder="fin" style="width:78px;padding:4px 6px;font-family:monospace">
-          <button type="button" class="btn-outline btn-xs" id="btn-p3-limpiar-rango">✕ Todo</button>
+
+        <!-- Opcional: Buscar por Frase de inicio / fin -->
+        <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:12px">
+          <strong style="font-size:0.82rem;display:block;margin-bottom:6px">🔎 O buscar el minuto y segundo diciendo la Frase de Inicio / Fin:</strong>
+          <div class="grid-2" style="gap:8px;margin-bottom:8px">
+            <div class="campo">
+              <input type="text" id="p3-f-ini" placeholder='⛳ Frase de inicio (ej. "empezamos")' style="font-size:0.83rem;padding:6px 8px">
+              <div id="p3-pill-ini"></div>
+            </div>
+            <div class="campo">
+              <input type="text" id="p3-f-fin" placeholder='🏁 Frase de fin (ej. "hasta acá")' style="font-size:0.83rem;padding:6px 8px">
+              <div id="p3-pill-fin"></div>
+            </div>
+          </div>
+          <button type="button" class="btn-outline btn-xs" id="btn-p3-buscar-frases">🔍 Buscar frases y autocompletar minuto:segundo</button>
+        </div>
+
+        <!-- Acciones de Recorte sobre la Transcripción -->
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px">
+          <strong style="font-size:0.86rem;color:#166534;display:block;margin-bottom:6px">📄 Recortar y Descargar Transcripción en ese Minuto y Segundo:</strong>
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.81rem;margin-bottom:6px;cursor:pointer">
+            <input type="checkbox" id="p3-chk-reset-reloj" checked>
+            <span>Reiniciar reloj a <code>00:00</code> en el minuto "Desde" (ideal si también recortaste el video/audio)</span>
+          </label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" class="btn-primary btn-xs" onclick="descargarTranscripcionRecortadaPaso3('txt_ts')">⬇ Descargar .TXT recortado (con tiempos)</button>
+            <button type="button" class="btn-outline btn-xs" onclick="descargarTranscripcionRecortadaPaso3('txt_limpio')">⬇ Descargar .TXT (solo texto)</button>
+            <button type="button" class="btn-outline btn-xs" onclick="descargarTranscripcionRecortadaPaso3('srt')">⬇ Descargar .SRT recortado</button>
+            <button type="button" class="btn-danger-soft btn-xs" id="btn-p3-recortar-sesion-perm" title="Borra de esta sesión lo que está fuera del minuto Desde y Hasta">
+              ✂️ Dejar en la sesión solo este tramo
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Extraer Audio Procesado (Aislar mi voz / Silenciar hablantes) -->
+      <!-- Tarjeta Derecha: Extraer Voz / Audio Procesado (respetando el recorte de minuto y segundo) -->
       <div class="card">
-        <h3>🎯 Extraer Audio (Solo mi voz limpia o hablantes silenciados)</h3>
+        <h3 style="color:#1e3a8a;margin-bottom:4px">🎙️ 2. Recortar y Extraer Voz / Audio (en el Minuto y Segundo elegido)</h3>
+        <p style="font-size:0.82rem;color:var(--muted);margin-top:0">
+          Extrae tu voz limpia, silencia hablantes o recorta el audio directo entre el minuto <strong>Desde</strong> y <strong>Hasta</strong> indicados a la izquierda.
+        </p>
         <div class="grid-2" style="gap:10px;margin-bottom:10px">
           <div class="campo">
-            <label for="p3-modo-audio">Qué hacer con el audio:</label>
+            <label for="p3-modo-audio">Qué hacer con la voz / el audio:</label>
             <select id="p3-modo-audio">
-              <option value="aislar" selected>🎯 Dejar SOLO las voces activas (unir sin silencios para entrenar voz)</option>
-              <option value="recortar">✂️ Quitar hablantes silenciados (acortar audio)</option>
+              <option value="aislar" selected>🎯 Aislar SOLO las voces activas (unir limpio para clonar/entrenar voz)</option>
+              <option value="rango_directo">📏 Recorte directo de Audio por minuto y segundo (Desde → Hasta)</option>
+              <option value="recortar">✂️ Quitar hablantes silenciados (acortar audio en ese tramo)</option>
               <option value="silenciar">🔇 Poner en mudo (volumen 0) a los hablantes silenciados</option>
-              <option value="rango_directo">📏 Solo recortar entre inicio y fin (sin filtrar hablantes)</option>
             </select>
           </div>
           <div class="campo">
@@ -2869,7 +3567,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
           <div class="campo">
             <label for="p3-max-min">Duración máxima:</label>
             <select id="p3-max-min">
-              <option value="0" selected>Todo el tiempo disponible</option>
+              <option value="0" selected>Todo el tramo seleccionado</option>
               <option value="2">Los mejores 2 min</option>
               <option value="5">Los mejores 5 min</option>
               <option value="10">Los mejores 10 min</option>
@@ -2886,8 +3584,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         </div>
         <div id="p3-resumen-audio" style="font-size:0.83rem;background:#eff6ff;color:#1e40af;padding:8px 10px;border-radius:8px;margin-bottom:10px"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button type="button" class="btn-primary btn-sm" id="btn-p3-export-audio">💾 Generar Audio Procesado</button>
-          <button type="button" class="btn-secondary btn-sm" onclick="irAPaso(4)">👉 Ir al Paso 4: Subtítulos y Video sin audio</button>
+          <button type="button" class="btn-primary btn-sm" id="btn-p3-export-audio">💾 Generar Voz / Audio Recortado</button>
+          <button type="button" class="btn-secondary btn-sm" onclick="irAPaso(4)">👉 Ir al Paso 4: Subtítulos y Recorte de Video</button>
         </div>
         <div id="p3-res-audio"></div>
       </div>
@@ -2896,7 +3594,13 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     <!-- DETALLE DE LA TRANSCRIPCIÓN LÍNEA POR LÍNEA -->
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
-        <h3 style="margin:0">📝 Transcripción línea por línea (<span id="p3-cont-seg">0</span> fragmentos)</h3>
+        <div>
+          <h3 style="margin:0">📝 Transcripción línea por línea (<span id="p3-cont-seg">0</span> fragmentos)</h3>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.81rem;color:#1e3a8a;margin-top:4px;cursor:pointer">
+            <input type="checkbox" id="p3-chk-ocultar-fuera">
+            <span>👁️ Mostrar únicamente las líneas dentro del minuto y segundo de recorte (ocultar el resto)</span>
+          </label>
+        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <input type="text" id="p3-buscar" placeholder="🔍 Buscar palabra o frase…" style="width:200px">
           <select id="p3-filtro-spk" style="width:180px">
@@ -3001,21 +3705,38 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
             </div>
           </div>
 
-          <!-- Opción de unir video + subtítulos en un nuevo MP4 -->
+          <!-- Recortar Video y/o Unir con Subtítulos por Minuto y Segundo -->
           <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:14px">
-            <strong style="font-size:0.92rem;display:block;margin-bottom:6px">
-              🎞️ 4. Opcional: Unir el Video con los Subtítulos en un nuevo archivo .MP4
+            <strong style="font-size:0.93rem;color:#1e3a8a;display:block;margin-bottom:6px">
+              ✂️ 4. Recortar Video (.MP4) por Minuto y Segundo y/o Unirle Subtítulos
             </strong>
             <p style="font-size:0.8rem;color:var(--muted);margin:0 0 8px">
-              Si elegiste el archivo de video arriba, podés generar un nuevo <code>.mp4</code> con los subtítulos ya integrados.
+              Podés recortar el video indicando el <strong>minuto y segundo</strong> de inicio y fin (o dejar vacío para usar el video entero), y elegir si querés solo recortar el video o unirle los subtítulos.
             </p>
+            <div class="grid-2" style="gap:8px;margin-bottom:10px">
+              <div class="campo">
+                <label for="p4-t-ini" style="font-size:0.78rem">⏱️ Desde (min:seg)</label>
+                <div style="display:flex;gap:4px">
+                  <input type="text" id="p4-t-ini" placeholder="ej. 02:10" style="font-family:monospace;font-weight:700">
+                  <button type="button" class="btn-outline btn-xs" id="btn-p4-tomar-ini" title="Usar el segundo actual del video">📍 Actual</button>
+                </div>
+              </div>
+              <div class="campo">
+                <label for="p4-t-fin" style="font-size:0.78rem">⏱️ Hasta (min:seg)</label>
+                <div style="display:flex;gap:4px">
+                  <input type="text" id="p4-t-fin" placeholder="ej. 35:00" style="font-family:monospace;font-weight:700">
+                  <button type="button" class="btn-outline btn-xs" id="btn-p4-tomar-fin" title="Usar el segundo actual del video">📍 Actual</button>
+                </div>
+              </div>
+            </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
               <select id="p4-modo-unir" style="width:auto;flex:1">
-                <option value="soft" selected>⚡ Pista de subtítulos interna (Rápido, tarda pocos segundos)</option>
-                <option value="burn">🔥 Quemar/grabar subtítulos fijos sobre la imagen del video</option>
+                <option value="soft" selected>⚡ Unir Video + Subtítulos internos (Rápido)</option>
+                <option value="burn">🔥 Unir Video + Subtítulos quemados en la imagen</option>
+                <option value="solo_recortar_video">✂️ Solo Recortar el Video MP4 (sin subtítulos)</option>
               </select>
               <button type="button" class="btn-secondary btn-sm" id="btn-p4-unir-video">
-                🎬 Unir Video + Subtítulos
+                🎬 Procesar Video (.MP4)
               </button>
             </div>
             <div id="p4-res-unir" style="margin-top:8px;font-size:0.84rem"></div>
@@ -3025,6 +3746,178 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     </div>
   </div>
 </section>
+
+
+<!-- ====================================================================== -->
+<!-- PESTAÑA 5: ENTRENAR MODELO ML CON MIS TRANSCRIPCIONES Y CONVERTIR GUIÓN -->
+<!-- ====================================================================== -->
+<section class="step-section" id="step-5">
+  <div class="card" style="background:linear-gradient(135deg,#eff6ff 0%,#f5f3ff 100%);border-color:#c7d2fe">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+      <div>
+        <h2 style="margin:0;color:#1e1b4b">🧠 Laboratorio ML: Entrenar Mi Estilo de Habla y Convertir Guiones</h2>
+        <p style="font-size:0.86rem;color:#3730a3;margin:4px 0 0">
+          Entrená un modelo propio con tus transcripciones de clase (aprende tus muletillas, conectores, ritmo de frase, voseo y vocabulario real) y enviale cualquier guión o apunte para que lo reescriba exactamente como hablás vos.
+        </p>
+      </div>
+      <span class="badge badge-azul" id="p5-badge-estado" style="font-size:0.85rem;padding:6px 12px">Cargando estado del modelo…</span>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- COLUMNA IZQUIERDA: 1. ENTRENAR MODELO Y VER ADN DE TU ESTILO -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card">
+        <h3 style="color:#1e3a8a;margin-bottom:6px">1. 🎓 Entrenar Modelo ML con mis Transcripciones</h3>
+        <p style="font-size:0.82rem;color:var(--muted);margin-top:0">
+          Seleccioná qué transcripciones procesadas usar (y cuál hablante sos vos) o subí archivos extra de tus clases para que el modelo aprenda tu forma real de expresarte.
+        </p>
+
+        <div class="campo" style="margin-bottom:10px">
+          <label>A. Elegir sesiones guardadas y qué hablante usar como "Tu Voz":</label>
+          <div id="p5-lista-sesiones-train" style="display:flex;flex-direction:column;gap:6px;max-height:170px;overflow-y:auto;padding:8px;background:#f8fafc;border:1px solid var(--border);border-radius:8px">
+            <span style="font-size:0.82rem;color:var(--muted)">Cargando sesiones…</span>
+          </div>
+        </div>
+
+        <div class="campo" style="margin-bottom:12px">
+          <label>B. Opcional: Subir archivos extra de transcripciones tuyas (.TXT, .SRT, .DOCX, .PDF):</label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="file" id="arch-p5-extra" accept=".txt,.srt,.vtt,.docx,.pdf" multiple hidden>
+            <button type="button" class="btn-outline btn-sm" onclick="document.getElementById('arch-p5-extra').click()">
+              📄 Agregar archivos de transcripción al entrenamiento
+            </button>
+            <span id="p5-lbl-extra" style="font-size:0.8rem;color:var(--muted)">Ningún archivo extra seleccionado</span>
+          </div>
+        </div>
+
+        <button type="button" class="btn-primary" id="btn-p5-entrenar" style="width:100%;justify-content:center">
+          🧠 Entrenar / Actualizar Modelo con mis Transcripciones
+        </button>
+        <div id="p5-res-entrenar" style="margin-top:8px;font-size:0.84rem"></div>
+      </div>
+
+      <!-- Perfil / ADN aprendido por el modelo -->
+      <div class="card" id="p5-card-adn">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <h3 style="margin:0;color:#1e3a8a">📊 ADN de Tu Estilo Aprendido por el Modelo</h3>
+          <a href="/api/estilo_dataset_jsonl" download="mi_estilo_finetuning.jsonl" class="btn-outline btn-xs" style="text-decoration:none" title="Descargar pares Guión Neutro -> Tu Estilo en formato JSONL para Fine-Tuning de LLMs">
+            📦 Descargar Dataset .JSONL (Fine-Tuning)
+          </a>
+        </div>
+
+        <div class="grid-3" style="gap:8px;margin-bottom:12px" id="p5-metricas-grid">
+          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center">
+            <div style="font-size:1.15rem;font-weight:800;color:#1e40af" id="p5-m-frases">0</div>
+            <div style="font-size:0.74rem;color:var(--muted)">Frases tuyas analizadas</div>
+          </div>
+          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center">
+            <div style="font-size:1.15rem;font-weight:800;color:#1e40af" id="p5-m-pal">0</div>
+            <div style="font-size:0.74rem;color:var(--muted)">Palabras en tu corpus</div>
+          </div>
+          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center">
+            <div style="font-size:1.15rem;font-weight:800;color:#1e40af" id="p5-m-long">0</div>
+            <div style="font-size:0.74rem;color:var(--muted)">Palabras / oración promedio</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:10px">
+          <label style="font-size:0.8rem;font-weight:700;display:block;margin-bottom:4px">
+            🗣️ Tus conectores, muletillas y giros más frecuentes detectados:
+          </label>
+          <div id="p5-chips-marcadores" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+        </div>
+
+        <div style="margin-bottom:10px">
+          <label style="font-size:0.8rem;font-weight:700;display:block;margin-bottom:4px">
+            ✏️ Ajustar las expresiones que querés que el modelo use al convertir tus guiones (separadas por coma):
+          </label>
+          <div style="display:flex;gap:6px">
+            <input type="text" id="p5-inp-muletillas" placeholder="vamos a ver, o sea, por ejemplo, entonces, fíjense que, acá…">
+            <button type="button" class="btn-outline btn-xs" id="btn-p5-guardar-muletillas">💾 Guardar</button>
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size:0.8rem;font-weight:700;display:block;margin-bottom:4px">
+            🔤 Tus expresiones y trigramas más repetidos en clase:
+          </label>
+          <div id="p5-chips-ngramas" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLUMNA DERECHA: 2. ENVIAR UN GUIÓN Y CONVERTIRLO A MI ESTILO -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card">
+        <h3 style="color:#1e3a8a;margin-bottom:6px">2. ✍️ Enviar un Guión y Convertirlo a Mi Estilo</h3>
+        <p style="font-size:0.82rem;color:var(--muted);margin-top:0">
+          Pegá un guión formal, un resumen, apuntes de cátedra o un texto neutro. El modelo lo transformará a tu forma natural de explicarlo en clase.
+        </p>
+
+        <div class="campo" style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <label for="p5-txt-guion">📄 Guión o texto de entrada:</label>
+            <button type="button" class="btn-outline btn-xs" id="btn-p5-ejemplo-guion">✨ Cargar guión de prueba</button>
+          </div>
+          <textarea id="p5-txt-guion" rows="6" placeholder="Pegá acá tu guión. Por ejemplo: 'A continuación veremos cómo definir una función en Python. Es importante destacar que puedes pasarle múltiples parámetros. Observa aquí cómo debemos retornar el resultado...'"></textarea>
+        </div>
+
+        <div class="grid-2" style="gap:10px;margin-bottom:10px">
+          <div class="campo">
+            <label for="p5-intensidad">Intensidad de tu estilo:</label>
+            <select id="p5-intensidad">
+              <option value="sutil">🌱 Sutil (Voseo y vocabulario propio, pocas muletillas)</option>
+              <option value="equilibrado" selected>🎯 Equilibrado (Recomendado — suena natural a vos)</option>
+              <option value="conversacional">🎙️ Muy conversacional (Clase en vivo con aperturas y cierres)</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="p5-formato-out">Formato de salida:</label>
+            <select id="p5-formato-out">
+              <option value="fluido" selected>📝 Párrafos fluidos (para leer o grabar de corrido)</option>
+              <option value="teleprompter">🎬 Frases cortas tipo Teleprompter / Clonación XTTS</option>
+            </select>
+          </div>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;margin-bottom:12px;cursor:pointer">
+          <input type="checkbox" id="p5-chk-ollama">
+          <span>Usar también <strong>Ollama Local</strong> (si tenés Llama3/Mistral corriendo en tu PC en <code>localhost:11434</code>)</span>
+        </label>
+
+        <button type="button" class="btn-primary" id="btn-p5-convertir" style="width:100%;justify-content:center;font-size:1rem;padding:12px">
+          🪄 Convertir Guión a Mi Estilo de Hablar
+        </button>
+
+        <!-- Resultado del Guión Convertido -->
+        <div id="p5-box-resultado" style="display:none;margin-top:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+            <strong style="color:var(--ok);font-size:0.95rem">✨ Guión adaptado a tu estilo:</strong>
+            <span id="p5-info-out" class="badge badge-verde"></span>
+          </div>
+          <textarea id="p5-txt-salida" rows="7" style="background:#f0fdf4;border:1.5px solid #86efac;font-size:0.95rem;line-height:1.55"></textarea>
+
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+            <button type="button" class="btn-primary btn-sm" id="btn-p5-copiar-out">📋 Copiar Guión Convertido</button>
+            <button type="button" class="btn-outline btn-sm" id="btn-p5-descargar-out">⬇ Descargar Guión (.TXT)</button>
+            <button type="button" class="btn-outline btn-sm" id="btn-p5-copiar-prompt" title="Copia un prompt con todo tu perfil estilométrico y tus ejemplos reales de clase">
+              🧬 Copiar Prompt con mi ADN de Estilo
+            </button>
+          </div>
+
+          <div style="margin-top:12px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px">
+            <strong style="font-size:0.8rem;color:#334155;display:block;margin-bottom:4px">
+              🔍 Fragmentos reales de tus clases que el modelo usó como referencia para este tema (RAG):
+            </strong>
+            <div id="p5-rag-ejemplos" style="font-size:0.8rem;color:#475569;display:flex;flex-direction:column;gap:6px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 
 <script>
 // ==============================================================================
@@ -3090,6 +3983,9 @@ function irAPaso(num) {
   }
   if (num === 4 && sesionActiva) {
     renderPaso4();
+  }
+  if (num === 5) {
+    cargarEstadoEstiloPaso5();
   }
 }
 
@@ -3184,12 +4080,17 @@ btnP1Convertir.onclick = async () => {
   colaP1 = [];
   renderColaP1();
 
+  await ejecutarLotePaso1(lotes, false);
+};
+
+async function ejecutarLotePaso1(lotes, usarExistente = false) {
   const params = {
     cal: document.getElementById('p1-cal').value,
     desde: document.getElementById('p1-desde').value.trim(),
     hasta: document.getElementById('p1-hasta').value.trim(),
     mb: document.getElementById('p1-mb').value.trim(),
     mono: document.getElementById('p1-mono').checked ? '1' : '0',
+    modo_p1: document.getElementById('p1-modo-salida').value,
     solo_extraer: '1'
   };
 
@@ -3198,7 +4099,7 @@ btnP1Convertir.onclick = async () => {
     pBox.className = 'progreso-item';
     pBox.innerHTML = `
       <div style="display:flex;justify-content:space-between;font-weight:700;font-size:0.9rem">
-        <span>⏳ Convirtiendo ${escHtml(item.nombre)} a MP3… <span class="msg"></span></span>
+        <span>⏳ Procesando ${escHtml(item.nombre)}… <span class="msg"></span></span>
         <span class="pct">10%</span>
       </div>
       <div class="barra-fondo"><div class="barra-relleno" style="width:10%"></div></div>
@@ -3206,8 +4107,8 @@ btnP1Convertir.onclick = async () => {
     document.getElementById('p1-progreso').prepend(pBox);
 
     try {
-      const q = new URLSearchParams({ ...params, nombre: item.nombre, usar_mp3_existente: '0' });
-      const r = await fetch('/api/iniciar?' + q.toString(), { method: 'POST', body: item.file });
+      const q = new URLSearchParams({ ...params, nombre: item.nombre, usar_mp3_existente: usarExistente ? '1' : '0' });
+      const r = await fetch('/api/iniciar?' + q.toString(), { method: 'POST', body: usarExistente ? null : item.file });
       if (!r.ok) throw new Error(await r.text());
       const { job_id } = await r.json();
 
@@ -3220,20 +4121,36 @@ btnP1Convertir.onclick = async () => {
         pBox.querySelector('.barra-relleno').style.width = (d.progreso || 0) + '%';
         if (d.estado === 'error') throw new Error(d.error || 'Error');
         if (d.estado === 'completado') {
-          const nomMp3 = d.resultado.nombre_mp3;
-          await cargarAudiosDisponibles(nomMp3);
-          pBox.innerHTML = `
-            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-              <div><strong style="color:var(--ok)">✔ MP3 listo:</strong> ${escHtml(nomMp3)}</div>
-              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <audio controls src="/audios/${encodeURIComponent(nomMp3)}" style="height:34px"></audio>
-                <a class="btn-outline btn-sm" style="text-decoration:none" href="/audios/${encodeURIComponent(nomMp3)}" download>⬇ Descargar MP3</a>
-                <button type="button" class="btn-primary btn-sm" onclick="seleccionarMp3EIrAPaso2('${escHtml(nomMp3)}')">
-                  👉 Seguir al Paso 2 (Transcribir este MP3)
-                </button>
+          const nomMp3 = d.resultado.nombre_mp3 || '';
+          const nomVid = d.resultado.nombre_video || '';
+          await cargarAudiosDisponibles(nomMp3 || nomVid);
+          let htmlOut = '<div style="display:flex;flex-direction:column;gap:8px">';
+          if (nomVid) {
+            htmlOut += `
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+                <div><strong style="color:var(--ok)">🎬 Video MP4 recortado listo:</strong> ${escHtml(nomVid)}</div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <a class="btn-primary btn-sm" style="text-decoration:none" href="/audios/${encodeURIComponent(nomVid)}" download>⬇ Descargar Video MP4</a>
+                </div>
               </div>
-            </div>
-          `;
+            `;
+          }
+          if (nomMp3) {
+            htmlOut += `
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+                <div><strong style="color:var(--ok)">🎵 Audio MP3 listo:</strong> ${escHtml(nomMp3)}</div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <audio controls src="/audios/${encodeURIComponent(nomMp3)}" style="height:34px"></audio>
+                  <a class="btn-outline btn-sm" style="text-decoration:none" href="/audios/${encodeURIComponent(nomMp3)}" download>⬇ Descargar MP3</a>
+                  <button type="button" class="btn-primary btn-sm" onclick="seleccionarMp3EIrAPaso2('${escHtml(nomMp3)}')">
+                    👉 Seguir al Paso 2 (Transcribir este MP3)
+                  </button>
+                </div>
+              </div>
+            `;
+          }
+          htmlOut += '</div>';
+          pBox.innerHTML = htmlOut;
           break;
         }
       }
@@ -3241,6 +4158,15 @@ btnP1Convertir.onclick = async () => {
       pBox.innerHTML = `<div style="color:var(--danger);font-weight:700">✘ Error: ${escHtml(e.message)}</div>`;
     }
   }
+}
+
+document.getElementById('btn-p1-recortar-existente').onclick = async () => {
+  const nom = document.getElementById('p1-sel-existente').value;
+  if (!nom) { alert('Elegí un archivo de la lista.'); return; }
+  const d = document.getElementById('p1-desde').value.trim();
+  const h = document.getElementById('p1-hasta').value.trim();
+  if (!d && !h) { alert('Escribí el minuto:segundo en "Desde" y/o "Hasta" arriba para recortar.'); return; }
+  await ejecutarLotePaso1([{ nombre: nom }], true);
 };
 
 window.seleccionarMp3EIrAPaso2 = async function(nomMp3) {
@@ -3257,14 +4183,22 @@ async function cargarAudiosDisponibles(seleccionarNombre = '') {
     const lista = await r.json();
     const selA = document.getElementById('p2-sel-mp3');
     const selB = document.getElementById('p2-trans-mp3');
+    const selP1 = document.getElementById('p1-sel-existente');
+    const soloAudios = lista.filter(a => a.tipo !== 'video');
 
-    if (!lista.length) {
+    if (selP1) {
+      selP1.innerHTML = lista.length
+        ? lista.map(a => `<option value="${escHtml(a.nombre)}">${a.tipo === 'video' ? '🎬 ' : '🎵 '}${escHtml(a.nombre)} (${fmtMB(a.bytes)})</option>`).join('')
+        : '<option value="">(Carpeta audios/ vacía)</option>';
+    }
+
+    if (!soloAudios.length) {
       selA.innerHTML = '<option value="">(Aún no hay MP3 en /audios — creá uno en el Paso 1)</option>';
     } else {
-      selA.innerHTML = lista.map(a => `<option value="${escHtml(a.nombre)}" ${a.nombre === seleccionarNombre ? 'selected' : ''}>${escHtml(a.nombre)} (${fmtMB(a.bytes)})</option>`).join('');
+      selA.innerHTML = soloAudios.map(a => `<option value="${escHtml(a.nombre)}" ${a.nombre === seleccionarNombre ? 'selected' : ''}>${escHtml(a.nombre)} (${fmtMB(a.bytes)})</option>`).join('');
     }
     selB.innerHTML = '<option value="">— Sin audio (solo trabajar con la transcripción y subtítulos) —</option>' +
-      lista.map(a => `<option value="${escHtml(a.nombre)}">${escHtml(a.nombre)} (${fmtMB(a.bytes)})</option>`).join('');
+      soloAudios.map(a => `<option value="${escHtml(a.nombre)}">${escHtml(a.nombre)} (${fmtMB(a.bytes)})</option>`).join('');
   } catch (e) {}
 }
 
@@ -3333,7 +4267,9 @@ document.getElementById('btn-p2-transcribir').onclick = async () => {
       usar_mp3_existente: '1',
       solo_extraer: '0',
       modelo,
-      hablantes
+      hablantes,
+      desde: document.getElementById('p2-desde').value.trim(),
+      hasta: document.getElementById('p2-hasta').value.trim()
     });
     const r = await fetch('/api/iniciar?' + q.toString(), { method: 'POST' });
     if (!r.ok) throw new Error(await r.text());
@@ -3393,7 +4329,13 @@ btnP2SubirTrans.onclick = async () => {
   resDiv.innerHTML = '<div style="margin-top:8px;font-size:0.86rem">⏳ Detectando formato y cargando transcripción…</div>';
 
   try {
-    const q = new URLSearchParams({ nombre: archivoTransSubir.name, nombre_mp3: nomMp3 });
+    const q = new URLSearchParams({
+      nombre: archivoTransSubir.name,
+      nombre_mp3: nomMp3,
+      desde: document.getElementById('p2-trans-desde').value.trim(),
+      hasta: document.getElementById('p2-trans-hasta').value.trim(),
+      reiniciar_reloj: document.getElementById('p2-trans-reset').checked ? '1' : '0'
+    });
     const r = await fetch('/api/subir_transcripcion?' + q.toString(), {
       method: 'POST',
       body: archivoTransSubir
@@ -3881,7 +4823,9 @@ function renderSegmentosPaso3() {
   const mapaH = {};
   for (const h of st.hablantes) mapaH[h.id] = h;
 
+  const ocultarFuera = document.getElementById('p3-chk-ocultar-fuera') && document.getElementById('p3-chk-ocultar-fuera').checked;
   const filtrados = st.segmentos.filter(s => {
+    if (ocultarFuera && !estaEnRango(st, s)) return false;
     if (st.filtroSpk && s.hablante !== st.filtroSpk) return false;
     if (st.filtroTexto && !s.texto.toLowerCase().includes(st.filtroTexto)) return false;
     return true;
@@ -3980,22 +4924,124 @@ document.getElementById('btn-p3-buscar-frases').onclick = async () => {
   renderSegmentosPaso3(); actualizarResumenAudioPaso3();
 };
 
-document.getElementById('p3-t-ini').onchange = e => {
+function aplicarInputsRangoPaso3() {
   if (!sesionActiva) return;
-  sesionActiva.rangoInicio = parseTiempoCliente(e.target.value);
-  renderSegmentosPaso3(); actualizarResumenAudioPaso3();
+  const vIni = document.getElementById('p3-t-ini').value.trim();
+  const vFin = document.getElementById('p3-t-fin').value.trim();
+  sesionActiva.rangoInicio = parseTiempoCliente(vIni);
+  sesionActiva.rangoFin = parseTiempoCliente(vFin);
+  // Sincronizar también con los inputs de recorte de video del Paso 4
+  const p4Ini = document.getElementById('p4-t-ini');
+  const p4Fin = document.getElementById('p4-t-fin');
+  if (p4Ini && !p4Ini.value) p4Ini.value = vIni;
+  if (p4Fin && !p4Fin.value) p4Fin.value = vFin;
+  renderSegmentosPaso3();
+  actualizarResumenAudioPaso3();
+}
+
+document.getElementById('p3-t-ini').onchange = aplicarInputsRangoPaso3;
+document.getElementById('p3-t-fin').onchange = aplicarInputsRangoPaso3;
+document.getElementById('btn-p3-aplicar-rango').onclick = aplicarInputsRangoPaso3;
+document.getElementById('p3-chk-ocultar-fuera').onchange = () => renderSegmentosPaso3();
+
+document.getElementById('btn-p3-tomar-ini-audio').onclick = () => {
+  const a = document.getElementById('p3-audio');
+  if (!a) return;
+  document.getElementById('p3-t-ini').value = fmtHMS(a.currentTime || 0);
+  aplicarInputsRangoPaso3();
 };
-document.getElementById('p3-t-fin').onchange = e => {
-  if (!sesionActiva) return;
-  sesionActiva.rangoFin = parseTiempoCliente(e.target.value);
-  renderSegmentosPaso3(); actualizarResumenAudioPaso3();
+document.getElementById('btn-p3-tomar-fin-audio').onclick = () => {
+  const a = document.getElementById('p3-audio');
+  if (!a) return;
+  document.getElementById('p3-t-fin').value = fmtHMS(a.currentTime || 0);
+  aplicarInputsRangoPaso3();
 };
+
 document.getElementById('btn-p3-limpiar-rango').onclick = () => {
   if (!sesionActiva) return;
   sesionActiva.rangoInicio = null; sesionActiva.rangoFin = null;
   document.getElementById('p3-t-ini').value = ''; document.getElementById('p3-t-fin').value = '';
   document.getElementById('p3-pill-ini').innerHTML = ''; document.getElementById('p3-pill-fin').innerHTML = '';
   renderSegmentosPaso3(); actualizarResumenAudioPaso3();
+};
+
+window.descargarTranscripcionRecortadaPaso3 = function(formato) {
+  if (!sesionActiva) return;
+  aplicarInputsRangoPaso3();
+  const st = sesionActiva;
+  const r0 = st.rangoInicio ?? 0;
+  const r1 = st.rangoFin ?? st.duracion;
+  const resetReloj = document.getElementById('p3-chk-reset-reloj').checked;
+  const shift = (resetReloj && r0 > 0) ? r0 : 0;
+  const mapaNom = {};
+  for (const h of st.hablantes) mapaNom[h.id] = h.nombre;
+
+  const segs = st.segmentos.filter(s => estaEnRango(st, s) && !esSegSilenciado(st, s));
+  if (!segs.length) {
+    alert('No hay fragmentos activos dentro de ese rango de minutos y segundos.');
+    return;
+  }
+
+  let contenido = '';
+  let ext = '.txt';
+  if (formato === 'srt') {
+    contenido = segs.map((s, i) => {
+      const ini = Math.max(0, Math.max(s.inicio, r0) - shift);
+      const fin = Math.max(ini + 0.4, Math.min(s.fin, r1) - shift);
+      return `${i + 1}\n${fmtSrt(ini, ',')} --> ${fmtSrt(fin, ',')}\n[${mapaNom[s.hablante] || s.hablante}] ${s.texto}\n`;
+    }).join('\n');
+    ext = '_recorte.srt';
+  } else if (formato === 'txt_limpio') {
+    contenido = segs.map(s => `${mapaNom[s.hablante] || s.hablante}: ${s.texto}`).join('\n');
+    ext = '_recorte_texto.txt';
+  } else {
+    contenido = segs.map(s => {
+      const ini = Math.max(0, Math.max(s.inicio, r0) - shift);
+      const fin = Math.max(ini + 0.2, Math.min(s.fin, r1) - shift);
+      return `[${fmtHMS(ini)} - ${fmtHMS(fin)}] ${mapaNom[s.hablante] || s.hablante}: ${s.texto}`;
+    }).join('\n');
+    ext = '_recorte_tiempos.txt';
+  }
+
+  const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  const base = st.nombre_original.replace(/\.[^.]+$/, '');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${base}${ext}`;
+  a.click();
+};
+
+document.getElementById('btn-p3-recortar-sesion-perm').onclick = async () => {
+  if (!sesionActiva) return;
+  const desde = document.getElementById('p3-t-ini').value.trim();
+  const hasta = document.getElementById('p3-t-fin').value.trim();
+  if (!desde && !hasta) {
+    alert('Primero escribí el minuto y segundo en "Desde" y/o "Hasta" para recortar la transcripción.');
+    return;
+  }
+  const reset = document.getElementById('p3-chk-reset-reloj').checked;
+  if (!confirm(`¿Dejar en la transcripción de esta sesión únicamente el tramo desde ${desde || '00:00'} hasta ${hasta || 'el final'}?`)) return;
+
+  const r = await fetch('/api/recortar_transcripcion_sesion', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      sesion_id: sesionActiva.sesion_id,
+      desde,
+      hasta,
+      reiniciar_reloj: reset
+    })
+  });
+  if (!r.ok) { alert(await r.text()); return; }
+  const d = await r.json();
+  sesionActiva.segmentos = d.segmentos;
+  sesionActiva.hablantes = d.hablantes;
+  sesionActiva.duracion = d.duracion;
+  sesionActiva.rangoInicio = null;
+  sesionActiva.rangoFin = null;
+  document.getElementById('p3-t-ini').value = '';
+  document.getElementById('p3-t-fin').value = '';
+  renderPaso3();
 };
 
 function actualizarResumenAudioPaso3() {
@@ -4006,15 +5052,27 @@ function actualizarResumenAudioPaso3() {
   const maxMin = Number(document.getElementById('p3-max-min').value || 0);
   const r0 = st.rangoInicio ?? 0;
   const r1 = st.rangoFin ?? st.duracion;
+  const badgeRango = document.getElementById('p3-badge-rango');
+  if (badgeRango) {
+    if (st.rangoInicio !== null || st.rangoFin !== null) {
+      badgeRango.textContent = `✂️ Recorte activo: ${fmtHMS(r0)} → ${fmtHMS(r1)}`;
+      badgeRango.className = 'badge badge-verde';
+    } else {
+      badgeRango.textContent = `Tramo activo: Todo (${fmtHMS(st.duracion)})`;
+      badgeRango.className = 'badge badge-azul';
+    }
+  }
   const segsR = st.segmentos.filter(s => estaEnRango(st, s));
   let activos = segsR.filter(s => !esSegSilenciado(st, s));
   if (modo === 'aislar' && minSeg > 0) {
     activos = activos.filter(s => (Math.min(s.fin, r1) - Math.max(s.inicio, r0)) >= minSeg);
   }
-  let durAct = activos.reduce((acc, s) => acc + Math.max(0, Math.min(s.fin, r1) - Math.max(s.inicio, r0)), 0);
+  let durAct = modo === 'rango_directo'
+    ? Math.max(0, r1 - r0)
+    : activos.reduce((acc, s) => acc + Math.max(0, Math.min(s.fin, r1) - Math.max(s.inicio, r0)), 0);
   if (modo === 'aislar' && maxMin > 0 && durAct > maxMin * 60) durAct = maxMin * 60;
   document.getElementById('p3-resumen-audio').innerHTML =
-    `✨ Fragmentos activos a incluir: <strong>${activos.length}</strong> · Duración estimada de salida: <strong>${fmtHMS(durAct)}</strong>`;
+    `⏱️ Rango: <strong>${fmtHMS(r0)} → ${fmtHMS(r1)}</strong> · Fragmentos en rango: <strong>${activos.length}</strong> · Duración de salida: <strong>${fmtHMS(durAct)}</strong>`;
 }
 
 ['p3-modo-audio','p3-fmt-audio','p3-max-min','p3-min-seg'].forEach(id => {
@@ -4210,7 +5268,9 @@ document.getElementById('btn-p4-unir-video').onclick = async () => {
       modo: document.getElementById('p4-modo-unir').value,
       offset: document.getElementById('p4-offset-seg').value || '0',
       inc_nom: document.getElementById('p4-inc-nom').checked ? '1' : '0',
-      inc_sil: document.getElementById('p4-inc-sil').checked ? '1' : '0'
+      inc_sil: document.getElementById('p4-inc-sil').checked ? '1' : '0',
+      desde: document.getElementById('p4-t-ini').value.trim(),
+      hasta: document.getElementById('p4-t-fin').value.trim()
     });
     const r = await fetch('/api/unir_subtitulos_video?' + q.toString(), {
       method: 'POST',
@@ -4234,6 +5294,206 @@ document.getElementById('btn-p4-unir-video').onclick = async () => {
     btn.disabled = false;
   }
 };
+
+document.getElementById('btn-p4-tomar-ini').onclick = () => {
+  document.getElementById('p4-t-ini').value = fmtHMS(videoP4.currentTime || 0);
+};
+document.getElementById('btn-p4-tomar-fin').onclick = () => {
+  document.getElementById('p4-t-fin').value = fmtHMS(videoP4.currentTime || 0);
+};
+
+
+// ==============================================================================
+// PESTAÑA 5: ENTRENAR MODELO ML DE MI ESTILO Y CONVERTIR GUIONES
+// ==============================================================================
+let ultimoPromptAdn = '';
+
+async function cargarEstadoEstiloPaso5() {
+  try {
+    const [rEst, rSes] = await Promise.all([
+      fetch('/api/estilo_estado'),
+      fetch('/api/sesiones_guardadas')
+    ]);
+    const est = await rEst.json();
+    const sesiones = await rSes.json();
+
+    const contSes = document.getElementById('p5-lista-sesiones-train');
+    if (!sesiones.length) {
+      contSes.innerHTML = '<span style="font-size:0.82rem;color:var(--muted)">No hay sesiones guardadas aún. Podés subir archivos .TXT/.SRT abajo con el botón B.</span>';
+    } else {
+      contSes.innerHTML = sesiones.map((s, idx) => `
+        <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;background:#fff;border:1px solid var(--border);border-radius:6px;font-size:0.83rem;cursor:pointer">
+          <span style="display:flex;align-items:center;gap:6px">
+            <input type="checkbox" class="chk-ses-train" value="${escHtml(s.sesion_id)}" ${idx === 0 ? 'checked' : ''}>
+            <strong>${escHtml(s.nombre_original)}</strong>
+            <small style="color:var(--muted)">(${s.cantidad_segmentos} frases · ${fmtHMS(s.duracion)})</small>
+          </span>
+          <select class="sel-spk-train" data-sid="${escHtml(s.sesion_id)}" style="width:auto;padding:3px 6px;font-size:0.78rem">
+            <option value="SPK_1" selected>Usar Hablante 1 (Principal / Mi Voz)</option>
+            <option value="ACTIVOS">Usar todos los hablantes no silenciados</option>
+            <option value="SPK_2">Usar Hablante 2</option>
+          </select>
+        </label>
+      `).join('');
+    }
+
+    renderModeloEstiloUI(est);
+  } catch (e) {}
+}
+
+function renderModeloEstiloUI(est) {
+  const badge = document.getElementById('p5-badge-estado');
+  if (!est || !est.entrenado) {
+    badge.textContent = '⚠️ Modelo aún sin entrenar (hacé clic en Entrenar Modelo)';
+    badge.className = 'badge badge-ambar';
+    return;
+  }
+  const m = est.metricas || {};
+  badge.textContent = `✔ Modelo ML Entrenado (${m.total_intervenciones || 0} frases · ${m.total_palabras || 0} palabras)`;
+  badge.className = 'badge badge-verde';
+
+  document.getElementById('p5-m-frases').textContent = m.total_intervenciones || 0;
+  document.getElementById('p5-m-pal').textContent = m.total_palabras || 0;
+  document.getElementById('p5-m-long').textContent = (m.palabras_por_oracion_media || 0) + ' pal/oración';
+
+  const chipsM = document.getElementById('p5-chips-marcadores');
+  chipsM.innerHTML = (est.top_marcadores || []).slice(0, 18).map(item =>
+    `<span class="badge badge-azul">"${escHtml(item.frase)}" <strong>×${item.frecuencia}</strong></span>`
+  ).join('') || '<span style="font-size:0.8rem;color:var(--muted)">Sin marcadores detectados</span>';
+
+  const chipsN = document.getElementById('p5-chips-ngramas');
+  chipsN.innerHTML = (est.frases_frecuentes || []).slice(0, 15).map(item =>
+    `<span class="badge">"${escHtml(item.frase)}" <strong>×${item.frecuencia}</strong></span>`
+  ).join('');
+
+  document.getElementById('p5-inp-muletillas').value = (est.muletillas_personalizadas || []).join(', ');
+}
+
+document.getElementById('arch-p5-extra').onchange = e => {
+  const n = e.target.files.length;
+  document.getElementById('p5-lbl-extra').textContent = n ? `${n} archivo(s) listos para sumar al entrenamiento` : 'Ningún archivo extra seleccionado';
+};
+
+document.getElementById('btn-p5-entrenar').onclick = async () => {
+  const btn = document.getElementById('btn-p5-entrenar');
+  const resDiv = document.getElementById('p5-res-entrenar');
+  btn.disabled = true;
+  resDiv.innerHTML = '⏳ Analizando tus transcripciones y entrenando modelo de estilo…';
+
+  try {
+    const selecciones = [];
+    document.querySelectorAll('.chk-ses-train:checked').forEach(chk => {
+      const sid = chk.value;
+      const selSpk = document.querySelector(`.sel-spk-train[data-sid="${sid}"]`);
+      selecciones.push({ sesion_id: sid, hablante: selSpk ? selSpk.value : 'SPK_1' });
+    });
+
+    const textosExtra = [];
+    const filesExtra = document.getElementById('arch-p5-extra').files;
+    for (const f of filesExtra) {
+      const q = new URLSearchParams({ nombre: f.name });
+      const rUp = await fetch('/api/subir_transcripcion?' + q.toString(), { method: 'POST', body: f });
+      if (rUp.ok) {
+        const dUp = await rUp.json();
+        selecciones.push({ sesion_id: dUp.sesion_id, hablante: 'ACTIVOS' });
+      }
+    }
+
+    const r = await fetch('/api/estilo_entrenar', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ selecciones, textos_extra: textosExtra })
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const modelo = await r.json();
+    renderModeloEstiloUI(modelo);
+    resDiv.innerHTML = `<span style="color:var(--ok);font-weight:700">✔ ¡Modelo entrenado con éxito! Analizó ${modelo.metricas.total_intervenciones} intervenciones (${modelo.metricas.total_palabras} palabras) de tus transcripciones.</span>`;
+  } catch (e) {
+    resDiv.innerHTML = `<span style="color:var(--danger);font-weight:700">✘ ${escHtml(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+document.getElementById('btn-p5-guardar-muletillas').onclick = async () => {
+  const val = document.getElementById('p5-inp-muletillas').value;
+  const lista = val.split(',').map(x => x.trim()).filter(Boolean);
+  const r = await fetch('/api/estilo_guardar_ajustes', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ muletillas_personalizadas: lista })
+  });
+  if (r.ok) {
+    alert('✔ Tus expresiones preferidas quedaron guardadas en el modelo.');
+  }
+};
+
+document.getElementById('btn-p5-ejemplo-guion').onclick = () => {
+  document.getElementById('p5-txt-guion').value =
+    "A continuación veremos cómo trabajar con funciones y librerías en una nueva versión de Python. Es importante destacar que primero debemos verificar qué versión tienes instalada aquí en el entorno.\n\n" +
+    "Observa que si realizaremos un proyecto grande, utilizaremos muchísimos módulos externos; por lo tanto, debes crear un entorno virtual para no mezclar las dependencias. Finalmente, definiremos la función principal y probaremos cómo funciona.";
+};
+
+document.getElementById('btn-p5-convertir').onclick = async () => {
+  const guion = document.getElementById('p5-txt-guion').value.trim();
+  if (!guion) {
+    alert('Escribí o pegá primero un guión (o tocá "✨ Cargar guión de prueba").');
+    return;
+  }
+  const btn = document.getElementById('btn-p5-convertir');
+  btn.disabled = true;
+  btn.textContent = '⏳ Convirtiendo guión a tu estilo…';
+
+  try {
+    const r = await fetch('/api/estilo_convertir_guion', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        guion,
+        intensidad: document.getElementById('p5-intensidad').value,
+        formato_salida: document.getElementById('p5-formato-out').value,
+        usar_ollama: document.getElementById('p5-chk-ollama').checked
+      })
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    ultimoPromptAdn = d.prompt_adn || '';
+    document.getElementById('p5-box-resultado').style.display = 'block';
+    document.getElementById('p5-txt-salida').value = d.guion_convertido;
+    document.getElementById('p5-info-out').textContent = `${d.palabras_salida} palabras · ~${fmtHMS(d.duracion_estimada_seg)} hablados a tu ritmo`;
+    const ragDiv = document.getElementById('p5-rag-ejemplos');
+    ragDiv.innerHTML = (d.ejemplos_referencia || []).map(ej =>
+      `<div style="padding:6px 8px;background:#fff;border-left:3px solid #6366f1;border-radius:4px">"${escHtml(ej.slice(0, 220))}${ej.length > 220 ? '…' : ''}"</div>`
+    ).join('') || '<span>Sin fragmentos de referencia</span>';
+  } catch (e) {
+    alert('Error al convertir guión: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🪄 Convertir Guión a Mi Estilo de Hablar';
+  }
+};
+
+document.getElementById('btn-p5-copiar-out').onclick = () => {
+  const txt = document.getElementById('p5-txt-salida').value;
+  navigator.clipboard.writeText(txt);
+  alert('✔ Guión convertido copiado al portapapeles.');
+};
+
+document.getElementById('btn-p5-descargar-out').onclick = () => {
+  const txt = document.getElementById('p5-txt-salida').value;
+  const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'guion_en_mi_estilo.txt';
+  a.click();
+};
+
+document.getElementById('btn-p5-copiar-prompt').onclick = () => {
+  if (!ultimoPromptAdn) return;
+  navigator.clipboard.writeText(ultimoPromptAdn);
+  alert('✔ Prompt con tu ADN de estilo y ejemplos reales copiado.');
+};
+
 
 // Inicialización automática: si hay una sesión guardada, dejarla pre-cargada
 (async function init() {
@@ -4280,7 +5540,16 @@ class Handler(BaseHTTPRequestHandler):
     def _serve_audio_file(self, ruta: str, nombre: str) -> None:
         tam = os.path.getsize(ruta)
         ext = os.path.splitext(nombre)[1].lower()
-        ctype = "audio/wav" if ext == ".wav" else ("application/zip" if ext == ".zip" else "audio/mpeg")
+        if ext == ".wav":
+            ctype = "audio/wav"
+        elif ext == ".zip":
+            ctype = "application/zip"
+        elif ext in (".mp4", ".mov", ".mkv"):
+            ctype = "video/mp4"
+        elif ext == ".webm":
+            ctype = "video/webm"
+        else:
+            ctype = "audio/mpeg"
         rango = self.headers.get("Range")
         if rango and rango.startswith("bytes="):
             try:
@@ -4333,11 +5602,12 @@ class Handler(BaseHTTPRequestHandler):
             archivos = []
             if os.path.isdir(SALIDA):
                 for f in os.listdir(SALIDA):
-                    if f.lower().endswith((".mp3", ".wav")):
+                    if f.lower().endswith((".mp3", ".wav", ".mp4", ".mkv", ".mov", ".webm")):
                         rp = os.path.join(SALIDA, f)
                         if os.path.isfile(rp):
                             archivos.append({
                                 "nombre": f,
+                                "tipo": "video" if f.lower().endswith((".mp4", ".mkv", ".mov", ".webm")) else "audio",
                                 "bytes": os.path.getsize(rp),
                                 "mtime": os.path.getmtime(rp)
                             })
@@ -4401,6 +5671,23 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_text(404, "Trabajo no encontrado")
                 copia = dict(job)
             return self._send_json(200, copia)
+
+        if p.path == "/api/estilo_estado":
+            modelo = cargar_modelo_estilo()
+            copia = {k: v for k, v in modelo.items() if k != "bloques_rag"}
+            return self._send_json(200, copia)
+
+        if p.path == "/api/estilo_dataset_jsonl":
+            modelo = cargar_modelo_estilo()
+            jsonl_txt = generar_dataset_finetuning_jsonl(modelo)
+            raw = jsonl_txt.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/jsonl; charset=utf-8")
+            self.send_header("Content-Disposition", 'attachment; filename="mi_estilo_finetuning.jsonl"')
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return
 
         if p.path.startswith("/audios/"):
             nombre = os.path.basename(urllib.parse.unquote(p.path[8:]))
@@ -4496,12 +5783,27 @@ class Handler(BaseHTTPRequestHandler):
             q = urllib.parse.parse_qs(p.query)
             nombre_arch = os.path.basename(q.get("nombre", ["transcripcion.txt"])[0])
             nombre_mp3 = os.path.basename(q.get("nombre_mp3", [""])[0]) if q.get("nombre_mp3", [""])[0] else ""
+            desde_str = (q.get("desde", [""])[0] or "").strip()
+            hasta_str = (q.get("hasta", [""])[0] or "").strip()
+            reiniciar_rel = q.get("reiniciar_reloj", ["0"])[0] == "1"
             largo = int(self.headers.get("Content-Length", 0) or 0)
             datos_bytes = self.rfile.read(largo) if largo > 0 else b""
             if not datos_bytes:
                 return self._send_text(400, "El archivo de transcripción está vacío.")
             try:
+                t_desde = parsear_tiempo(desde_str) if desde_str else None
+                t_hasta = parsear_tiempo(hasta_str) if hasta_str else None
                 parsed = parsear_transcripcion_externa(datos_bytes, nombre_arch)
+                if t_desde is not None or t_hasta is not None:
+                    segs_rec, _, dur_rec = recortar_segmentos_por_tiempo(
+                        parsed["segmentos"], t_desde, t_hasta, reiniciar_reloj=reiniciar_rel
+                    )
+                    if not segs_rec:
+                        return self._send_text(400, "No quedaron fragmentos dentro del minuto y segundo indicados.")
+                    parsed["segmentos"] = segs_rec
+                    parsed["duracion"] = dur_rec
+                    nomes_prev = {h["id"]: h["nombre"] for h in parsed.get("hablantes", [])}
+                    parsed["hablantes"] = _resumen_hablantes(segs_rec, nombres_previos=nomes_prev)
             except Exception as e:
                 return self._send_text(400, f"Error leyendo la transcripción: {e}")
             if not parsed["segmentos"]:
@@ -4654,6 +5956,7 @@ class Handler(BaseHTTPRequestHandler):
                 "idioma": q.get("idioma", ["es"])[0],
                 "hablantes": q.get("hablantes", ["0"])[0] or 0,
                 "solo_extraer": q.get("solo_extraer", ["0"])[0] == "1",
+                "modo_p1": q.get("modo_p1", ["mp3"])[0],
                 "usar_mp3_existente": usar_existente,
             }
 
@@ -4763,6 +6066,53 @@ class Handler(BaseHTTPRequestHandler):
             ok = eliminar_voz_perfil(nombre)
             return self._send_json(200, {"ok": ok})
 
+        if p.path == "/api/recortar_transcripcion_sesion":
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            body = json.loads(self.rfile.read(largo).decode("utf-8")) if largo > 0 else {}
+            sid = body.get("sesion_id", "")
+            desde_str = (body.get("desde") or "").strip()
+            hasta_str = (body.get("hasta") or "").strip()
+            reiniciar_reloj = bool(body.get("reiniciar_reloj", False))
+
+            with JOBS_LOCK:
+                sesion = SESIONES.get(sid)
+            if not sesion:
+                return self._send_text(404, "Sesión no encontrada")
+
+            try:
+                t_desde = parsear_tiempo(desde_str) if desde_str else None
+                t_hasta = parsear_tiempo(hasta_str) if hasta_str else None
+            except ValueError as e:
+                return self._send_text(400, str(e))
+
+            if t_desde is None and t_hasta is None:
+                return self._send_text(400, "Indicá al menos el minuto:segundo Desde o Hasta para recortar.")
+
+            nuevos_segs, indices_orig, nueva_dur = recortar_segmentos_por_tiempo(
+                sesion.get("segmentos", []), t_desde, t_hasta, reiniciar_reloj=reiniciar_reloj
+            )
+            if not nuevos_segs:
+                return self._send_text(400, "No hay fragmentos de transcripción dentro de ese rango de minutos y segundos.")
+
+            X_old = sesion.get("X")
+            if X_old is not None and isinstance(X_old, np.ndarray) and len(X_old) > max(indices_orig, default=-1):
+                sesion["X"] = X_old[indices_orig]
+            else:
+                sesion["X"] = None
+
+            nombres_prev = {h["id"]: h["nombre"] for h in sesion.get("hablantes", [])}
+            sil_prev = {h["id"]: bool(h.get("silenciado")) for h in sesion.get("hablantes", [])}
+            sesion["segmentos"] = nuevos_segs
+            sesion["duracion"] = nueva_dur
+            sesion["hablantes"] = _resumen_hablantes(nuevos_segs, nombres_previos=nombres_prev, silenciados_previos=sil_prev)
+            guardar_sesion_disco(sesion)
+            return self._send_json(200, {
+                "ok": True,
+                "duracion": nueva_dur,
+                "segmentos": sesion["segmentos"],
+                "hablantes": sesion["hablantes"]
+            })
+
         if p.path == "/api/unir_subtitulos_video":
             q = urllib.parse.parse_qs(p.query)
             nombre_vid = os.path.basename(q.get("nombre_video", ["video.mp4"])[0])
@@ -4771,15 +6121,23 @@ class Handler(BaseHTTPRequestHandler):
             offset_seg = float(q.get("offset", ["0"])[0] or 0.0)
             inc_nom = q.get("inc_nom", ["1"])[0] == "1"
             inc_sil = q.get("inc_sil", ["0"])[0] == "1"
+            desde_str = (q.get("desde", [""])[0] or "").strip()
+            hasta_str = (q.get("hasta", [""])[0] or "").strip()
+
+            try:
+                t_desde_v = parsear_tiempo(desde_str) if desde_str else None
+                t_hasta_v = parsear_tiempo(hasta_str) if hasta_str else None
+            except ValueError as e:
+                return self._send_text(400, str(e))
 
             with JOBS_LOCK:
                 sesion = SESIONES.get(sid)
-            if not sesion:
+            if not sesion and modo_sub != "solo_recortar_video":
                 return self._send_text(404, "Sesión de transcripción no encontrada")
 
             largo = int(self.headers.get("Content-Length", 0) or 0)
             if largo <= 0:
-                return self._send_text(400, "Subí el archivo de video para unirle los subtítulos.")
+                return self._send_text(400, "Subí el archivo de video primero.")
 
             ext_v = os.path.splitext(nombre_vid)[1].lower() or ".mp4"
             with tempfile.NamedTemporaryFile(suffix=ext_v, delete=False, dir=TEMP_DIR) as tmp_v:
@@ -4792,16 +6150,43 @@ class Handler(BaseHTTPRequestHandler):
                     restante -= len(trozo)
                 ruta_video_in = tmp_v.name
 
+            base_v = os.path.splitext(nombre_vid)[0]
+            suf_t = ""
+            if desde_str or hasta_str:
+                suf_t = f"_{(desde_str or '00-00').replace(':','-')}_a_{(hasta_str or 'fin').replace(':','-')}"
+
+            if modo_sub == "solo_recortar_video":
+                nombre_out = nombre_unico(SALIDA, f"{base_v}{suf_t}_recortado", ".mp4")
+                ruta_out = os.path.join(SALIDA, nombre_out)
+                try:
+                    recortar_video_ffmpeg(ruta_video_in, ruta_out, desde=desde_str, hasta=hasta_str)
+                except Exception as e:
+                    return self._send_text(500, str(e))
+                finally:
+                    if os.path.exists(ruta_video_in):
+                        try:
+                            os.remove(ruta_video_in)
+                        except OSError:
+                            pass
+                return self._send_json(200, {"ok": True, "nombre_archivo": nombre_out})
+
             mapa_nom = {h["id"]: h["nombre"] for h in sesion.get("hablantes", [])}
             mapa_sil = {h["id"]: bool(h.get("silenciado")) for h in sesion.get("hablantes", [])}
             lineas_srt = []
             contador_sub = 1
+            t0_shift = float(t_desde_v) if t_desde_v is not None and t_desde_v > 0 else 0.0
             for s in sesion.get("segmentos", []):
                 sil = s.get("override_mute") if s.get("override_mute") is not None else mapa_sil.get(s.get("hablante"), False)
                 if sil and not inc_sil:
                     continue
-                ini = max(0.0, float(s["inicio"]) + offset_seg)
-                fin = max(ini + 0.5, float(s["fin"]) + offset_seg)
+                ini_abs = max(0.0, float(s["inicio"]) + offset_seg)
+                fin_abs = max(ini_abs + 0.5, float(s["fin"]) + offset_seg)
+                if t_desde_v is not None and fin_abs <= t_desde_v:
+                    continue
+                if t_hasta_v is not None and ini_abs >= t_hasta_v:
+                    continue
+                ini = max(0.0, ini_abs - t0_shift)
+                fin = max(ini + 0.5, (min(t_hasta_v, fin_abs) if t_hasta_v is not None else fin_abs) - t0_shift)
                 ms_i = int(round(ini * 1000))
                 ms_f = int(round(fin * 1000))
                 ts_i = f"{ms_i//3600000:02d}:{(ms_i%3600000)//60000:02d}:{(ms_i%60000)//1000:02d},{ms_i%1000:03d}"
@@ -4814,28 +6199,95 @@ class Handler(BaseHTTPRequestHandler):
             with open(ruta_srt_tmp, "w", encoding="utf-8") as fsrt:
                 fsrt.write("\n".join(lineas_srt))
 
-            base_v = os.path.splitext(nombre_vid)[0]
-            nombre_out = nombre_unico(SALIDA, f"{base_v}_subtitulado", ".mp4")
+            nombre_out = nombre_unico(SALIDA, f"{base_v}{suf_t}_subtitulado", ".mp4")
             ruta_out = os.path.join(SALIDA, nombre_out)
+            ruta_vid_base = ruta_video_in
+            ruta_vid_rec_tmp = ""
 
             try:
+                if desde_str or hasta_str:
+                    ruta_vid_rec_tmp = os.path.join(TEMP_DIR, f"vrec_{uuid.uuid4().hex[:8]}.mp4")
+                    recortar_video_ffmpeg(ruta_video_in, ruta_vid_rec_tmp, desde=desde_str, hasta=hasta_str)
+                    ruta_vid_base = ruta_vid_rec_tmp
+
                 if modo_sub == "burn":
                     ruta_esc = ruta_srt_tmp.replace("\\", "/").replace(":", "\\:")
-                    cmd = ["ffmpeg", "-y", "-i", ruta_video_in, "-vf", f"subtitles='{ruta_esc}'", "-c:a", "copy", ruta_out]
+                    cmd = ["ffmpeg", "-y", "-i", ruta_vid_base, "-vf", f"subtitles='{ruta_esc}'", "-c:a", "copy", ruta_out]
                 else:
-                    cmd = ["ffmpeg", "-y", "-i", ruta_video_in, "-i", ruta_srt_tmp, "-c:v", "copy", "-c:a", "copy", "-c:s", "mov_text", ruta_out]
+                    cmd = ["ffmpeg", "-y", "-i", ruta_vid_base, "-i", ruta_srt_tmp, "-c:v", "copy", "-c:a", "copy", "-c:s", "mov_text", ruta_out]
                 r_ff = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
                 if r_ff.returncode != 0:
                     return self._send_text(500, f"Error de ffmpeg: {r_ff.stderr[-300:]}")
             finally:
-                for rp in (ruta_video_in, ruta_srt_tmp):
-                    if os.path.exists(rp):
+                for rp in (ruta_video_in, ruta_vid_rec_tmp, ruta_srt_tmp):
+                    if rp and os.path.exists(rp):
                         try:
                             os.remove(rp)
                         except OSError:
                             pass
 
             return self._send_json(200, {"ok": True, "nombre_archivo": nombre_out})
+
+        if p.path == "/api/estilo_entrenar":
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            body = json.loads(self.rfile.read(largo).decode("utf-8")) if largo > 0 else {}
+            selecciones = body.get("selecciones") or []
+            textos_extra = body.get("textos_extra") or []
+
+            oraciones = []
+            duraciones = []
+            fuentes = []
+            with JOBS_LOCK:
+                for item in selecciones:
+                    sid = item.get("sesion_id", "")
+                    spk_filtro = item.get("hablante", "SPK_1")
+                    ses = SESIONES.get(sid)
+                    if not ses:
+                        continue
+                    fuentes.append(ses.get("nombre_original", sid))
+                    mapa_sil = {h["id"]: bool(h.get("silenciado")) for h in ses.get("hablantes", [])}
+                    for s in ses.get("segmentos", []):
+                        if spk_filtro == "ACTIVOS":
+                            if mapa_sil.get(s.get("hablante"), False):
+                                continue
+                        elif s.get("hablante") != spk_filtro:
+                            continue
+                        oraciones.append(s.get("texto", ""))
+                        duraciones.append(max(0.5, float(s.get("fin", 0)) - float(s.get("inicio", 0))))
+
+            for t_ex in textos_extra:
+                for linea in str(t_ex).splitlines():
+                    if linea.strip():
+                        oraciones.append(linea.strip())
+
+            try:
+                modelo = entrenar_modelo_estilo_ml(oraciones, duraciones if duraciones else None, fuentes)
+                copia = {k: v for k, v in modelo.items() if k != "bloques_rag"}
+                return self._send_json(200, copia)
+            except Exception as e:
+                return self._send_text(400, str(e))
+
+        if p.path == "/api/estilo_guardar_ajustes":
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            body = json.loads(self.rfile.read(largo).decode("utf-8")) if largo > 0 else {}
+            modelo = cargar_modelo_estilo()
+            modelo["muletillas_personalizadas"] = body.get("muletillas_personalizadas", [])
+            guardar_modelo_estilo(modelo)
+            return self._send_json(200, {"ok": True})
+
+        if p.path == "/api/estilo_convertir_guion":
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            body = json.loads(self.rfile.read(largo).decode("utf-8")) if largo > 0 else {}
+            try:
+                res = convertir_guion_a_mi_estilo(
+                    body.get("guion", ""),
+                    intensidad=body.get("intensidad", "equilibrado"),
+                    formato_salida=body.get("formato_salida", "fluido"),
+                    usar_ollama=bool(body.get("usar_ollama", False))
+                )
+                return self._send_json(200, res)
+            except Exception as e:
+                return self._send_text(400, str(e))
 
         if p.path == "/api/exportar_mp3":
             largo = int(self.headers.get("Content-Length", 0) or 0)
