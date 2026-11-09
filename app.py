@@ -1434,7 +1434,7 @@ STOPWORDS_ES = {
     "hay", "tiene", "tienen", "hacer", "hace", "puede", "pueden", "ir", "va", "van"
 }
 
-PATRONES_MARCADORES_CLASE = [
+PATRONES_MARCADORES_HABLA = [
     "vamos a ver", "vamos a hacer", "vamos a poner", "vamos a crear", "vamos a usar",
     "lo que vamos a", "entonces vamos a", "yo les voy a", "les voy a", "lo voy a",
     "voy a crear", "voy a hacer", "voy a poner", "van a tener", "van a ver",
@@ -1544,7 +1544,7 @@ def entrenar_modelo_estilo_ml(textos_oraciones: list[str], duraciones_seg: list[
 
     # 1. Conteo de marcadores discursivos y muletillas reales del usuario
     marcadores_conteo = {}
-    for m in PATRONES_MARCADORES_CLASE:
+    for m in PATRONES_MARCADORES_HABLA:
         c = len(re.findall(r"\b" + re.escape(m) + r"\b", texto_lower))
         if c > 0:
             # Unificar variantes sin tilde
@@ -1751,7 +1751,7 @@ def _adaptar_oracion_a_estilo(oracion: str, idx_oracion: int, total_oraciones: i
 def convertir_guion_a_mi_estilo(guion_original: str, intensidad: str = "equilibrado",
                                 formato_salida: str = "fluido",
                                 usar_ollama: bool = False, modelo_ollama: str = "llama3") -> dict:
-    """Convierte un guión o apunte teórico al estilo de habla aprendido en el modelo ML."""
+    """Convierte un guión o texto base al estilo de habla aprendido en el modelo ML."""
     guion_original = (guion_original or "").strip()
     if not guion_original:
         raise ValueError("Escribí o pegá un guión para convertirlo a tu estilo.")
@@ -1784,12 +1784,12 @@ def convertir_guion_a_mi_estilo(guion_original: str, intensidad: str = "equilibr
     top_m_str = ", ".join(f'"{m}"' for m in muletillas[:12])
     ejemplos_str = "\n".join(f'- "{ej}"' for ej in ejemplos_rag[:4])
     prompt_adn = (
-        "Sos un clon exacto de mi forma de hablar y dar clases en español rioplatense (Argentina).\n"
+        "Sos un clon exacto de mi forma de hablar y expresarme en español rioplatense (Argentina).\n"
         f"Mi ritmo promedio es de {modelo.get('metricas', {}).get('palabras_por_oracion_media', 15)} palabras por oración "
         f"({modelo.get('metricas', {}).get('palabras_por_minuto', 135)} palabras por minuto).\n"
         f"Expresiones y conectores reales que más uso al hablar: {top_m_str}.\n"
         "Uso voseo natural (tenés, fijate, mirá, vamos a ver, vamos a crear, les voy a mostrar, acá, un montón de).\n\n"
-        "Ejemplos reales extraídos de mis clases grabadas (imitá este tono, ritmo y estructura sintáctica):\n"
+        "Ejemplos reales extraídos de mis grabaciones (imitá este tono, ritmo y estructura sintáctica):\n"
         f"{ejemplos_str}\n\n"
         "TAREA: Reescribí el siguiente guión para que suene 100% dicho por mí de forma oral y natural, "
         "manteniendo todos los conceptos técnicos pero hablándolo exactamente con mi estilo:\n\n"
@@ -1902,7 +1902,7 @@ def generar_dataset_finetuning_jsonl(modelo: dict) -> str:
     """Exporta un archivo JSONL con pares (system, user=guión neutro, assistant=mi estilo real) para Fine-Tuning de LLMs."""
     bloques = modelo.get("bloques_rag", [])
     lineas = []
-    sys_msg = "Sos un asistente que convierte guiones formales al estilo oral y natural de clase de la autora."
+    sys_msg = "Sos un asistente que convierte guiones formales al estilo oral y natural de la autora."
     for b in bloques:
         real = b.get("texto", "").strip()
         if len(real.split()) < 12:
@@ -1920,7 +1920,7 @@ def generar_dataset_finetuning_jsonl(modelo: dict) -> str:
 
 
 # ==============================================================================
-# GESTIÓN DE GRUPOS DE HABLANTES (HOY: GRUPO CON NOMBRE / FUTURO: MATERIA-CÁTEDRA-COMISIÓN)
+# GESTIÓN DE GRUPOS DE HABLANTES (HOY: GRUPO CON NOMBRE / FUTURO: JERARQUÍA MULTINIVEL)
 # ==============================================================================
 
 def _asegurar_estructura_grupos(reg: dict) -> dict:
@@ -1931,9 +1931,9 @@ def _asegurar_estructura_grupos(reg: dict) -> dict:
     if "General" not in grupos:
         grupos["General"] = {
             "nombre": "General",
-            "materia": "",
-            "catedra": "",
-            "comision": "",
+            "categoria": "",
+            "area": "",
+            "subgrupo": "",
             "nombres": list(reg.get("listado_nombres", [])),
             "perfiles": dict(reg.get("perfiles", {})),
             "creado_en": time.strftime("%Y-%m-%d %H:%M:%S")
@@ -1952,9 +1952,9 @@ def listar_grupos() -> list[dict]:
                 nombres_g.append(p_nom)
         salida.append({
             "nombre": g_nom,
-            "materia": g_info.get("materia", ""),
-            "catedra": g_info.get("catedra", ""),
-            "comision": g_info.get("comision", ""),
+            "categoria": g_info.get("categoria", ""),
+            "area": g_info.get("area", ""),
+            "subgrupo": g_info.get("subgrupo", ""),
             "cantidad_nombres": len(nombres_g),
             "cantidad_voces": len(perfiles_g),
             "nombres": sorted(nombres_g, key=lambda x: x.lower()),
@@ -1971,27 +1971,27 @@ def listar_grupos() -> list[dict]:
     return salida
 
 
-def crear_o_actualizar_grupo(nombre_grupo: str, materia: str = "", catedra: str = "", comision: str = "") -> dict:
+def crear_o_actualizar_grupo(nombre_grupo: str, categoria: str = "", area: str = "", subgrupo: str = "") -> dict:
     nombre_grupo = (nombre_grupo or "").strip() or "General"
     reg = _asegurar_estructura_grupos(cargar_registro_voces())
     grupos = reg["grupos"]
     if nombre_grupo not in grupos:
         grupos[nombre_grupo] = {
             "nombre": nombre_grupo,
-            "materia": materia.strip(),
-            "catedra": catedra.strip(),
-            "comision": comision.strip(),
+            "categoria": categoria.strip(),
+            "area": area.strip(),
+            "subgrupo": subgrupo.strip(),
             "nombres": [],
             "perfiles": {},
             "creado_en": time.strftime("%Y-%m-%d %H:%M:%S")
         }
     else:
-        if materia:
-            grupos[nombre_grupo]["materia"] = materia.strip()
-        if catedra:
-            grupos[nombre_grupo]["catedra"] = catedra.strip()
-        if comision:
-            grupos[nombre_grupo]["comision"] = comision.strip()
+        if categoria:
+            grupos[nombre_grupo]["categoria"] = categoria.strip()
+        if area:
+            grupos[nombre_grupo]["area"] = area.strip()
+        if subgrupo:
+            grupos[nombre_grupo]["subgrupo"] = subgrupo.strip()
     guardar_registro_voces(reg)
     return grupos[nombre_grupo]
 
@@ -2006,7 +2006,7 @@ def registrar_voz_en_grupo(nombre_grupo: str, nombre_hablante: str, vector_emb: 
     reg = _asegurar_estructura_grupos(cargar_registro_voces())
     if nombre_grupo not in reg["grupos"]:
         reg["grupos"][nombre_grupo] = {
-            "nombre": nombre_grupo, "materia": "", "catedra": "", "comision": "",
+            "nombre": nombre_grupo, "categoria": "", "area": "", "subgrupo": "",
             "nombres": [], "perfiles": {}, "creado_en": time.strftime("%Y-%m-%d %H:%M:%S")
         }
     g = reg["grupos"][nombre_grupo]
@@ -2121,7 +2121,7 @@ def agregar_nombres_al_listado(nuevos: list[str], grupo: str = "General", reempl
     reg = _asegurar_estructura_grupos(cargar_registro_voces())
     if grupo not in reg["grupos"]:
         reg["grupos"][grupo] = {
-            "nombre": grupo, "materia": "", "catedra": "", "comision": "",
+            "nombre": grupo, "categoria": "", "area": "", "subgrupo": "",
             "nombres": [], "perfiles": {}, "creado_en": time.strftime("%Y-%m-%d %H:%M:%S")
         }
     g = reg["grupos"][grupo]
@@ -2145,7 +2145,7 @@ def extraer_nombres_desde_archivo(datos_bytes: bytes, nombre_archivo: str) -> li
         "nombre", "nombres", "apellido", "apellidos", "nombre y apellido",
         "apellido y nombre", "hablante", "hablantes",
         "participante", "participantes", "persona", "email", "correo",
-        "dni", "legajo", "id", "nro", "numero", "comision", "curso", "nota"
+        "dni", "legajo", "id", "nro", "numero", "equipo", "grupo", "rol"
     }
     candidatos = []
 
@@ -2470,7 +2470,7 @@ def parsear_transcripcion_externa(datos_bytes: bytes, nombre_archivo: str) -> di
 
 
 # ==============================================================================
-# AUTO-MATCHEO DE PRIMERA CLASE: PRESENTACIONES ("MI NOMBRE ES / SOY...") + CRUCE CON TACTIQ SINCRONIZADO
+# AUTO-MATCHEO INICIAL DE HABLANTES: PRESENTACIONES ("MI NOMBRE ES / SOY...") + CRUCE CON TACTIQ SINCRONIZADO
 # ==============================================================================
 
 def _matchear_nombre_con_listado(candidato: str, listado_nombres: list[str]) -> str:
@@ -2514,7 +2514,7 @@ def detectar_presentaciones_en_segmentos(segmentos: list[dict], listado_nombres:
         re.compile(r"\b(?:mi nombre es|me llamo|yo soy|hola soy|buenas soy|buen dia soy|buenas tardes soy|buenas noches soy|aca habla)\s+([a-záéíóúüñ]{3,20}(?:\s+[a-záéíóúüñ]{3,20})?)", re.IGNORECASE),
     ]
     no_nombres = {
-        "nuevo", "nueva", "estudiante", "profesor", "profesora", "docente", "ayudante",
+        "nuevo", "nueva", "integrante", "miembro", "participante", "coordinador",
         "de", "del", "la", "el", "un", "una", "yo", "muy", "medio", "bastante", "parte",
         "aca", "ahi", "bien", "todo", "toda", "como", "porque", "cuando", "quien"
     }
@@ -3102,7 +3102,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     <div>
       <h2 style="margin:0;font-size:1.05rem;color:#1e3a8a">👋 ¡Bienvenida/o! ¿Qué hace esta aplicación y cómo empezar?</h2>
       <p style="margin:4px 0 0;font-size:0.84rem;color:#334155">
-        Esta aplicación procesa <strong>100% en tu PC</strong> tus grabaciones de clases o reuniones. <strong>No es obligatorio empezar por el Paso 1</strong>: hacé clic directo en la pestaña que necesites según lo que quieras hacer hoy:
+        Esta aplicación procesa <strong>100% en tu PC</strong> tus grabaciones de audio y video. <strong>No es obligatorio empezar por el Paso 1</strong>: hacé clic directo en la pestaña que necesites según lo que quieras hacer hoy:
       </p>
     </div>
     <button type="button" class="btn-outline btn-xs" onclick="toggleGuiaBienvenida()">▲ Ocultar resumen</button>
@@ -3119,7 +3119,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     </div>
     <div style="background:#fff;border:1px solid #dbeafe;border-radius:10px;padding:10px;cursor:pointer" onclick="irAPaso(3)">
       <strong style="color:#1d4ed8;display:block;margin-bottom:3px">3️⃣ Hablantes, Mi Voz y Recorte</strong>
-      Organizá hablantes en <strong>Grupos</strong> (subiendo lista en Excel), etiquetá automático con la <strong>1ra clase o Tactiq</strong>, silenciá hablantes, recortá por <code>mm:ss</code> y aislá <strong>tu voz limpia</strong>.
+      Organizá hablantes en <strong>Grupos</strong> (subiendo lista en Excel), etiquetá automático por <strong>presentación de voz o Tactiq</strong>, silenciá hablantes, recortá por <code>mm:ss</code> y aislá <strong>tu voz limpia</strong>.
     </div>
     <div style="background:#fff;border:1px solid #dbeafe;border-radius:10px;padding:10px;cursor:pointer" onclick="irAPaso(4)">
       <strong style="color:#1d4ed8;display:block;margin-bottom:3px">4️⃣ Subtítulos y Video sin Audio</strong>
@@ -3147,7 +3147,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   <button type="button" class="step-btn" data-step="3">
     <span class="step-num">Paso 3</span>
     <span class="step-title">👥 Hablantes y Mi Voz</span>
-    <span class="step-sub">Etiquetar por Grupo/Excel, matchear 1ra clase y aislar voz</span>
+    <span class="step-sub">Etiquetar por Grupo/Excel, auto-matchear voces y aislar mi voz</span>
   </button>
   <button type="button" class="step-btn" data-step="4">
     <span class="step-num">Paso 4</span>
@@ -3382,7 +3382,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 </section>
 
 <!-- ====================================================================== -->
-<!-- PASO 3: ETIQUETAR HABLANTES POR GRUPO, PRIMERA CLASE Y AISLAR MI VOZ   -->
+<!-- PASO 3: ETIQUETAR HABLANTES POR GRUPO, AUTO-MATCHEO Y AISLAR MI VOZ    -->
 <!-- ====================================================================== -->
 <section class="step-section" id="step-3">
   <div id="p3-vacio" class="card" style="text-align:center;padding:40px 20px">
@@ -3402,7 +3402,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
             <button type="button" class="btn-outline btn-sm" id="btn-nuevo-grupo">➕ Crear nuevo grupo</button>
           </div>
           <div style="font-size:0.8rem;color:#475569;margin-top:4px">
-            Los nombres y las huellas de voz quedan guardados dentro de este grupo para reutilizarlos automáticamente en futuras grabaciones (preparado a futuro para Materia / Cátedra / Comisión).
+            Los nombres y las huellas de voz quedan guardados dentro de este grupo para reutilizarlos automáticamente en futuras grabaciones (preparado a futuro para organizar por Categoría / Área / Subgrupo).
           </div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
@@ -3440,13 +3440,13 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       </div>
     </div>
 
-    <!-- PANEL ESPECIAL: PRIMER MATCHEO DE VOCES (1RA CLASE DONDE SE PRESENTAN / EXCEL / TACTIQ) -->
+    <!-- PANEL ESPECIAL: PRIMER MATCHEO DE VOCES (PRESENTACIONES EN AUDIO / EXCEL / TACTIQ) -->
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
         <div>
-          <h3 style="margin:0;color:#1e3a8a">🪄 Herramientas para Etiquetar Hablantes (Listado Excel + Auto-Matcheo de 1ra Clase)</h3>
+          <h3 style="margin:0;color:#1e3a8a">🪄 Herramientas para Etiquetar Hablantes (Listado Excel + Auto-Matcheo Inicial)</h3>
           <p style="font-size:0.83rem;color:var(--muted);margin:3px 0 0">
-            Cargá el listado de nombres del grupo y usá el matcheo automático si es la primera grabación donde dicen su nombre o si tenés la transcripción de Tactiq.
+            Cargá el listado de nombres del grupo y usá el matcheo automático cuando los hablantes dicen su nombre en el audio o si tenés la transcripción de Tactiq.
           </p>
         </div>
       </div>
@@ -3470,7 +3470,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:12px">
           <strong style="font-size:0.88rem;display:block;margin-bottom:4px">🗣️ B. Auto-Matchear por Presentación en Audio</strong>
           <p style="font-size:0.79rem;color:var(--muted);margin:0 0 8px">
-            Ideal para la 1ra clase: busca cuando cada hablante dice <em>"mi nombre es…"</em>, <em>"yo soy…"</em> o menciona su nombre del listado y lo etiqueta solo.
+            Ideal para el primer registro: busca cuando cada hablante dice <em>"mi nombre es…"</em>, <em>"yo soy…"</em> o menciona su nombre del listado y lo etiqueta solo.
           </p>
           <button type="button" class="btn-primary btn-sm" id="btn-auto-presentacion" style="width:100%;justify-content:center">
             🪄 Detectar nombres dichos en el audio
@@ -3798,7 +3798,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <div>
         <h2 style="margin:0;color:#1e1b4b">🧠 Laboratorio ML: Entrenar Mi Estilo de Habla y Convertir Guiones</h2>
         <p style="font-size:0.86rem;color:#3730a3;margin:4px 0 0">
-          Entrená un modelo propio con tus transcripciones de clase (aprende tus muletillas, conectores, ritmo de frase, voseo y vocabulario real) y enviale cualquier guión o apunte para que lo reescriba exactamente como hablás vos.
+          Entrená un modelo propio con tus transcripciones (aprende tus muletillas, conectores, ritmo de frase, voseo y vocabulario real) y enviale cualquier guión o apunte para que lo reescriba exactamente como hablás vos.
         </p>
       </div>
       <span class="badge badge-azul" id="p5-badge-estado" style="font-size:0.85rem;padding:6px 12px">Cargando estado del modelo…</span>
@@ -3811,7 +3811,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <div class="card">
         <h3 style="color:#1e3a8a;margin-bottom:6px">1. 🎓 Entrenar Modelo ML con mis Transcripciones</h3>
         <p style="font-size:0.82rem;color:var(--muted);margin-top:0">
-          Seleccioná qué transcripciones procesadas usar (y cuál hablante sos vos) o subí archivos extra de tus clases para que el modelo aprenda tu forma real de expresarte.
+          Seleccioná qué transcripciones procesadas usar (y cuál hablante sos vos) o subí archivos extra de tus grabaciones para que el modelo aprenda tu forma real de expresarte.
         </p>
 
         <div class="campo" style="margin-bottom:10px">
@@ -3881,7 +3881,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
         <div>
           <label style="font-size:0.8rem;font-weight:700;display:block;margin-bottom:4px">
-            🔤 Tus expresiones y trigramas más repetidos en clase:
+            🔤 Tus expresiones y trigramas más repetidos al hablar:
           </label>
           <div id="p5-chips-ngramas" style="display:flex;flex-wrap:wrap;gap:5px"></div>
         </div>
@@ -3893,7 +3893,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <div class="card">
         <h3 style="color:#1e3a8a;margin-bottom:6px">2. ✍️ Enviar un Guión y Convertirlo a Mi Estilo</h3>
         <p style="font-size:0.82rem;color:var(--muted);margin-top:0">
-          Pegá un guión formal, un resumen, apuntes de cátedra o un texto neutro. El modelo lo transformará a tu forma natural de explicarlo en clase.
+          Pegá un guión formal, un resumen, notas o cualquier texto neutro. El modelo lo transformará a tu forma natural de expresarte.
         </p>
 
         <div class="campo" style="margin-bottom:10px">
@@ -3910,7 +3910,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
             <select id="p5-intensidad">
               <option value="sutil">🌱 Sutil (Voseo y vocabulario propio, pocas muletillas)</option>
               <option value="equilibrado" selected>🎯 Equilibrado (Recomendado — suena natural a vos)</option>
-              <option value="conversacional">🎙️ Muy conversacional (Clase en vivo con aperturas y cierres)</option>
+              <option value="conversacional">🎙️ Muy conversacional (Habla espontánea en vivo con aperturas y cierres)</option>
             </select>
           </div>
           <div class="campo">
@@ -3942,14 +3942,14 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
             <button type="button" class="btn-primary btn-sm" id="btn-p5-copiar-out">📋 Copiar Guión Convertido</button>
             <button type="button" class="btn-outline btn-sm" id="btn-p5-descargar-out">⬇ Descargar Guión (.TXT)</button>
-            <button type="button" class="btn-outline btn-sm" id="btn-p5-copiar-prompt" title="Copia un prompt con todo tu perfil estilométrico y tus ejemplos reales de clase">
+            <button type="button" class="btn-outline btn-sm" id="btn-p5-copiar-prompt" title="Copia un prompt con todo tu perfil estilométrico y tus ejemplos reales de habla">
               🧬 Copiar Prompt con mi ADN de Estilo
             </button>
           </div>
 
           <div style="margin-top:12px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px">
             <strong style="font-size:0.8rem;color:#334155;display:block;margin-bottom:4px">
-              🔍 Fragmentos reales de tus clases que el modelo usó como referencia para este tema (RAG):
+              🔍 Fragmentos reales de tus transcripciones que el modelo usó como referencia para este tema (RAG):
             </strong>
             <div id="p5-rag-ejemplos" style="font-size:0.8rem;color:#475569;display:flex;flex-direction:column;gap:6px"></div>
           </div>
@@ -4424,7 +4424,7 @@ btnP2SubirTrans.onclick = async () => {
 };
 
 // ==============================================================================
-// PASO 3: HABLANTES, GRUPO CON NOMBRE, AUTO-MATCHEO 1RA CLASE Y MI VOZ
+// PASO 3: HABLANTES, GRUPO CON NOMBRE, AUTO-MATCHEO INICIAL Y MI VOZ
 // ==============================================================================
 function activarSesion(datos) {
   const rd = datos.rango_detectado || {};
@@ -4485,7 +4485,7 @@ document.getElementById('p3-sel-grupo').onchange = async e => {
 };
 
 document.getElementById('btn-nuevo-grupo').onclick = async () => {
-  const nom = prompt('Nombre del nuevo Grupo de Hablantes (ej. "Grupo Martes", "Curso IA", "Comisión 1"):');
+  const nom = prompt('Nombre del nuevo Grupo de Hablantes (ej. "Equipo Principal", "Grupo Martes", "Proyecto A"):');
   if (!nom || !nom.trim()) return;
   await fetch('/api/crear_grupo', {
     method: 'POST',
@@ -5814,7 +5814,7 @@ class Handler(BaseHTTPRequestHandler):
             nom = (body.get("nombre") or "").strip()
             if not nom:
                 return self._send_text(400, "El nombre del grupo es obligatorio.")
-            g = crear_o_actualizar_grupo(nom, body.get("materia", ""), body.get("catedra", ""), body.get("comision", ""))
+            g = crear_o_actualizar_grupo(nom, body.get("categoria", ""), body.get("area", ""), body.get("subgrupo", ""))
             return self._send_json(200, {"ok": True, "grupo": g, "grupos": listar_grupos()})
 
         if p.path == "/api/subir_listado_nombres":
