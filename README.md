@@ -71,6 +71,25 @@ Todo corre 100% de manera local y privada en tu PC.
 ---
 
 ## 🚀 Próximas funciones anotadas a futuro
-- **Subtítulos para YouTube desde Tactiq / TXT / DOCX / PDF** (soporte de marcas de tiempo multiformato).
-- **Sincronización de video y subtítulos externos**.
-- **Unir video y subtítulos** (quemar subtítulos sobre el video para salvar grabaciones donde no se escuchó el micrófono o los alumnos).
+
+### 1. Clonación de Voz con Audio (Voz Acústica) y Entrenamiento de "Forma de Hablar" con Transcripciones (Estilo/LLM)
+- **A. Clonación Acústica de Voz (Audio -> Timbre/Tono)**:
+  - Usar los audios limpios aislados (`.wav` / dataset `.zip`) para entrenar o ajustar un clon de voz local (ej. **XTTSv2**, **F5-TTS**, **Fish-Speech**, **ChatTTS** o **RVC**).
+  - Generar síntesis de voz (Text-to-Speech) que hable con tu timbre exacto a partir de cualquier texto nuevo.
+- **B. Entrenamiento de "Forma de Hablar" (Texto -> Personalidad/Vocabulario)**:
+  - Tomar las transcripciones limpias acumuladas de tus clases o charlas (exportadas en `.txt` o `.jsonl`).
+  - Preparar un dataset de estilo/diálogo para:
+    - Hacer **fine-tuning** de un modelo de lenguaje chico (ej. Llama-3-8B / Mistral / Gemma) con LoRA/Unsloth.
+    - O armar un **System Prompt + RAG de estilo** que imite tus muletillas típicas, expresiones, forma de explicar temas, ejemplos frecuentes y tono pedagógico.
+- **C. Unión de ambos mundos (Avatar/Clon Completo)**:
+  - El modelo de texto redacta la respuesta usando tu forma de hablar -> el modelo de clonación lee esa respuesta con tu voz real.
+
+### 2. Subtítulos para YouTube desde Tactiq / TXT / DOCX / PDF
+- Parser inteligente multiformato para marcas de tiempo (`00:01:23 Nombre: ...`, `[12:34]`, timestamps superiores).
+- Exportación directa en `.srt` y `.vtt` listo para subir a YouTube.
+
+### 3. Sincronización de Video y Subtítulos Externos
+- Corrección de desfasajes temporales entre la grabación de OBS y la transcripción de Meet/Tactiq (+/- segundos o sincronización por frase ancla).
+
+### 4. Unir Video y Subtítulos (Salvar clases silenciadas)
+- Incrustar/quemar subtítulos sobre el video o empaquetar pista `.srt` en el MP4/MKV para rescatar clases donde el micrófono no grabó o no se capturaron las voces de los alumnos.
