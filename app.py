@@ -487,6 +487,219 @@ def recortar_video_ffmpeg(entrada: str, salida_mp4: str,
         raise RuntimeError("ffmpeg (recortar video) falló: " + r2.stderr[-400:])
 
 
+def _dividir_texto_en_frases_sub(texto: str, max_chars: int = 84) -> list[str]:
+    """Divide un texto largo en fragmentos aptos para subtítulos (<= max_chars),
+    priorizando cortes en signos de puntuación (. ? ! ; : ,) y nunca cortando palabras."""
+    texto = re.sub(r"https?://\S{28,}", lambda m: m.group(0)[:24] + "…", (texto or ""))
+    texto = re.sub(r"\s+", " ", texto.strip())
+    if not texto:
+        return []
+    if len(texto) <= max_chars:
+        return [texto]
+
+    partes_punt = re.split(r"(?<=[.?!;:])\s+", texto)
+    fragmentos = []
+    actual = ""
+
+    def _empujar_palabras(bloque_txt: str):
+        nonlocal actual
+        for pal in bloque_txt.split(" "):
+            if not pal:
+                continue
+            if len(pal) > max_chars:
+                pal = pal[:max_chars - 1] + "…"
+            if not actual:
+                actual = pal
+            elif len(actual) + 1 + len(pal) <= max_chars:
+                actual += " " + pal
+            else:
+                fragmentos.append(actual)
+                actual = pal
+
+    for p in partes_punt:
+        p = p.strip()
+        if not p:
+            continue
+        if not actual and len(p) <= max_chars:
+            actual = p
+        elif actual and len(actual) + 1 + len(p) <= max_chars:
+            actual += " " + p
+        else:
+            if actual:
+                fragmentos.append(actual)
+                actual = ""
+            if len(p) <= max_chars:
+                actual = p
+            else:
+                for sc in re.split(r"(?<=,)\s+", p):
+                    sc = sc.strip()
+                    if not sc:
+                        continue
+                    if not actual and len(sc) <= max_chars:
+                        actual = sc
+                    elif actual and len(actual) + 1 + len(sc) <= max_chars:
+                        actual += " " + sc
+                    else:
+                        if actual:
+                            fragmentos.append(actual)
+                            actual = ""
+                        if len(sc) <= max_chars:
+                            actual = sc
+                        else:
+                            _empujar_palabras(sc)
+
+    if actual:
+        fragmentos.append(actual)
+    return fragmentos
+
+
+def _balancear_dos_lineas_sub(texto: str, max_por_linea: int = 42) -> str:
+    """Si el subtítulo supera max_por_linea caracteres, lo divide en 2 líneas equilibradas."""
+    t = re.sub(r"\s+", " ", (texto or "").strip())
+    if len(t) <= max_por_linea or " " not in t:
+        return t
+    mitad = len(t) // 2
+    mejor_pos = -1
+    mejor_dist = 10**9
+    for m in re.finditer(r" ", t):
+        pos = m.start()
+        dist = abs(pos - mitad)
+        if dist < mejor_dist:
+            mejor_dist = dist
+            mejor_pos = pos
+    if mejor_pos <= 0:
+        return t
+    return t[:mejor_pos].strip() + "\n" + t[mejor_pos + 1:].strip()
+
+
+def construir_subtitulos_profesionales(
+    segmentos: list[dict],
+    mapa_nom: dict,
+    mapa_sil: dict,
+    offset_seg: float = 0.0,
+    inc_nom: bool = True,
+    inc_sil: bool = False,
+    agregar_bloque_00: bool = True,
+    t_desde_v: float | None = None,
+    t_hasta_v: float | None = None,
+    max_chars_sub: int = 84,
+    min_dur_seg: float = 1.2,
+    max_dur_seg: float = 6.0,
+) -> list[dict]:
+    """Construye bloques de subtítulos profesionales garantizando:
+    1. CERO superposiciones entre subtítulos (separación mínima de 40 ms).
+    2. Largo máximo de caracteres por subtítulo (<= max_chars_sub, dividido en hasta 2 líneas balanceadas).
+    3. Duración en pantalla legible y controlada (mínimo 1.2s y máximo max_dur_seg por cartel).
+    """
+    GAP = 0.04
+    VEL_CHARS_SEG = 15.0
+    max_chars_sub = max(40, min(140, int(max_chars_sub or 84)))
+    max_linea = max(25, max_chars_sub // 2)
+    min_dur_seg = max(1.0, min(3.5, float(min_dur_seg or 1.2)))
+    max_dur_seg = max(min_dur_seg + 1.0, min(12.0, float(max_dur_seg or 6.0)))
+    t0_shift = float(t_desde_v) if t_desde_v is not None and t_desde_v > 0 else 0.0
+
+    crudos = []
+    for s in segmentos:
+        sil = s.get("override_mute") if s.get("override_mute") is not None else mapa_sil.get(s.get("hablante"), False)
+        if sil and not inc_sil:
+            continue
+        ini_real = float(s.get("inicio", 0.0)) + offset_seg
+        fin_real = float(s.get("fin", 0.0)) + offset_seg
+        if fin_real <= 0.05:
+            continue
+        ini_abs = max(0.0, ini_real)
+        fin_abs = max(ini_abs + 0.4, fin_real)
+        if t_desde_v is not None and fin_abs <= t_desde_v:
+            continue
+        if t_hasta_v is not None and ini_abs >= t_hasta_v:
+            continue
+        ini = max(0.0, ini_abs - t0_shift)
+        fin = max(ini + 0.4, (min(t_hasta_v, fin_abs) if t_hasta_v is not None else fin_abs) - t0_shift)
+        nom_spk = mapa_nom.get(s.get("hablante"), s.get("hablante", "Hablante"))
+        crudos.append({
+            "ini": ini,
+            "fin": fin,
+            "ini_orig": float(s.get("inicio", 0.0)),
+            "hablante": nom_spk,
+            "texto": (s.get("texto") or "").strip(),
+        })
+
+    crudos.sort(key=lambda x: (x["ini"], x["fin"]))
+    n_c = len(crudos)
+    bloques_finales = []
+    cursor_global = 0.0
+
+    for idx_c, c in enumerate(crudos):
+        pref = f"[{c['hablante']}] " if (inc_nom and c["hablante"]) else ""
+        presupuesto_txt = max(20, max_chars_sub - len(pref))
+        partes_txt = _dividir_texto_en_frases_sub(c["texto"], presupuesto_txt)
+        if not partes_txt:
+            continue
+
+        m_partes = len(partes_txt)
+        ini_seg = max(c["ini"], cursor_global)
+
+        # Duración ideal de cada sub-bloque según velocidad de lectura (~15 chars/s), acotada a [min_dur_seg, max_dur_seg]
+        durs_ideales = [
+            max(min_dur_seg, min(max_dur_seg, len(pref + pt) / VEL_CHARS_SEG))
+            for pt in partes_txt
+        ]
+        suma_ideal = sum(durs_ideales)
+
+        # Si hay un siguiente segmento y su inicio permite acomodar los carteles sin bajar de min_dur_seg, ajustamos al hueco
+        if idx_c + 1 < n_c:
+            prox_ini = crudos[idx_c + 1]["ini"]
+            hueco_neto = (prox_ini - ini_seg) - m_partes * GAP
+        else:
+            hueco_neto = max(suma_ideal, c["fin"] - ini_seg)
+
+        dur_orig_neta = max(suma_ideal, min(c["fin"] - ini_seg, m_partes * max_dur_seg))
+        if hueco_neto >= m_partes * min_dur_seg:
+            dur_total_usar = min(dur_orig_neta, hueco_neto)
+        else:
+            # Si dos marcas en Tactiq estaban demasiado pegadas para la cantidad de texto,
+            # garantizamos al menos min_dur_seg por cartel para que siempre se pueda leer en pantalla
+            dur_total_usar = max(m_partes * min_dur_seg, min(suma_ideal, m_partes * max_dur_seg))
+
+        cursor_sub = ini_seg
+        for idx_p, pt in enumerate(partes_txt):
+            proporcion = durs_ideales[idx_p] / max(0.1, suma_ideal)
+            dur_p = max(min_dur_seg, min(max_dur_seg, dur_total_usar * proporcion))
+            ini_b = round(cursor_sub, 3)
+            fin_b = round(ini_b + dur_p, 3)
+            txt_completo = pref + pt
+            bloques_finales.append({
+                "ini": ini_b,
+                "fin": fin_b,
+                "ini_orig": c["ini_orig"],
+                "hablante": c["hablante"],
+                "es_bloque_cero": False,
+                "texto_plano": txt_completo,
+                "texto_srt": _balancear_dos_lineas_sub(txt_completo, max_linea),
+            })
+            cursor_sub = round(fin_b + GAP, 3)
+
+        cursor_global = cursor_sub
+
+    if agregar_bloque_00 and bloques_finales and bloques_finales[0]["ini"] >= 0.5:
+        s0 = int(round(bloques_finales[0]["ini"]))
+        ts0 = f"{s0//60:02d}:{s0%60:02d}" if s0 < 3600 else f"{s0//3600:02d}:{(s0%3600)//60:02d}:{s0%60:02d}"
+        t_primero = round(bloques_finales[0]["ini"] - GAP, 3)
+        msg_00 = f"[Inicio del video 00:00 — La transcripción comienza en {ts0}]"
+        bloques_finales.insert(0, {
+            "ini": 0.0,
+            "fin": max(0.4, t_primero),
+            "ini_orig": None,
+            "hablante": "",
+            "es_bloque_cero": True,
+            "texto_plano": msg_00,
+            "texto_srt": _balancear_dos_lineas_sub(msg_00, max_linea),
+        })
+
+    return bloques_finales
+
+
 def recortar_segmentos_por_tiempo(segmentos: list[dict], desde_seg: float | None,
                                   hasta_seg: float | None,
                                   reiniciar_reloj: bool = False) -> tuple[list[dict], list[int], float]:
@@ -3841,10 +4054,29 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
               <input type="checkbox" id="p4-inc-nom" checked>
               <span>Incluir el <strong>nombre del hablante</strong> en cada subtítulo (ej. <code>[Nombre]: texto</code>)</span>
             </label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:0.86rem;margin-bottom:12px;cursor:pointer">
+            <label style="display:flex;align-items:center;gap:8px;font-size:0.86rem;margin-bottom:10px;cursor:pointer">
               <input type="checkbox" id="p4-inc-sil">
               <span>Incluir también fragmentos de hablantes silenciados</span>
             </label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#f1f5f9;padding:8px 10px;border-radius:8px;margin-bottom:12px;font-size:0.8rem">
+              <span style="font-weight:700;color:#1e3a8a">📏 Formato en pantalla:</span>
+              <label style="display:inline-flex;align-items:center;gap:4px">
+                <span>Máx. caracteres por cartel:</span>
+                <select id="p4-max-chars" style="width:auto;padding:3px 6px;font-size:0.8rem;font-weight:700">
+                  <option value="70">70 chars (2 líneas de 35)</option>
+                  <option value="84" selected>84 chars (Estándar: 2 líneas de 42)</option>
+                  <option value="100">100 chars (2 líneas de 50)</option>
+                </select>
+              </label>
+              <label style="display:inline-flex;align-items:center;gap:4px">
+                <span>Duración en pantalla:</span>
+                <select id="p4-max-dur" style="width:auto;padding:3px 6px;font-size:0.8rem;font-weight:700">
+                  <option value="4.5">1.2s a 4.5s (Dinámico)</option>
+                  <option value="6.0" selected>1.2s a 6.0s (Estándar cómodo)</option>
+                  <option value="8.0">1.2s a 8.0s (Pausado)</option>
+                </select>
+              </label>
+            </div>
 
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <button type="button" class="btn-primary btn-sm" onclick="descargarSubtitulosPaso4('srt')">
@@ -5169,10 +5401,9 @@ window.descargarTranscripcionRecortadaPaso3 = function(formato) {
   let contenido = '';
   let ext = '.txt';
   if (formato === 'srt') {
-    contenido = segs.map((s, i) => {
-      const ini = Math.max(0, Math.max(s.inicio, r0) - shift);
-      const fin = Math.max(ini + 0.4, Math.min(s.fin, r1) - shift);
-      return `${i + 1}\n${fmtSrt(ini, ',')} --> ${fmtSrt(fin, ',')}\n[${mapaNom[s.hablante] || s.hablante}] ${s.texto}\n`;
+    const { bloques } = construirBloquesSubtitulosSincronizados(st, -shift, true, false, false, { maxChars: 84, minDur: 1.2, maxDur: 6.0 });
+    contenido = bloques.map((b, i) => {
+      return `${i + 1}\n${fmtSrt(b.ini, ',')} --> ${fmtSrt(b.fin, ',')}\n${b.textoSrt || b.textoPlano}\n`;
     }).join('\n');
     ext = '_recorte.srt';
   } else if (formato === 'txt_limpio') {
@@ -5397,20 +5628,13 @@ videoP4.ontimeupdate = () => {
   const offset = Number(document.getElementById('p4-offset-seg').value || 0);
   const incNom = document.getElementById('p4-inc-nom').checked;
   const incSil = document.getElementById('p4-inc-sil').checked;
-  const mapaNom = {};
-  for (const h of sesionActiva.hablantes) mapaNom[h.id] = h.nombre;
+  const { bloques } = construirBloquesSubtitulosSincronizados(sesionActiva, offset, incNom, incSil, false);
 
-  const actual = sesionActiva.segmentos.find(s => {
-    if (!incSil && esSegSilenciado(sesionActiva, s)) return false;
-    const ini = s.inicio + offset;
-    const fin = s.fin + offset;
-    return t >= ini && t <= fin;
-  });
-
+  const actual = bloques.find(b => !b.esBloqueCero && t >= b.ini && t <= b.fin);
   const subEl = document.getElementById('p4-sub-live');
   if (actual) {
-    const pref = incNom ? `[${mapaNom[actual.hablante] || actual.hablante}]: ` : '';
-    subEl.textContent = pref + actual.texto;
+    subEl.style.whiteSpace = 'pre-line';
+    subEl.textContent = actual.textoSrt || actual.textoPlano;
     subEl.style.display = 'inline-block';
   } else {
     subEl.style.display = 'none';
@@ -5500,60 +5724,203 @@ function fmtSrt(seg, sepMs = ',') {
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}${sepMs}${String(ms).padStart(3,'0')}`;
 }
 
-function construirBloquesSubtitulosSincronizados(st, offset, incNom, incSil, agregarBloque00) {
+function dividirTextoEnFrasesSubJS(texto, maxChars = 84) {
+  let limpio = String(texto || '').replace(/https?:\/\/\S{28,}/g, m => m.slice(0, 24) + '…');
+  limpio = limpio.replace(/\s+/g, ' ').trim();
+  if (!limpio) return [];
+  if (limpio.length <= maxChars) return [limpio];
+
+  const oraciones = limpio.split(/(?<=[.?!;:])\s+/);
+  const fragmentos = [];
+  let actual = '';
+
+  const agregarPalabras = (bloque) => {
+    for (let pal of bloque.split(' ')) {
+      if (!pal) continue;
+      if (pal.length > maxChars) pal = pal.slice(0, maxChars - 1) + '…';
+      if (!actual) {
+        actual = pal;
+      } else if (actual.length + 1 + pal.length <= maxChars) {
+        actual += ' ' + pal;
+      } else {
+        fragmentos.push(actual);
+        actual = pal;
+      }
+    }
+  };
+
+  for (const orac of oraciones) {
+    const p = orac.trim();
+    if (!p) continue;
+    if (!actual && p.length <= maxChars) {
+      actual = p;
+    } else if (actual && actual.length + 1 + p.length <= maxChars) {
+      actual += ' ' + p;
+    } else {
+      if (actual) { fragmentos.push(actual); actual = ''; }
+      if (p.length <= maxChars) {
+        actual = p;
+      } else {
+        for (const cl of p.split(/(?<=,)\s+/)) {
+          const c = cl.trim();
+          if (!c) continue;
+          if (!actual && c.length <= maxChars) {
+            actual = c;
+          } else if (actual && actual.length + 1 + c.length <= maxChars) {
+            actual += ' ' + c;
+          } else {
+            if (actual) { fragmentos.push(actual); actual = ''; }
+            if (c.length <= maxChars) actual = c;
+            else agregarPalabras(c);
+          }
+        }
+      }
+    }
+  }
+  if (actual) fragmentos.push(actual);
+  return fragmentos;
+}
+
+function balancearDosLineasSubJS(texto, maxPorLinea = 42) {
+  const t = String(texto || '').replace(/\s+/g, ' ').trim();
+  if (t.length <= maxPorLinea || !t.includes(' ')) return t;
+  const mitad = Math.floor(t.length / 2);
+  let mejorPos = -1;
+  let mejorDist = 1e9;
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === ' ') {
+      const d = Math.abs(i - mitad);
+      if (d < mejorDist) {
+        mejorDist = d;
+        mejorPos = i;
+      }
+    }
+  }
+  if (mejorPos <= 0) return t;
+  return t.slice(0, mejorPos).trim() + '\n' + t.slice(mejorPos + 1).trim();
+}
+
+function construirBloquesSubtitulosSincronizados(st, offset, incNom, incSil, agregarBloque00, opts = {}) {
+  const GAP = 0.04; // 40ms de separación mínima para garantizar 0 superposiciones
+  const VEL_CHARS = 15.0; // ~15 caracteres por segundo de lectura cómoda
+  const maxCharsEl = document.getElementById('p4-max-chars');
+  const maxDurEl = document.getElementById('p4-max-dur');
+  const maxCharsSub = opts.maxChars || (maxCharsEl ? Number(maxCharsEl.value || 84) : 84);
+  const maxPorLinea = Math.max(25, Math.floor(maxCharsSub / 2));
+  const minDur = opts.minDur || 1.2;
+  const maxDur = opts.maxDur || (maxDurEl ? Number(maxDurEl.value || 6.0) : 6.0);
+
   const mapaNom = {};
   for (const h of (st.hablantes || [])) mapaNom[h.id] = h.nombre;
 
   const candidatos = (st.segmentos || []).filter(s => estaEnRango(st, s) && (incSil || !esSegSilenciado(st, s)));
-  const bloques = [];
   let descartadosAntesDeCero = 0;
 
-  // Recalcular cada marca de tiempo hacia atrás y hacia adelante: T_video = T_trans + offset
-  const desplazados = [];
+  const crudos = [];
   for (const s of candidatos) {
     const iniReal = s.inicio + offset;
     const finReal = s.fin + offset;
-    // Si la frase terminó antes del minuto 00:00 del video (porque la transcripción empezó antes que el video),
-    // NO se amontona en 00:00: se omite porque ocurrió antes de que existiera el video.
     if (finReal <= 0.05) {
       descartadosAntesDeCero++;
       continue;
     }
     const ini = Math.max(0, iniReal);
     const fin = Math.max(ini + 0.4, finReal);
-    desplazados.push({
+    crudos.push({
       ini,
       fin,
       iniOrig: s.inicio,
       finOrig: s.fin,
       hablante: mapaNom[s.hablante] || s.hablante,
-      texto: s.texto
+      texto: String(s.texto || '').trim()
     });
   }
 
-  // Si el VIDEO empezó ANTES que la transcripción, el primer subtítulo desplazado comienza en desplazados[0].ini > 0.
-  // Si agregarBloque00 está activo, agregamos la marca de tiempo inicial desde 00:00:00 hasta donde empieza la transcripción.
+  crudos.sort((a, b) => (a.ini - b.ini) || (a.fin - b.fin));
+
+  const desplazados = [];
+  let cursorGlobal = 0;
+  const nC = crudos.length;
+
+  for (let idxC = 0; idxC < nC; idxC++) {
+    const c = crudos[idxC];
+    const pref = (incNom && c.hablante) ? `[${c.hablante}] ` : '';
+    const presupuestoTxt = Math.max(20, maxCharsSub - pref.length);
+    const partes = dividirTextoEnFrasesSubJS(c.texto, presupuestoTxt);
+    if (!partes.length) continue;
+
+    const mPartes = partes.length;
+    const iniSeg = Math.max(c.ini, cursorGlobal);
+
+    const dursIdeales = partes.map(pt => {
+      const dId = (pref.length + pt.length) / VEL_CHARS;
+      return Math.max(minDur, Math.min(maxDur, dId));
+    });
+    const sumaIdeal = dursIdeales.reduce((a, b) => a + b, 0);
+
+    let huecoNeto;
+    if (idxC + 1 < nC) {
+      const proxIni = crudos[idxC + 1].ini;
+      huecoNeto = (proxIni - iniSeg) - mPartes * GAP;
+    } else {
+      huecoNeto = Math.max(sumaIdeal, c.fin - iniSeg);
+    }
+
+    const durOrigNeta = Math.max(sumaIdeal, Math.min(c.fin - iniSeg, mPartes * maxDur));
+    let durTotalUsar;
+    if (huecoNeto >= mPartes * minDur) {
+      durTotalUsar = Math.min(durOrigNeta, huecoNeto);
+    } else {
+      durTotalUsar = Math.max(mPartes * minDur, Math.min(sumaIdeal, mPartes * maxDur));
+    }
+
+    let cursorSub = iniSeg;
+    partes.forEach((pt, idxP) => {
+      const prop = dursIdeales[idxP] / Math.max(0.1, sumaIdeal);
+      const durP = Math.max(minDur, Math.min(maxDur, durTotalUsar * prop));
+      const iniB = Math.round(cursorSub * 1000) / 1000;
+      const finB = Math.round((iniB + durP) * 1000) / 1000;
+      const textoPlano = pref + pt;
+      desplazados.push({
+        ini: iniB,
+        fin: finB,
+        iniOrig: c.iniOrig,
+        hablante: c.hablante,
+        esBloqueCero: false,
+        texto: pt,
+        textoPlano,
+        textoSrt: balancearDosLineasSubJS(textoPlano, maxPorLinea)
+      });
+      cursorSub = Math.round((finB + GAP) * 1000) / 1000;
+    });
+
+    cursorGlobal = cursorSub;
+  }
+
+  const bloques = [];
   if (agregarBloque00 && desplazados.length > 0 && desplazados[0].ini >= 0.5) {
     const tPrimerSub = desplazados[0].ini;
+    const msg00 = `[Inicio del video 00:00 — La transcripción comienza en ${fmtHMS(tPrimerSub)}]`;
     bloques.push({
       ini: 0,
-      fin: tPrimerSub,
+      fin: Math.max(0.4, Math.round((tPrimerSub - GAP) * 1000) / 1000),
       iniOrig: null,
-      finOrig: null,
       hablante: '',
       esBloqueCero: true,
-      texto: `[Inicio del video 00:00 — La transcripción comienza en ${fmtHMS(tPrimerSub)}]`
+      texto: msg00,
+      textoPlano: msg00,
+      textoSrt: balancearDosLineasSubJS(msg00, maxPorLinea)
     });
   }
 
-  for (const d of desplazados) {
-    bloques.push(d);
-  }
+  for (const d of desplazados) bloques.push(d);
 
   return {
     bloques,
     descartadosAntesDeCero,
-    primerInicioVideo: desplazados.length ? desplazados[0].ini : 0
+    primerInicioVideo: desplazados.length ? desplazados[0].ini : 0,
+    maxCharsSub,
+    maxDur
   };
 }
 
@@ -5598,16 +5965,29 @@ function actualizarPreviewSincroPaso4() {
     `;
   }
 
-  const muestra = res.bloques.slice(0, 3).map((b, i) => {
-    const pref = (!b.esBloqueCero && incNom && b.hablante) ? `[${escHtml(b.hablante)}] ` : '';
-    const origInfo = b.iniOrig !== null ? ` <span style="color:#64748b">(antes en transcripción: ${fmtHMS(b.iniOrig)})</span>` : '';
-    return `<div style="font-family:monospace;font-size:0.76rem;background:#f8fafc;padding:4px 6px;border-radius:4px;border:1px solid #e2e8f0;margin-top:4px">
-      <strong>#${i + 1}</strong> <code>${fmtSrt(b.ini, ',')} --> ${fmtSrt(b.fin, ',')}</code>${origInfo}<br>
-      <span>${pref}${escHtml(b.texto.slice(0, 75))}</span>
-    </div>`;
+  const badgeCalidad = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">
+      <span class="badge badge-verde">✔ 0 superposiciones (${res.bloques.length} subtítulos limpios)</span>
+      <span class="badge badge-azul">📏 Máx. ${res.maxCharsSub} caracteres (máx. 2 líneas)</span>
+      <span class="badge badge-azul">⏱️ Duración controlada: 1.2s a ${res.maxDur}s</span>
+    </div>
+  `;
+
+  const muestra = res.bloques.slice(0, 4).map((b, i) => {
+    const durB = Math.round((b.fin - b.ini) * 10) / 10;
+    const origInfo = b.iniOrig !== null ? ` <span style="color:#64748b">(duración: ${durB}s · ${b.textoPlano.length} chars · orig: ${fmtHMS(b.iniOrig)})</span>` : ` <span style="color:#64748b">(bloque sincronizador inicial)</span>`;
+    return `<div style="font-family:monospace;font-size:0.76rem;background:#f8fafc;padding:5px 8px;border-radius:4px;border:1px solid #e2e8f0;margin-top:4px;white-space:pre-line"><strong>#${i + 1}</strong> <code>${fmtSrt(b.ini, ',')} --> ${fmtSrt(b.fin, ',')}</code>${origInfo}
+${escHtml(b.textoSrt || b.textoPlano)}</div>`;
   }).join('');
 
-  box.innerHTML = explicacionCaso + (muestra ? `<div style="margin-top:4px"><strong>Vista previa de cómo empezará tu archivo .SRT:</strong>${muestra}</div>` : '<div style="color:#dc2626">No quedan fragmentos visibles con este desfase.</div>');
+  box.innerHTML = explicacionCaso + badgeCalidad + (muestra ? `<div style="margin-top:4px"><strong>Vista previa de cómo empezará tu archivo .SRT:</strong>${muestra}</div>` : '<div style="color:#dc2626">No quedan fragmentos visibles con este desfase.</div>');
+}
+
+if (document.getElementById('p4-max-chars')) {
+  document.getElementById('p4-max-chars').onchange = () => actualizarPreviewSincroPaso4();
+}
+if (document.getElementById('p4-max-dur')) {
+  document.getElementById('p4-max-dur').onchange = () => actualizarPreviewSincroPaso4();
 }
 
 window.descargarSubtitulosPaso4 = function(formato) {
@@ -5629,20 +6009,17 @@ window.descargarSubtitulosPaso4 = function(formato) {
 
   if (formato === 'srt') {
     contenido = bloques.map((b, i) => {
-      const pref = (!b.esBloqueCero && incNom && b.hablante) ? `[${b.hablante}] ` : '';
-      return `${i + 1}\n${fmtSrt(b.ini, ',')} --> ${fmtSrt(b.fin, ',')}\n${pref}${b.texto}\n`;
+      return `${i + 1}\n${fmtSrt(b.ini, ',')} --> ${fmtSrt(b.fin, ',')}\n${b.textoSrt || b.textoPlano}\n`;
     }).join('\n');
     ext = '_sincronizado.srt';
   } else if (formato === 'vtt') {
     contenido = 'WEBVTT\n\n' + bloques.map((b) => {
-      const pref = (!b.esBloqueCero && incNom && b.hablante) ? `[${b.hablante}] ` : '';
-      return `${fmtSrt(b.ini, '.')} --> ${fmtSrt(b.fin, '.')}\n${pref}${b.texto}\n`;
+      return `${fmtSrt(b.ini, '.')} --> ${fmtSrt(b.fin, '.')}\n${b.textoSrt || b.textoPlano}\n`;
     }).join('\n');
     ext = '_sincronizado.vtt';
   } else {
     contenido = bloques.map(b => {
-      const pref = (!b.esBloqueCero && incNom && b.hablante) ? `${b.hablante}: ` : '';
-      return `[${fmtHMS(b.ini)} - ${fmtHMS(b.fin)}] ${pref}${b.texto}`;
+      return `[${fmtHMS(b.ini)} - ${fmtHMS(b.fin)}] ${b.textoPlano}`;
     }).join('\n');
     ext = '_marcas_sincronizadas.txt';
   }
@@ -5675,6 +6052,8 @@ document.getElementById('btn-p4-unir-video').onclick = async () => {
       inc_nom: document.getElementById('p4-inc-nom').checked ? '1' : '0',
       inc_sil: document.getElementById('p4-inc-sil').checked ? '1' : '0',
       bloque_00: (document.getElementById('p4-chk-bloque-00') && document.getElementById('p4-chk-bloque-00').checked) ? '1' : '0',
+      max_chars: document.getElementById('p4-max-chars') ? document.getElementById('p4-max-chars').value : '84',
+      max_dur: document.getElementById('p4-max-dur') ? document.getElementById('p4-max-dur').value : '6.0',
       desde: document.getElementById('p4-t-ini').value.trim(),
       hasta: document.getElementById('p4-t-fin').value.trim()
     });
@@ -6577,42 +6956,31 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(200, {"ok": True, "nombre_archivo": nombre_out})
 
             bloque_00 = q.get("bloque_00", ["1"])[0] == "1"
+            max_chars_q = int(q.get("max_chars", ["84"])[0] or 84)
+            max_dur_q = float(q.get("max_dur", ["6.0"])[0] or 6.0)
             mapa_nom = {h["id"]: h["nombre"] for h in sesion.get("hablantes", [])}
             mapa_sil = {h["id"]: bool(h.get("silenciado")) for h in sesion.get("hablantes", [])}
+            bloques_pro = construir_subtitulos_profesionales(
+                sesion.get("segmentos", []),
+                mapa_nom=mapa_nom,
+                mapa_sil=mapa_sil,
+                offset_seg=offset_seg,
+                inc_nom=inc_nom,
+                inc_sil=inc_sil,
+                agregar_bloque_00=bloque_00,
+                t_desde_v=t_desde_v,
+                t_hasta_v=t_hasta_v,
+                max_chars_sub=max_chars_q,
+                min_dur_seg=1.2,
+                max_dur_seg=max_dur_q,
+            )
             lineas_srt = []
-            contador_sub = 1
-            t0_shift = float(t_desde_v) if t_desde_v is not None and t_desde_v > 0 else 0.0
-            primer_ini_insertado = False
-            for s in sesion.get("segmentos", []):
-                sil = s.get("override_mute") if s.get("override_mute") is not None else mapa_sil.get(s.get("hablante"), False)
-                if sil and not inc_sil:
-                    continue
-                ini_real = float(s["inicio"]) + offset_seg
-                fin_real = float(s["fin"]) + offset_seg
-                if fin_real <= 0.05:
-                    continue
-                ini_abs = max(0.0, ini_real)
-                fin_abs = max(ini_abs + 0.4, fin_real)
-                if t_desde_v is not None and fin_abs <= t_desde_v:
-                    continue
-                if t_hasta_v is not None and ini_abs >= t_hasta_v:
-                    continue
-                ini = max(0.0, ini_abs - t0_shift)
-                fin = max(ini + 0.4, (min(t_hasta_v, fin_abs) if t_hasta_v is not None else fin_abs) - t0_shift)
-                if not primer_ini_insertado:
-                    primer_ini_insertado = True
-                    if bloque_00 and ini >= 0.5:
-                        ms_f0 = int(round(ini * 1000))
-                        ts_f0 = f"{ms_f0//3600000:02d}:{(ms_f0%3600000)//60000:02d}:{(ms_f0%60000)//1000:02d},{ms_f0%1000:03d}"
-                        lineas_srt.append(f"{contador_sub}\n00:00:00,000 --> {ts_f0}\n[Inicio del video 00:00 - La transcripcion comienza en {fmt_hms(ini)}]\n")
-                        contador_sub += 1
-                ms_i = int(round(ini * 1000))
-                ms_f = int(round(fin * 1000))
+            for idx_b, b in enumerate(bloques_pro, start=1):
+                ms_i = int(round(b["ini"] * 1000))
+                ms_f = int(round(b["fin"] * 1000))
                 ts_i = f"{ms_i//3600000:02d}:{(ms_i%3600000)//60000:02d}:{(ms_i%60000)//1000:02d},{ms_i%1000:03d}"
                 ts_f = f"{ms_f//3600000:02d}:{(ms_f%3600000)//60000:02d}:{(ms_f%60000)//1000:02d},{ms_f%1000:03d}"
-                pref = f"[{mapa_nom.get(s.get('hablante'), s.get('hablante'))}] " if inc_nom else ""
-                lineas_srt.append(f"{contador_sub}\n{ts_i} --> {ts_f}\n{pref}{s.get('texto', '')}\n")
-                contador_sub += 1
+                lineas_srt.append(f"{idx_b}\n{ts_i} --> {ts_f}\n{b['texto_srt']}\n")
 
             ruta_srt_tmp = os.path.join(TEMP_DIR, f"sub_{uuid.uuid4().hex[:8]}.srt")
             with open(ruta_srt_tmp, "w", encoding="utf-8") as fsrt:
