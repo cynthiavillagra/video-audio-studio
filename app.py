@@ -659,40 +659,46 @@ def _silhouette_score_coseno(X: np.ndarray, labels: np.ndarray) -> float:
     return float(np.mean(scores))
 
 
-def agrupar_hablantes(segmentos: list[dict], X: np.ndarray, num_hablantes: int = 0) -> tuple[list[dict], list[dict]]:
+def agrupar_hablantes(segmentos: list[dict], X: np.ndarray | None, num_hablantes: int = 0, **kwargs) -> tuple[list[dict], list[dict]]:
     n = len(segmentos)
     if n == 0:
         return [], []
-    if n == 1 or num_hablantes == 1:
+    if n == 1 or num_hablantes == 1 or X is None or len(X) != n:
         for idx, s in enumerate(segmentos):
             s["id"] = idx
-            s["hablante"] = "SPK_1"
-            s["confianza"] = 1.0
+            s.setdefault("hablante", "SPK_1")
+            s.setdefault("confianza", 1.0)
             s.setdefault("silenciado", False)
         return segmentos, _resumen_hablantes(segmentos)
 
     duraciones = np.array([max(0.1, float(s["fin"]) - float(s["inicio"])) for s in segmentos])
-    anclas = duraciones >= 0.65
+    anclas = duraciones >= 1.2
+    if np.sum(anclas) < 6:
+        anclas = duraciones >= 0.65
     if np.sum(anclas) < 4:
         anclas = np.ones(n, dtype=bool)
     X_anc = X[anclas]
 
     if num_hablantes <= 0:
-        mejor_k = 1
-        mejor_score = 0.135
+        mejor_k = 2 if len(X_anc) >= 4 else 1
+        mejor_score = -1.0
         mejor_labels_anc = np.ones(len(X_anc), dtype=int)
         Z = linkage(X_anc, method="ward")
-        for k in range(2, min(5, len(X_anc))):
+        min_tam = max(2, int(len(X_anc) * 0.03))
+        for k in range(2, min(7, len(X_anc))):
             lbl = fcluster(Z, t=k, criterion="maxclust")
-            conteos = [np.sum(lbl == c) for c in np.unique(lbl)]
-            if len(X_anc) >= 10 and min(conteos) < 2:
+            conteos = [int(np.sum(lbl == c)) for c in np.unique(lbl)]
+            if len(X_anc) >= 20 and min(conteos) < min_tam:
                 continue
             sc = _silhouette_score_coseno(X_anc, lbl)
-            penalizado = sc - 0.015 * (k - 2)
+            penalizado = sc - 0.006 * (k - 2)
             if penalizado > mejor_score:
                 mejor_score = penalizado
                 mejor_k = k
                 mejor_labels_anc = lbl
+        if mejor_score < 0.025 and len(X_anc) >= 2:
+            mejor_labels_anc = fcluster(Z, t=2, criterion="maxclust")
+            mejor_k = 2
         labels_anc = mejor_labels_anc
         k_final = mejor_k
     else:
@@ -705,17 +711,15 @@ def agrupar_hablantes(segmentos: list[dict], X: np.ndarray, num_hablantes: int =
 
     unicos = sorted(np.unique(labels_anc))
     centroides = np.vstack([np.mean(X_anc[labels_anc == c], axis=0) for c in unicos])
-    dist = cdist(X, centroides, metric="cosine")
-    dist = np.nan_to_num(dist, nan=1.0)
+    # Usar distancia euclidiana coherente con Ward linkage para no partir en dos al hablante principal
+    dist = cdist(X, centroides, metric="euclidean")
+    dist = np.nan_to_num(dist, nan=10.0)
     asignados = np.argmin(dist, axis=1)
 
     for i in range(n):
         if duraciones[i] < 0.85:
             if 0 < i < n - 1 and asignados[i - 1] == asignados[i + 1]:
                 asignados[i] = asignados[i - 1]
-            elif i > 0 and (float(segmentos[i]["inicio"]) - float(segmentos[i - 1]["fin"])) < 0.4:
-                if dist[i, asignados[i - 1]] - dist[i, asignados[i]] < 0.12:
-                    asignados[i] = asignados[i - 1]
 
     mapa_orden = {}
     contador = 1
@@ -726,11 +730,9 @@ def agrupar_hablantes(segmentos: list[dict], X: np.ndarray, num_hablantes: int =
             contador += 1
         s["id"] = idx
         s["hablante"] = mapa_orden[c_raw]
-        d_propia = float(dist[idx, c_raw])
-        s["confianza"] = round(max(0.0, 1.0 - d_propia), 3)
+        s["confianza"] = 0.85
         s.setdefault("silenciado", False)
 
-    # Calcular centroide real promedio por cada SPK_x para auto-etiquetado
     spk_unicos = sorted(list(set(s["hablante"] for s in segmentos)))
     centroides_dict = {}
     for spk_id in spk_unicos:
@@ -738,19 +740,17 @@ def agrupar_hablantes(segmentos: list[dict], X: np.ndarray, num_hablantes: int =
         if idx_spk:
             centroides_dict[spk_id] = np.mean(X[idx_spk], axis=0)
 
-    if spk_unicos and centroides_dict:
+    if len(spk_unicos) > 1 and centroides_dict:
         centroides_spks = np.vstack([centroides_dict[spk] for spk in spk_unicos])
         coincidencias_voces = emparejar_con_voces_registradas(centroides_spks, spk_unicos)
     else:
         coincidencias_voces = {}
 
-    # Si se detectaron coincidencias con el registro de voces, actualizar nombres de hablantes
     nombres_auto = {}
     for spk_id, match in coincidencias_voces.items():
         nombres_auto[spk_id] = match["nombre"]
 
     hablantes = _resumen_hablantes(segmentos, nombres_previos=nombres_auto, embeddings_spk=centroides_dict, matches_registro=coincidencias_voces)
-
     return segmentos, hablantes
 
 
@@ -1280,6 +1280,7 @@ def _worker_analizar(job_id: str, ruta_entrada: str, es_temporal: bool,
         }
         with JOBS_LOCK:
             SESIONES[sesion_id] = sesion_data
+        guardar_sesion_disco(sesion_data)
 
         _actualizar_job(
             job_id,
@@ -1312,12 +1313,735 @@ def _worker_analizar(job_id: str, ruta_entrada: str, es_temporal: bool,
 # INTERFAZ WEB (HTML + CSS + JS)
 # ==============================================================================
 
+
+import csv
+import xml.etree.ElementTree as ET
+
+SESIONES_DIR = os.path.join(BASE_DIR, "transcripciones")
+os.makedirs(SESIONES_DIR, exist_ok=True)
+
+
+# ==============================================================================
+# GESTIÓN DE GRUPOS DE HABLANTES (HOY: GRUPO CON NOMBRE / FUTURO: MATERIA-CÁTEDRA-COMISIÓN)
+# ==============================================================================
+
+def _asegurar_estructura_grupos(reg: dict) -> dict:
+    """Garantiza que voces_registradas.json tenga soporte de grupos manteniendo compatibilidad."""
+    reg.setdefault("perfiles", {})
+    reg.setdefault("listado_nombres", [])
+    grupos = reg.setdefault("grupos", {})
+    if "General" not in grupos:
+        grupos["General"] = {
+            "nombre": "General",
+            "materia": "",
+            "catedra": "",
+            "comision": "",
+            "nombres": list(reg.get("listado_nombres", [])),
+            "perfiles": dict(reg.get("perfiles", {})),
+            "creado_en": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+    return reg
+
+
+def listar_grupos() -> list[dict]:
+    reg = _asegurar_estructura_grupos(cargar_registro_voces())
+    salida = []
+    for g_nom, g_info in reg.get("grupos", {}).items():
+        perfiles_g = g_info.get("perfiles", {})
+        nombres_g = list(g_info.get("nombres", []))
+        for p_nom in perfiles_g.keys():
+            if p_nom not in nombres_g and not p_nom.startswith("Mi voz (Hablante"):
+                nombres_g.append(p_nom)
+        salida.append({
+            "nombre": g_nom,
+            "materia": g_info.get("materia", ""),
+            "catedra": g_info.get("catedra", ""),
+            "comision": g_info.get("comision", ""),
+            "cantidad_nombres": len(nombres_g),
+            "cantidad_voces": len(perfiles_g),
+            "nombres": sorted(nombres_g, key=lambda x: x.lower()),
+            "perfiles": [
+                {
+                    "nombre": k,
+                    "color": v.get("color", "#2563eb"),
+                    "n_muestras": v.get("n_muestras", 1),
+                    "origen": v.get("origen", "manual")
+                }
+                for k, v in perfiles_g.items()
+            ]
+        })
+    return salida
+
+
+def crear_o_actualizar_grupo(nombre_grupo: str, materia: str = "", catedra: str = "", comision: str = "") -> dict:
+    nombre_grupo = (nombre_grupo or "").strip() or "General"
+    reg = _asegurar_estructura_grupos(cargar_registro_voces())
+    grupos = reg["grupos"]
+    if nombre_grupo not in grupos:
+        grupos[nombre_grupo] = {
+            "nombre": nombre_grupo,
+            "materia": materia.strip(),
+            "catedra": catedra.strip(),
+            "comision": comision.strip(),
+            "nombres": [],
+            "perfiles": {},
+            "creado_en": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+    else:
+        if materia:
+            grupos[nombre_grupo]["materia"] = materia.strip()
+        if catedra:
+            grupos[nombre_grupo]["catedra"] = catedra.strip()
+        if comision:
+            grupos[nombre_grupo]["comision"] = comision.strip()
+    guardar_registro_voces(reg)
+    return grupos[nombre_grupo]
+
+
+def registrar_voz_en_grupo(nombre_grupo: str, nombre_hablante: str, vector_emb: np.ndarray | None,
+                           color: str = "#2563eb", origen: str = "manual") -> dict:
+    nombre_grupo = (nombre_grupo or "").strip() or "General"
+    nombre_hablante = (nombre_hablante or "").strip()
+    if not nombre_hablante:
+        raise ValueError("El nombre del hablante no puede estar vacío")
+
+    reg = _asegurar_estructura_grupos(cargar_registro_voces())
+    if nombre_grupo not in reg["grupos"]:
+        reg["grupos"][nombre_grupo] = {
+            "nombre": nombre_grupo, "materia": "", "catedra": "", "comision": "",
+            "nombres": [], "perfiles": {}, "creado_en": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+    g = reg["grupos"][nombre_grupo]
+    if nombre_hablante not in g["nombres"]:
+        g["nombres"].append(nombre_hablante)
+
+    if vector_emb is not None:
+        perfiles = g.setdefault("perfiles", {})
+        emb_lista = [float(x) for x in vector_emb.flatten()]
+        if nombre_hablante in perfiles and "embedding" in perfiles[nombre_hablante]:
+            emb_ant = np.array(perfiles[nombre_hablante]["embedding"], dtype=np.float32)
+            m_ant = perfiles[nombre_hablante].get("n_muestras", 1)
+            nuevo = (emb_ant * m_ant + vector_emb) / float(m_ant + 1)
+            perfiles[nombre_hablante] = {
+                "nombre": nombre_hablante,
+                "embedding": [float(x) for x in nuevo.flatten()],
+                "color": color or perfiles[nombre_hablante].get("color", "#2563eb"),
+                "n_muestras": m_ant + 1,
+                "origen": origen,
+                "actualizado_en": time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+        else:
+            perfiles[nombre_hablante] = {
+                "nombre": nombre_hablante,
+                "embedding": emb_lista,
+                "color": color or "#2563eb",
+                "n_muestras": 1,
+                "origen": origen,
+                "creado_en": time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+        # También espejar en el diccionario global para compatibilidad directa
+        reg["perfiles"][nombre_hablante] = perfiles[nombre_hablante]
+
+    if nombre_hablante not in reg.get("listado_nombres", []):
+        reg.setdefault("listado_nombres", []).append(nombre_hablante)
+
+    guardar_registro_voces(reg)
+    return g
+
+
+# ==============================================================================
+# PERSISTENCIA DE SESIONES DE TRANSCRIPCIÓN EN DISCO
+# ==============================================================================
+
+def guardar_sesion_disco(sesion_data: dict) -> None:
+    """Guarda la sesión de transcripción en transcripciones/ para no perderla al reiniciar."""
+    try:
+        sid = sesion_data["sesion_id"]
+        copia = {k: v for k, v in sesion_data.items() if k != "X"}
+        ruta_json = os.path.join(SESIONES_DIR, f"{sid}_sesion.json")
+        with open(ruta_json, "w", encoding="utf-8") as f:
+            json.dump(copia, f, ensure_ascii=False, indent=2)
+        X = sesion_data.get("X")
+        if X is not None and isinstance(X, np.ndarray) and len(X) > 0:
+            ruta_npy = os.path.join(SESIONES_DIR, f"{sid}_X.npy")
+            np.save(ruta_npy, X)
+    except Exception as e:
+        print(f"Aviso: no se pudo guardar sesión en disco: {e}")
+
+
+def cargar_sesiones_disco() -> None:
+    """Carga en memoria las sesiones guardadas previamente en transcripciones/."""
+    if not os.path.isdir(SESIONES_DIR):
+        return
+    for fn in os.listdir(SESIONES_DIR):
+        if not fn.endswith("_sesion.json"):
+            continue
+        ruta_json = os.path.join(SESIONES_DIR, fn)
+        try:
+            with open(ruta_json, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            sid = data.get("sesion_id")
+            if not sid:
+                sid = fn.replace("_sesion.json", "")
+                data["sesion_id"] = sid
+            nombre_mp3 = data.get("nombre_mp3", "")
+            ruta_mp3 = os.path.join(SALIDA, nombre_mp3) if nombre_mp3 else ""
+            data.setdefault("ruta_mp3", ruta_mp3)
+            data.setdefault("nombre_base", os.path.splitext(data.get("nombre_original", "audio"))[0])
+            data.setdefault("cal", "192k")
+            data.setdefault("mono", True)
+            data.setdefault("grupo", "General")
+
+            ruta_npy = os.path.join(SESIONES_DIR, f"{sid}_X.npy")
+            if os.path.isfile(ruta_npy):
+                data["X"] = np.load(ruta_npy)
+            else:
+                data["X"] = None
+
+            with JOBS_LOCK:
+                SESIONES[sid] = data
+        except Exception as e:
+            print(f"Error cargando sesión {fn}: {e}")
+
+
+# ==============================================================================
+# LISTADO DE NOMBRES DE HABLANTES (EXCEL .XLSX, .CSV, .TXT) POR GRUPO
+# ==============================================================================
+
+def obtener_listado_nombres(grupo: str = "General") -> list[str]:
+    reg = _asegurar_estructura_grupos(cargar_registro_voces())
+    g = reg["grupos"].get(grupo) or reg["grupos"].get("General", {})
+    lista = list(g.get("nombres", []))
+    for nom in g.get("perfiles", {}).keys():
+        if nom not in lista and not nom.startswith("Mi voz (Hablante"):
+            lista.append(nom)
+    return sorted(lista, key=lambda x: x.lower())
+
+
+def agregar_nombres_al_listado(nuevos: list[str], grupo: str = "General", reemplazar: bool = False) -> list[str]:
+    grupo = (grupo or "").strip() or "General"
+    reg = _asegurar_estructura_grupos(cargar_registro_voces())
+    if grupo not in reg["grupos"]:
+        reg["grupos"][grupo] = {
+            "nombre": grupo, "materia": "", "catedra": "", "comision": "",
+            "nombres": [], "perfiles": {}, "creado_en": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+    g = reg["grupos"][grupo]
+    actuales = [] if reemplazar else list(g.get("nombres", []))
+    vistos = {x.lower(): x for x in actuales}
+    for n in nuevos:
+        limpio = re.sub(r"\s+", " ", (n or "").strip())
+        if len(limpio) >= 2 and limpio.lower() not in vistos:
+            vistos[limpio.lower()] = limpio
+            actuales.append(limpio)
+    g["nombres"] = actuales
+    reg["listado_nombres"] = actuales
+    guardar_registro_voces(reg)
+    return obtener_listado_nombres(grupo)
+
+
+def extraer_nombres_desde_archivo(datos_bytes: bytes, nombre_archivo: str) -> list[str]:
+    """Extrae nombres de hablantes desde un archivo Excel (.xlsx), .csv o .txt."""
+    ext = os.path.splitext(nombre_archivo or "")[1].lower()
+    ignorar = {
+        "nombre", "nombres", "apellido", "apellidos", "nombre y apellido",
+        "apellido y nombre", "hablante", "hablantes",
+        "participante", "participantes", "persona", "email", "correo",
+        "dni", "legajo", "id", "nro", "numero", "comision", "curso", "nota"
+    }
+    candidatos = []
+
+    if ext == ".xlsx":
+        with zipfile.ZipFile(io.BytesIO(datos_bytes)) as zf:
+            shared_strings = []
+            if "xl/sharedStrings.xml" in zf.namelist():
+                root_ss = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+                for si in root_ss.iter():
+                    if si.tag.endswith("}si") or si.tag == "si":
+                        partes = [t.text or "" for t in si.iter() if (t.tag.endswith("}t") or t.tag == "t")]
+                        shared_strings.append("".join(partes).strip())
+
+            hojas = [n for n in zf.namelist() if n.startswith("xl/worksheets/sheet") and n.endswith(".xml")]
+            for hoja in sorted(hojas):
+                root_sh = ET.fromstring(zf.read(hoja))
+                for row in root_sh.iter():
+                    if not (row.tag.endswith("}row") or row.tag == "row"):
+                        continue
+                    valores_fila = []
+                    for c in row:
+                        if not (c.tag.endswith("}c") or c.tag == "c"):
+                            continue
+                        tipo = c.attrib.get("t", "")
+                        val_txt = ""
+                        if tipo == "s":
+                            for v in c:
+                                if (v.tag.endswith("}v") or v.tag == "v") and v.text and v.text.isdigit():
+                                    idx = int(v.text)
+                                    if 0 <= idx < len(shared_strings):
+                                        val_txt = shared_strings[idx]
+                        elif tipo == "inlineStr":
+                            partes = [t.text or "" for t in c.iter() if (t.tag.endswith("}t") or t.tag == "t")]
+                            val_txt = "".join(partes).strip()
+                        else:
+                            for v in c:
+                                if (v.tag.endswith("}v") or v.tag == "v") and v.text:
+                                    val_txt = v.text.strip()
+                        if val_txt:
+                            valores_fila.append(val_txt)
+                    textos_validos = [
+                        v.strip() for v in valores_fila
+                        if v.strip() and not re.fullmatch(r"[\d.,:/\-]+", v.strip())
+                        and "@" not in v and v.strip().lower() not in ignorar
+                    ]
+                    if len(textos_validos) == 1:
+                        candidatos.append(textos_validos[0])
+                    elif len(textos_validos) >= 2:
+                        a, b = textos_validos[0], textos_validos[1]
+                        if len(a.split()) <= 2 and len(b.split()) <= 2:
+                            candidatos.append(f"{a} {b}")
+                        else:
+                            candidatos.extend(textos_validos[:2])
+    else:
+        try:
+            texto = datos_bytes.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            texto = datos_bytes.decode("latin-1", errors="replace")
+
+        for linea in texto.splitlines():
+            linea = linea.strip()
+            if not linea:
+                continue
+            sep = ";" if ";" in linea else ("," if "," in linea else "\t")
+            if sep in linea and ext == ".csv":
+                cols = [c.strip().strip('"').strip("'") for c in linea.split(sep)]
+                cols_txt = [
+                    c for c in cols
+                    if c and not re.fullmatch(r"[\d.,:/\-]+", c) and "@" not in c and c.lower() not in ignorar
+                ]
+                if len(cols_txt) == 1:
+                    candidatos.append(cols_txt[0])
+                elif len(cols_txt) >= 2:
+                    if len(cols_txt[0].split()) <= 2 and len(cols_txt[1].split()) <= 2:
+                        candidatos.append(f"{cols_txt[0]} {cols_txt[1]}")
+                    else:
+                        candidatos.append(cols_txt[0])
+            else:
+                limpio = linea.strip().strip("-•*0123456789.) ").strip()
+                if limpio and limpio.lower() not in ignorar and not re.fullmatch(r"[\d.,:/\-]+", limpio):
+                    candidatos.append(limpio)
+
+    resultado = []
+    vistos = set()
+    for c in candidatos:
+        c_norm = re.sub(r"\s+", " ", c).strip()
+        if len(c_norm) >= 2 and c_norm.lower() not in ignorar and c_norm.lower() not in vistos:
+            vistos.add(c_norm.lower())
+            resultado.append(c_norm)
+    return resultado
+
+
+# ==============================================================================
+# AUTO-DETECTOR Y PARSER DE TRANSCRIPCIONES EXTERNAS (TACTIQ, YOUTUBE, WHISPER, SRT)
+# ==============================================================================
+
+def _ts_a_seg(ts: str) -> float:
+    ts = ts.strip().replace(",", ".")
+    partes = ts.split(":")
+    try:
+        if len(partes) == 2:
+            return int(partes[0]) * 60 + float(partes[1])
+        if len(partes) == 3:
+            return int(partes[0]) * 3600 + int(partes[1]) * 60 + float(partes[2])
+        return float(ts)
+    except Exception:
+        return 0.0
+
+
+def _extraer_texto_documento(datos_bytes: bytes, nombre_archivo: str) -> str:
+    ext = os.path.splitext(nombre_archivo or "")[1].lower()
+    if ext == ".docx":
+        with zipfile.ZipFile(io.BytesIO(datos_bytes)) as zf:
+            xml_content = zf.read("word/document.xml")
+        root = ET.fromstring(xml_content)
+        parrafos = []
+        for p in root.iter():
+            if p.tag.endswith("}p") or p.tag == "p":
+                textos = [t.text for t in p.iter() if (t.tag.endswith("}t") or t.tag == "t") and t.text]
+                if textos:
+                    parrafos.append("".join(textos))
+        return "\n".join(parrafos)
+    if ext == ".pdf":
+        for mod_name in ("pypdf", "PyPDF2"):
+            try:
+                mod = __import__(mod_name)
+                reader = mod.PdfReader(io.BytesIO(datos_bytes))
+                return "\n".join((page.extract_text() or "") for page in reader.pages)
+            except Exception:
+                pass
+    try:
+        return datos_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return datos_bytes.decode("latin-1", errors="replace")
+
+
+def parsear_transcripcion_externa(datos_bytes: bytes, nombre_archivo: str) -> dict:
+    """Detecta automáticamente si una transcripción es de Tactiq, YouTube, Whisper o SRT/VTT
+    y extrae sus segmentos con tiempos y hablantes."""
+    texto_raw = _extraer_texto_documento(datos_bytes, nombre_archivo)
+    lineas = [l.rstrip() for l in texto_raw.splitlines()]
+    formato_detectado = "Texto general"
+    items = []
+
+    re_srt = re.compile(r"(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}|\d{1,2}:\d{2}[,.]\d{1,3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}|\d{1,2}:\d{2}[,.]\d{1,3})")
+    re_sbv = re.compile(r"^(\d{1,2}:\d{2}:\d{2}\.\d{1,3}),(\d{1,2}:\d{2}:\d{2}\.\d{1,3})$")
+    re_whisper = re.compile(r"^\[(\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?)\s*(?:->|-|–|a)\s*(\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?)\]\s*(.*)$")
+    re_tactiq_linea = re.compile(r"^\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?\s+(?:-\s+)?([^:]{1,45}):\s*(.+)$")
+    re_tactiq_header1 = re.compile(r"^(\d{1,2}:\d{2}(?::\d{2})?)\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9_().\-\s]{2,45})$")
+    re_tactiq_header2 = re.compile(r"^([A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9_().\-\s]{2,45})\s+(\d{1,2}:\d{2}(?::\d{2})?)$")
+    re_yt_ts_solo = re.compile(r"^(\d{1,2}:\d{2}(?::\d{2})?)$")
+    re_yt_ts_linea = re.compile(r"^(\d{1,2}:\d{2}(?::\d{2})?)\s+(.+)$")
+
+    n_srt = sum(1 for l in lineas if re_srt.search(l))
+    n_sbv = sum(1 for l in lineas if re_sbv.match(l.strip()))
+    n_whisper = sum(1 for l in lineas if re_whisper.match(l.strip()))
+    n_tactiq_l = sum(1 for l in lineas if re_tactiq_linea.match(l.strip()))
+    tiene_marca_tactiq = "tactiq" in texto_raw.lower() or "google meet" in texto_raw.lower()
+
+    if n_srt >= 2 or n_sbv >= 2:
+        formato_detectado = "Subtítulos (SRT / VTT / YouTube)"
+        i = 0
+        while i < len(lineas):
+            l = lineas[i].strip()
+            m1 = re_srt.search(l)
+            m2 = re_sbv.match(l) if not m1 else None
+            if m1 or m2:
+                ini = _ts_a_seg(m1.group(1) if m1 else m2.group(1))
+                fin = _ts_a_seg(m1.group(2) if m1 else m2.group(2))
+                i += 1
+                txt_partes = []
+                while i < len(lineas) and lineas[i].strip() and not re_srt.search(lineas[i]) and not re_sbv.match(lineas[i].strip()):
+                    if not lineas[i].strip().isdigit():
+                        txt_partes.append(lineas[i].strip())
+                    i += 1
+                txt_unido = " ".join(txt_partes).strip()
+                if txt_unido:
+                    spk_nom = "Hablante 1"
+                    m_spk = re.match(r"^\[([^\]]{1,40})\]\s*(.+)$", txt_unido) or re.match(r"^([^:]{2,35}):\s+(.+)$", txt_unido)
+                    if m_spk:
+                        spk_nom = m_spk.group(1).strip()
+                        txt_unido = m_spk.group(2).strip()
+                    items.append({"inicio": ini, "fin": fin, "hablante_nombre": spk_nom, "texto": txt_unido})
+            else:
+                i += 1
+
+    elif n_whisper >= 2:
+        formato_detectado = "Whisper"
+        for l in lineas:
+            m = re_whisper.match(l.strip())
+            if m:
+                ini = _ts_a_seg(m.group(1))
+                fin = _ts_a_seg(m.group(2))
+                resto = m.group(3).strip()
+                spk_nom = "Hablante 1"
+                m_spk = re.match(r"^([^:]{1,40}):\s*(.+)$", resto)
+                if m_spk:
+                    spk_nom = m_spk.group(1).strip()
+                    resto = m_spk.group(2).strip()
+                if resto:
+                    items.append({"inicio": ini, "fin": fin, "hablante_nombre": spk_nom, "texto": resto})
+
+    elif n_tactiq_l >= 2:
+        formato_detectado = "Tactiq"
+        for l in lineas:
+            m = re_tactiq_linea.match(l.strip())
+            if m:
+                ini = _ts_a_seg(m.group(1))
+                spk_nom = m.group(2).strip()
+                txt = m.group(3).strip()
+                if txt:
+                    items.append({"inicio": ini, "fin": None, "hablante_nombre": spk_nom, "texto": txt})
+            elif items and l.strip() and not l.startswith("#") and "tactiq.io" not in l.lower():
+                items[-1]["texto"] += " " + l.strip()
+
+    else:
+        i = 0
+        usos_hablante = 0
+        while i < len(lineas):
+            l = lineas[i].strip()
+            if not l or "tactiq.io" in l.lower() or l.lower().startswith("transcript"):
+                i += 1
+                continue
+            m_ys = re_yt_ts_solo.match(l)
+            m_th1 = re_tactiq_header1.match(l) if not m_ys else None
+            m_th2 = re_tactiq_header2.match(l) if not (m_ys or m_th1) else None
+            m_yl = re_yt_ts_linea.match(l) if not (m_ys or m_th1 or m_th2) else None
+
+            if m_ys:
+                ini = _ts_a_seg(m_ys.group(1))
+                i += 1
+                txt_partes = []
+                while i < len(lineas) and lineas[i].strip() and not re_yt_ts_solo.match(lineas[i].strip()):
+                    txt_partes.append(lineas[i].strip())
+                    i += 1
+                txt = " ".join(txt_partes).strip()
+                if txt:
+                    spk_nom = "Hablante 1"
+                    m_spk = re.match(r"^([^:]{2,35}):\s+(.+)$", txt)
+                    if m_spk:
+                        spk_nom = m_spk.group(1).strip()
+                        txt = m_spk.group(2).strip()
+                        usos_hablante += 1
+                    items.append({"inicio": ini, "fin": None, "hablante_nombre": spk_nom, "texto": txt})
+            elif m_th1 or m_th2:
+                ini = _ts_a_seg(m_th1.group(1) if m_th1 else m_th2.group(2))
+                spk_nom = (m_th1.group(2) if m_th1 else m_th2.group(1)).strip()
+                usos_hablante += 1
+                i += 1
+                txt_partes = []
+                while i < len(lineas) and lineas[i].strip() and not re_tactiq_header1.match(lineas[i].strip()) and not re_tactiq_header2.match(lineas[i].strip()):
+                    txt_partes.append(lineas[i].strip())
+                    i += 1
+                txt = " ".join(txt_partes).strip()
+                if txt:
+                    items.append({"inicio": ini, "fin": None, "hablante_nombre": spk_nom, "texto": txt})
+            elif m_yl:
+                ini = _ts_a_seg(m_yl.group(1))
+                txt = m_yl.group(2).strip()
+                items.append({"inicio": ini, "fin": None, "hablante_nombre": "Hablante 1", "texto": txt})
+                i += 1
+            else:
+                i += 1
+
+        if items:
+            if tiene_marca_tactiq or usos_hablante >= 2:
+                formato_detectado = "Tactiq"
+            else:
+                formato_detectado = "YouTube"
+        else:
+            formato_detectado = "Texto sin tiempos (tiempos estimados)"
+            cursor = 0.0
+            for l in lineas:
+                l_str = l.strip()
+                if not l_str:
+                    continue
+                spk_nom = "Hablante 1"
+                m_spk = re.match(r"^([^:]{2,35}):\s+(.+)$", l_str)
+                if m_spk:
+                    spk_nom = m_spk.group(1).strip()
+                    l_str = m_spk.group(2).strip()
+                dur_est = max(2.0, round(len(l_str) / 14.0, 1))
+                items.append({"inicio": round(cursor, 2), "fin": round(cursor + dur_est, 2), "hablante_nombre": spk_nom, "texto": l_str})
+                cursor += dur_est + 0.3
+
+    for idx, it in enumerate(items):
+        if it["fin"] is None or it["fin"] <= it["inicio"]:
+            dur_est = max(1.5, min(15.0, round(len(it["texto"]) / 13.5, 2)))
+            if idx + 1 < len(items) and items[idx + 1]["inicio"] > it["inicio"]:
+                it["fin"] = round(min(items[idx + 1]["inicio"], it["inicio"] + dur_est + 2.0), 2)
+            else:
+                it["fin"] = round(it["inicio"] + dur_est, 2)
+
+    mapa_nom_a_id = {}
+    nombres_previos = {}
+    segmentos = []
+    for idx, it in enumerate(items):
+        nom = it["hablante_nombre"] or "Hablante 1"
+        if nom not in mapa_nom_a_id:
+            spk_id = f"SPK_{len(mapa_nom_a_id) + 1}"
+            mapa_nom_a_id[nom] = spk_id
+            nombres_previos[spk_id] = nom
+        spk_id = mapa_nom_a_id[nom]
+        segmentos.append({
+            "id": idx,
+            "inicio": round(float(it["inicio"]), 2),
+            "fin": round(float(it["fin"]), 2),
+            "texto": it["texto"],
+            "hablante": spk_id,
+            "confianza": 0.95,
+            "silenciado": False
+        })
+
+    duracion_total = max((s["fin"] for s in segmentos), default=0.0)
+    hablantes = _resumen_hablantes(segmentos, nombres_previos=nombres_previos)
+    return {
+        "formato_detectado": formato_detectado,
+        "segmentos": segmentos,
+        "hablantes": hablantes,
+        "duracion": round(duracion_total, 2)
+    }
+
+
+# ==============================================================================
+# AUTO-MATCHEO DE PRIMERA CLASE: PRESENTACIONES ("MI NOMBRE ES / SOY...") + CRUCE CON TACTIQ SINCRONIZADO
+# ==============================================================================
+
+def _matchear_nombre_con_listado(candidato: str, listado_nombres: list[str]) -> str:
+    """Si hay un listado de nombres del grupo (ej. Excel), empareja 'Sofi' o 'Sofía' con 'Sofía Gómez'."""
+    cand_norm = normalizar_texto(candidato)
+    if not cand_norm:
+        return candidato.strip().title()
+    if not listado_nombres:
+        return candidato.strip().title()
+
+    mejor_nom = None
+    mejor_score = 0.0
+    partes_cand = cand_norm.split()
+    for nom_lista in listado_nombres:
+        nl_norm = normalizar_texto(nom_lista)
+        if not nl_norm:
+            continue
+        if cand_norm == nl_norm:
+            return nom_lista
+        partes_nl = nl_norm.split()
+        # Si el primer nombre coincide exacto
+        if partes_cand and partes_nl and partes_cand[0] == partes_nl[0]:
+            score = 0.92
+        elif cand_norm in nl_norm or nl_norm in cand_norm:
+            score = 0.88
+        else:
+            score = difflib.SequenceMatcher(None, cand_norm, nl_norm).ratio()
+        if score > mejor_score:
+            mejor_score = score
+            mejor_nom = nom_lista
+
+    if mejor_nom and mejor_score >= 0.72:
+        return mejor_nom
+    return candidato.strip().title()
+
+
+def detectar_presentaciones_en_segmentos(segmentos: list[dict], listado_nombres: list[str]) -> list[dict]:
+    """Analiza qué dice cada hablante buscando frases de presentación ('mi nombre es...', 'soy...', 'me llamo...')
+    y cruza con el listado de nombres del grupo."""
+    patrones = [
+        re.compile(r"\b(?:mi nombre es|me llamo|yo soy|hola soy|buenas soy|buen dia soy|buenas tardes soy|buenas noches soy|aca habla)\s+([a-záéíóúüñ]{3,20}(?:\s+[a-záéíóúüñ]{3,20})?)", re.IGNORECASE),
+    ]
+    no_nombres = {
+        "nuevo", "nueva", "estudiante", "profesor", "profesora", "docente", "ayudante",
+        "de", "del", "la", "el", "un", "una", "yo", "muy", "medio", "bastante", "parte",
+        "aca", "ahi", "bien", "todo", "toda", "como", "porque", "cuando", "quien"
+    }
+
+    hallazgos = []
+    for s in segmentos:
+        txt = s.get("texto", "")
+        txt_norm = normalizar_texto(txt)
+        encontrado = None
+        metodo = ""
+
+        for pat in patrones:
+            m = pat.search(txt)
+            if m:
+                bruto = m.group(1).strip()
+                palabras_b = [p for p in bruto.split() if p.lower() not in no_nombres]
+                if palabras_b:
+                    candidato = " ".join(palabras_b[:2])
+                    encontrado = _matchear_nombre_con_listado(candidato, listado_nombres)
+                    metodo = f'Dijo en el audio: "{txt[:70]}"'
+                    break
+
+        # Si no usó la frase exacta pero hay listado de nombres y el segmento es corto de presentación
+        if not encontrado and listado_nombres and len(txt_norm.split()) <= 18:
+            if any(p in txt_norm for p in ("hola", "buenas", "presento", "presentarme", "nombre", "presente", "aca estoy")):
+                for nom_l in listado_nombres:
+                    p_nom = normalizar_texto(nom_l).split()
+                    if p_nom and len(p_nom[0]) >= 3 and re.search(rf"\b{re.escape(p_nom[0])}\b", txt_norm):
+                        encontrado = nom_l
+                        metodo = f'Mencionó su nombre del listado en: "{txt[:70]}"'
+                        break
+
+        if encontrado:
+            hallazgos.append({
+                "seg_id": s.get("id", 0),
+                "inicio": s["inicio"],
+                "fin": s["fin"],
+                "spk_id": s.get("hablante", "SPK_1"),
+                "nombre_detectado": encontrado,
+                "motivo": metodo,
+                "texto": txt
+            })
+    return hallazgos
+
+
+def sincronizar_y_matchear_con_tactiq(segmentos_audio: list[dict], segmentos_tactiq: list[dict],
+                                      hablantes_tactiq: list[dict], listado_nombres: list[str]) -> dict:
+    """1. Calcula automáticamente el desfase de tiempo (offset) entre la transcripción de Tactiq y el audio
+       comparando frases similares.
+       2. Asigna a cada segmento/hablante del audio el nombre correspondiente de Tactiq (cruzado con el listado)."""
+    mapa_id_a_nom_tactiq = {h["id"]: h["nombre"] for h in hablantes_tactiq}
+
+    # Paso 1: Estimar desfase (offset = t_audio - t_tactiq) buscando frases en común
+    desfases = []
+    for st in segmentos_tactiq:
+        txt_t = normalizar_texto(st.get("texto", ""))
+        if len(txt_t.split()) < 4:
+            continue
+        mejor_r = 0.0
+        mejor_sa = None
+        for sa in segmentos_audio:
+            txt_a = normalizar_texto(sa.get("texto", ""))
+            if len(txt_a.split()) < 4:
+                continue
+            r = difflib.SequenceMatcher(None, txt_t[:80], txt_a[:80]).ratio()
+            if r > mejor_r:
+                mejor_r = r
+                mejor_sa = sa
+        if mejor_sa and mejor_r >= 0.65:
+            desfases.append(float(mejor_sa["inicio"]) - float(st["inicio"]))
+
+    offset_detectado = float(np.median(desfases)) if desfases else 0.0
+
+    # Paso 2: Con el offset aplicado, asignar hablante de Tactiq a cada segmento de audio
+    votos_por_spk = {}  # spk_audio -> {nombre_oficial: segundos_solapados}
+    asignaciones_seg = 0
+
+    for sa in segmentos_audio:
+        a_ini = float(sa["inicio"])
+        a_fin = float(sa["fin"])
+        mejor_nom = None
+        mejor_peso = 0.0
+
+        for st in segmentos_tactiq:
+            t_ini = float(st["inicio"]) + offset_detectado
+            t_fin = float(st["fin"]) + offset_detectado
+            solape = min(a_fin, t_fin + 1.5) - max(a_ini, t_ini - 1.5)
+            if solape > 0:
+                sim_txt = difflib.SequenceMatcher(
+                    None, normalizar_texto(sa.get("texto", ""))[:60], normalizar_texto(st.get("texto", ""))[:60]
+                ).ratio()
+                peso = solape * (1.0 + sim_txt * 2.0)
+                if peso > mejor_peso:
+                    mejor_peso = peso
+                    nom_bruto = mapa_id_a_nom_tactiq.get(st.get("hablante"), "Hablante 1")
+                    if not nom_bruto.startswith("Hablante "):
+                        mejor_nom = _matchear_nombre_con_listado(nom_bruto, listado_nombres)
+
+        if mejor_nom:
+            spk_a = sa.get("hablante", "SPK_1")
+            votos_por_spk.setdefault(spk_a, {})
+            dur_s = max(0.5, a_fin - a_ini)
+            votos_por_spk[spk_a][mejor_nom] = votos_por_spk[spk_a].get(mejor_nom, 0.0) + dur_s
+            asignaciones_seg += 1
+
+    mapeo_spk = {}
+    for spk_a, conteo_noms in votos_por_spk.items():
+        if conteo_noms:
+            ganador = max(conteo_noms.items(), key=lambda x: x[1])[0]
+            mapeo_spk[spk_a] = ganador
+
+    return {
+        "offset_segundos": round(offset_detectado, 2),
+        "coincidencias_frases": len(desfases),
+        "segmentos_emparejados": asignaciones_seg,
+        "mapeo_hablantes": mapeo_spk
+    }
+
+
 HTML = r"""<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Estudio de Voz · Aislar Mi Voz, Recortar por Frases y Transcribir</title>
+<title>Estudio de Audio, Hablantes y Subtítulos · Paso a Paso</title>
 <style>
 :root {
   --bg: #f8fafc;
@@ -1330,194 +2054,209 @@ HTML = r"""<!doctype html>
   --primary-light: #eff6ff;
   --secondary: #0f766e;
   --secondary-hover: #115e59;
-  --accent: #4f46e5;
   --danger: #dc2626;
   --danger-bg: #fef2f2;
-  --danger-border: #fecaca;
   --ok: #16a34a;
   --ok-bg: #f0fdf4;
-  --ok-border: #bbf7d0;
-  --gold: #d97706;
-  --gold-bg: #fffbeb;
+  --warn: #d97706;
+  --warn-bg: #fffbeb;
   --radius: 12px;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
 }
 * { box-sizing: border-box; }
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  max-width: 1140px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 24px 16px 80px;
+  padding: 20px 16px 80px;
   background: var(--bg);
   color: var(--text);
-  line-height: 1.5;
+  line-height: 1.48;
 }
 header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 14px;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
   border-bottom: 1px solid var(--border);
 }
 header h1 {
-  font-size: 1.6rem;
+  font-size: 1.45rem;
   margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #0f172a;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  color: #0f172a;
 }
 header p {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   color: var(--muted);
-  font-size: 0.94rem;
+  font-size: 0.88rem;
 }
 #git-bar {
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 8px 12px;
-  font-size: 0.84rem;
+  padding: 7px 12px;
+  font-size: 0.82rem;
   display: flex;
   align-items: center;
   gap: 10px;
-  box-shadow: var(--shadow-sm);
 }
+
+/* Navegador Principal de 4 Pasos */
+.pasos-stepper {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+@media (max-width: 860px) {
+  .pasos-stepper { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 520px) {
+  .pasos-stepper { grid-template-columns: 1fr; }
+}
+.step-btn {
+  background: #ffffff;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.step-btn:hover {
+  border-color: #93c5fd;
+  background: #f8fafc;
+}
+.step-btn.activo {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  box-shadow: 0 2px 8px rgba(37,99,235,0.12);
+}
+.step-btn .step-num {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--primary);
+  letter-spacing: 0.03em;
+}
+.step-btn .step-title {
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+.step-btn .step-sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.step-section {
+  display: none;
+}
+.step-section.activo {
+  display: block;
+}
+
 .card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 22px;
-  margin-bottom: 20px;
-  box-shadow: var(--shadow-sm);
-  transition: border-color 0.15s;
+  padding: 20px;
+  margin-bottom: 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
-.card-header-line {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 16px;
+.card h2 {
+  font-size: 1.15rem;
+  margin: 0 0 8px;
+  color: #0f172a;
 }
-.card-header-line h2 {
-  font-size: 1.18rem;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.card h3 {
+  font-size: 1rem;
+  margin: 0 0 10px;
   color: #1e293b;
-  font-weight: 700;
 }
-.card-badge-info {
-  font-size: 0.8rem;
+.sub-desc {
+  font-size: 0.88rem;
   color: var(--muted);
+  margin: 0 0 16px;
 }
 
-/* Paso 1: Carga */
-.fuentes-grid {
+.grid-2 {
   display: grid;
-  grid-template-columns: 1.45fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
-@media (max-width: 760px) {
-  .fuentes-grid { grid-template-columns: 1fr; }
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
 }
-#zona {
+@media (max-width: 780px) {
+  .grid-2 { grid-template-columns: 1fr; }
+}
+
+.dropzone {
   border: 2px dashed #94a3b8;
   border-radius: var(--radius);
-  padding: 30px 20px;
+  padding: 26px 18px;
   text-align: center;
   background: #f8fafc;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.15s;
 }
-#zona:hover, #zona.sobre {
+.dropzone:hover, .dropzone.sobre {
   border-color: var(--primary);
   background: #eff6ff;
 }
-#zona .icono {
-  font-size: 2.2rem;
-  margin-bottom: 6px;
-}
-#zona .titulo-z {
-  font-weight: 700;
-  font-size: 1.02rem;
-  color: #1e293b;
-}
-#zona .sub-z {
-  font-size: 0.84rem;
-  color: var(--muted);
-  margin-top: 6px;
-}
-.panel-existentes {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  background: #f8fafc;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 12px;
-}
-.panel-existentes label {
-  font-weight: 700;
-  font-size: 0.9rem;
-  color: #1e293b;
-}
 
-/* Cola de archivos */
-#cola-box {
-  margin-top: 18px;
-  display: none;
-}
-.cola-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-  font-size: 0.92rem;
+.campo label {
+  display: block;
+  font-size: 0.82rem;
   font-weight: 700;
   color: #334155;
+  margin-bottom: 4px;
 }
-.cola-lista {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.cola-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  background: #ffffff;
-  border: 1px solid var(--border);
+input[type="text"], input[type="number"], select, textarea {
+  width: 100%;
+  font-size: 0.9rem;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
-  font-size: 0.92rem;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  background: #fff;
+  color: var(--text);
+  font-family: inherit;
 }
-.cola-item .info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  overflow: hidden;
-}
-.cola-item .nombre {
+button {
+  font-family: inherit;
+  font-size: 0.9rem;
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding: 9px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
 }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+.btn-secondary { background: var(--secondary); color: #fff; }
+.btn-secondary:hover:not(:disabled) { background: var(--secondary-hover); }
+.btn-outline { background: #fff; color: #334155; border-color: #cbd5e1; }
+.btn-outline:hover:not(:disabled) { background: #f1f5f9; }
+.btn-gold { background: var(--warn-bg); color: #b45309; border-color: #fde68a; }
+.btn-gold.activo { background: var(--ok); color: #fff; border-color: var(--ok); }
+.btn-danger-soft { background: var(--danger-bg); color: var(--danger); border-color: #fecaca; }
+.btn-sm { padding: 6px 10px; font-size: 0.82rem; }
+.btn-xs { padding: 4px 8px; font-size: 0.76rem; border-radius: 6px; }
+
 .badge {
   font-size: 0.74rem;
   padding: 2px 8px;
@@ -1527,358 +2266,110 @@ header p {
   font-weight: 700;
   white-space: nowrap;
 }
-.badge-azul {
-  background: #dbeafe;
-  color: #1e40af;
-}
-.badge-verde {
-  background: #dcfce7;
-  color: #15803d;
-}
+.badge-azul { background: #dbeafe; color: #1e40af; }
+.badge-verde { background: #dcfce7; color: #15803d; }
+.badge-ambar { background: #fef3c7; color: #b45309; }
 
-/* Paso 2: Selección de Modo y Configuración */
-.modos-grid {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 14px;
-  margin-bottom: 16px;
-}
-@media (max-width: 760px) {
-  .modos-grid { grid-template-columns: 1fr; }
-}
-.modo-card {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 16px;
-  background: #f8fafc;
+.cola-lista {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
   display: flex;
   flex-direction: column;
+  gap: 6px;
+}
+.cola-item {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  transition: all 0.15s;
-}
-.modo-card.destacado {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-}
-.modo-card h3 {
-  margin: 0 0 6px;
-  font-size: 1rem;
-  color: #1e3a8a;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.modo-card p {
-  margin: 0;
-  font-size: 0.85rem;
-  color: #475569;
-}
-
-.opciones-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 14px;
-  margin-bottom: 14px;
-  background: #ffffff;
-  padding: 14px;
+  padding: 8px 12px;
+  background: #f8fafc;
   border: 1px solid var(--border);
-  border-radius: 10px;
-}
-.campo label {
-  display: block;
-  font-size: 0.83rem;
-  font-weight: 700;
-  color: #334155;
-  margin-bottom: 5px;
-}
-input[type="text"], input[type="number"], select {
-  width: 100%;
-  font-size: 0.92rem;
-  padding: 8px 10px;
-  border: 1px solid #cbd5e1;
   border-radius: 8px;
-  background: #fff;
-  color: var(--text);
-  outline: none;
-  transition: border-color 0.15s;
-}
-input[type="text"]:focus, input[type="number"]:focus, select:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(37,99,235,0.12);
-}
-.check-inline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  user-select: none;
-}
-.check-inline input {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
+  font-size: 0.88rem;
 }
 
-.frases-init-box {
-  background: #f0f7ff;
-  border: 1px dashed #93c5fd;
-  border-radius: 10px;
-  padding: 14px;
-  margin-bottom: 14px;
-}
-.sub-grid-2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-@media (max-width: 650px) {
-  .sub-grid-2 { grid-template-columns: 1fr; }
-}
-
-/* Botones */
-button {
-  font-family: inherit;
-  font-size: 0.92rem;
-  font-weight: 600;
-  padding: 9px 15px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  transition: all 0.15s ease;
-}
-button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-.btn-primary {
-  background: var(--primary);
-  color: #fff;
-}
-.btn-primary:hover:not(:disabled) {
-  background: var(--primary-hover);
-}
-.btn-secondary {
-  background: var(--secondary);
-  color: #fff;
-}
-.btn-secondary:hover:not(:disabled) {
-  background: var(--secondary-hover);
-}
-.btn-outline {
-  background: #fff;
-  color: #334155;
-  border-color: #cbd5e1;
-}
-.btn-outline:hover:not(:disabled) {
-  background: #f1f5f9;
-}
-.btn-gold {
-  background: var(--gold-bg);
-  color: #b45309;
-  border-color: #fde68a;
-  padding: 6px 12px;
-  font-size: 0.82rem;
-}
-.btn-gold:hover:not(:disabled) {
-  background: #fef3c7;
-}
-.btn-gold.activo {
-  background: #16a34a;
-  color: #fff;
-  border-color: #16a34a;
-}
-.btn-danger-soft {
-  background: var(--danger-bg);
-  color: var(--danger);
-  border-color: var(--danger-border);
-  padding: 6px 10px;
-  font-size: 0.82rem;
-}
-.btn-sm {
-  padding: 6px 11px;
-  font-size: 0.83rem;
-}
-.btn-xs {
-  padding: 4px 8px;
-  font-size: 0.77rem;
-  border-radius: 6px;
-}
-
-/* Progreso */
 .progreso-item {
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 14px;
-  margin-bottom: 14px;
+  padding: 12px 14px;
+  margin-top: 12px;
   background: #ffffff;
-  box-shadow: var(--shadow-sm);
-}
-.progreso-top {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.92rem;
-  font-weight: 700;
-  margin-bottom: 8px;
 }
 .barra-fondo {
-  height: 10px;
+  height: 9px;
   background: #e2e8f0;
   border-radius: 999px;
   overflow: hidden;
+  margin-top: 6px;
 }
 .barra-relleno {
   height: 100%;
   background: linear-gradient(90deg, #2563eb, #0d9488);
   width: 0%;
-  transition: width 0.25s ease;
+  transition: width 0.25s;
 }
 
-/* ========================================================================== */
-/* ESTUDIO INTERACTIVO ORGANIZADO POR PESTAÑAS (TABS) */
-/* ========================================================================== */
-.estudio-card {
-  border: 2px solid #cbd5e1;
-  background: #ffffff;
-  padding: 20px;
+/* Diagnóstico claro en Paso 3 */
+.diagnostico-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+@media (max-width: 780px) {
+  .diagnostico-grid { grid-template-columns: 1fr; }
+}
+.diag-box {
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  background: #f8fafc;
+}
+.diag-box.ok {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+.diag-box.warn {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+.diag-box h4 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+}
+.diag-box p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #334155;
 }
 
-/* Reproductor fijo superior */
+/* Reproductor sticky Paso 3 */
 .player-sticky {
   position: sticky;
-  top: 10px;
-  z-index: 30;
+  top: 8px;
+  z-index: 25;
   background: #0f172a;
   color: #f8fafc;
-  padding: 12px 16px;
-  border-radius: 12px;
-  margin-bottom: 18px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 16px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  box-shadow: 0 8px 20px -3px rgba(0,0,0,0.25);
-  border: 1px solid #334155;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.2);
 }
 .player-sticky audio {
   flex: 1;
-  min-width: 250px;
-  height: 38px;
-}
-.player-chips {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.player-chip {
-  font-size: 0.78rem;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: #1e293b;
-  border: 1px solid #475569;
-  color: #cbd5e1;
-  white-space: nowrap;
-}
-.player-chip.destacado {
-  background: #065f46;
-  border-color: #059669;
-  color: #ecfdf5;
-  font-weight: 700;
-}
-.player-info {
-  font-size: 0.83rem;
-  color: #94a3b8;
-  width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 240px;
+  height: 36px;
 }
 
-/* Navegación por pestañas */
-.tabs-nav {
-  display: flex;
-  gap: 6px;
-  background: #f1f5f9;
-  padding: 6px;
-  border-radius: 10px;
-  margin-bottom: 18px;
-  border: 1px solid var(--border);
-  overflow-x: auto;
-}
-.tab-btn {
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  padding: 9px 15px;
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: #475569;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-  transition: all 0.15s ease;
-}
-.tab-btn:hover {
-  background: #e2e8f0;
-  color: #0f172a;
-}
-.tab-btn.activo {
-  background: #ffffff;
-  color: var(--primary);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-}
-.tab-btn .tab-badge {
-  font-size: 0.72rem;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: #e2e8f0;
-  color: #334155;
-  font-weight: 700;
-}
-.tab-btn.activo .tab-badge {
-  background: #dbeafe;
-  color: #1e40af;
-}
-.tab-pane {
-  display: none;
-  animation: tabFadeIn 0.15s ease-out;
-}
-.tab-pane.activo {
-  display: block;
-}
-@keyframes tabFadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* Pestaña 1: Hablantes */
-.hablantes-intro-banner {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 10px;
-  padding: 12px 14px;
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.hablantes-intro-banner p {
-  margin: 0;
-  font-size: 0.88rem;
-  color: #166534;
-}
+/* Tarjetas de hablantes en Paso 3 */
 .hablantes-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
   gap: 14px;
   margin-bottom: 18px;
 }
@@ -1886,241 +2377,104 @@ button:disabled {
   border: 2px solid var(--border);
   border-radius: 10px;
   padding: 14px;
-  background: #ffffff;
-  transition: all 0.15s ease;
-  box-shadow: var(--shadow-sm);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 .spk-card.es-mi-voz {
   border-color: #16a34a;
   background: #f0fdf4;
 }
 .spk-card.silenciado {
-  background: #fef2f2;
   border-color: #fca5a5;
-  opacity: 0.85;
+  background: #fef2f2;
+  opacity: 0.82;
 }
-.spk-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.spk-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.spk-name-input {
-  font-weight: 700;
-  font-size: 0.96rem;
-  padding: 4px 8px !important;
-  border: 1px solid transparent !important;
-  background: transparent !important;
-  border-radius: 6px;
-}
-.spk-name-input:hover, .spk-name-input:focus {
-  border-color: #cbd5e1 !important;
-  background: #fff !important;
-}
-.spk-meta {
-  font-size: 0.82rem;
-  color: var(--muted);
-  margin-bottom: 12px;
-}
-.spk-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-.mute-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+.spk-frases-preview {
   font-size: 0.8rem;
-  font-weight: 600;
-  padding: 5px 9px;
-  border-radius: 6px;
-  cursor: pointer;
-  border: 1px solid #d1d5db;
+  color: #475569;
   background: #f8fafc;
-}
-.spk-card.silenciado .mute-toggle {
-  background: #dc2626;
-  color: #fff;
-  border-color: #dc2626;
+  border-left: 3px solid #cbd5e1;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-style: italic;
 }
 
-/* Memoria de Voces */
-.panel-memoria {
-  background: #f8fafc;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px;
-  margin-bottom: 18px;
-}
-
-/* Pestaña 2: Recorte por Frases */
-.box-recorte {
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-.match-pill {
-  margin-top: 6px;
-  font-size: 0.82rem;
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: #fff;
-  border: 1px solid #cbd5e1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-/* Pestaña 3: Transcripción */
-.trans-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
-}
+/* Tabla de segmentos */
 .segmentos-wrap {
-  max-height: 480px;
+  max-height: 430px;
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: #f8fafc;
-  padding: 10px;
+  padding: 8px;
 }
 .seg-row {
   display: grid;
-  grid-template-columns: auto 150px 1fr auto;
-  gap: 10px;
+  grid-template-columns: auto 155px 1fr auto;
+  gap: 8px;
   align-items: start;
-  padding: 9px 12px;
+  padding: 8px 10px;
   border-radius: 8px;
   background: #fff;
   border: 1px solid #e2e8f0;
   margin-bottom: 6px;
-  transition: all 0.15s;
 }
 @media (max-width: 720px) {
   .seg-row { grid-template-columns: 1fr; }
 }
-.seg-row.seg-silenciado {
-  opacity: 0.45;
-  background: #fef2f2;
-  border-color: #fecaca;
-}
-.seg-row.seg-silenciado .seg-texto {
-  text-decoration: line-through;
-}
-.seg-row.fuera-de-rango {
-  opacity: 0.35;
-  background: #f1f5f9;
-}
-.seg-row.marca-inicio {
-  border-left: 5px solid #16a34a;
-}
-.seg-row.marca-fin {
-  border-right: 5px solid #dc2626;
-}
+.seg-row.seg-silenciado { opacity: 0.45; background: #fef2f2; }
+.seg-row.seg-silenciado .seg-texto { text-decoration: line-through; }
+.seg-row.fuera-de-rango { opacity: 0.35; background: #f1f5f9; }
+.seg-row.marca-inicio { border-left: 5px solid #16a34a; }
+.seg-row.marca-fin { border-right: 5px solid #dc2626; }
 .seg-time-btn {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: monospace;
   font-size: 0.78rem;
   padding: 5px 8px;
   background: #f1f5f9;
   color: #334155;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
-  white-space: nowrap;
-}
-.seg-time-btn:hover {
-  background: #e2e8f0;
-}
-.seg-spk-select {
-  font-size: 0.82rem !important;
-  padding: 5px 6px !important;
-  font-weight: 700;
-}
-.seg-texto {
-  font-size: 0.92rem;
-  padding: 4px 6px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  outline: none;
-}
-.seg-texto:focus {
-  border-color: #93c5fd;
-  background: #fff;
 }
 
-/* Pestaña 4: Exportación */
-.export-presets-bar {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
-}
-.preset-card {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  background: #f8fafc;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.preset-card:hover {
-  border-color: var(--primary);
-  background: #eff6ff;
-}
-.preset-card strong {
-  font-size: 0.88rem;
-  display: block;
-  color: #1e3a8a;
-  margin-bottom: 2px;
-}
-.preset-card span {
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-.export-grid {
-  display: grid;
-  grid-template-columns: 1.35fr 1fr;
-  gap: 16px;
-}
-@media (max-width: 820px) {
-  .export-grid { grid-template-columns: 1fr; }
-}
-.export-box {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 16px;
-  background: #f8fafc;
-}
-.export-box h3 {
-  font-size: 1.02rem;
-  margin: 0 0 12px;
-  color: #1e293b;
+/* Paso 4: Video + Subtítulos superpuestos */
+.video-stage {
+  position: relative;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  max-width: 780px;
+  margin: 0 auto 14px;
+  aspect-ratio: 16 / 9;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
 }
-.resultado-mp3-box {
-  margin-top: 14px;
-  padding: 14px;
-  border-radius: 8px;
-  background: var(--ok-bg);
-  border: 1px solid #86efac;
+.video-stage video {
+  width: 100%;
+  height: 100%;
+}
+.sub-overlay {
+  position: absolute;
+  bottom: 48px;
+  left: 6%;
+  right: 6%;
+  text-align: center;
+  pointer-events: none;
+  z-index: 10;
+}
+.sub-overlay span {
+  display: inline-block;
+  background: rgba(0, 0, 0, 0.82);
+  color: #fff;
+  font-size: 1.08rem;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 6px;
+  line-height: 1.35;
+  text-shadow: 0 1px 2px #000;
 }
 </style>
 </head>
@@ -2128,252 +2482,569 @@ button:disabled {
 
 <header>
   <div>
-    <h1>🎙️ Estudio de Voz, Recorte y Transcripción</h1>
-    <p>Aislar tu voz limpia para clonación (XTTS/RVC) · Recortar por frases de inicio/fin · Diarización y subtítulos</p>
+    <h1>🎙️ Estudio de Audio, Hablantes y Subtítulos</h1>
+    <p>Flujo paso a paso: 1. Convertir a MP3 · 2. Transcribir o Subir (Tactiq/YouTube/Whisper) · 3. Etiquetar Hablantes por Grupo · 4. Subtítulos y Video</p>
   </div>
-  <!-- Barra de estado de GitHub -->
   <div id="git-bar">
-    <div style="display:flex;align-items:center;gap:6px">
-      <span style="font-size:1.1rem">🐙</span>
-      <strong id="git-estado-txt">GitHub: Verificando…</strong>
-    </div>
-    <div style="display:flex;gap:6px">
-      <button type="button" class="btn-outline btn-xs" id="btn-git-sinc" title="Verificar cambios en GitHub o forzar pull/push">🔄 Sincronizar</button>
-      <button type="button" class="btn-outline btn-xs" id="btn-git-cfg" style="display:none" title="Conectar repositorio remoto">⚙️ Configurar</button>
-    </div>
+    <span>🐙</span>
+    <strong id="git-estado-txt">GitHub: Verificando…</strong>
+    <button type="button" class="btn-outline btn-xs" id="btn-git-sinc">🔄 Sincronizar</button>
+    <button type="button" class="btn-outline btn-xs" id="btn-git-cfg" style="display:none">⚙️ Configurar</button>
   </div>
 </header>
 
-<!-- PASO 1: SELECCIONAR ARCHIVOS (COLA DE TRABAJO) -->
-<div class="card">
-  <div class="card-header-line">
-    <h2>1. Cargar videos o audios</h2>
-    <span class="card-badge-info">No arranca solo: podés cargar varios archivos, configurar y luego iniciar</span>
-  </div>
-  <div class="fuentes-grid">
-    <div id="zona">
-      <div class="icono">📥</div>
-      <div class="titulo-z">Arrastrá tus archivos acá o hacé clic para explorar</div>
-      <div class="sub-z">Soporta MKV, MP4, MOV, AVI, MP3, WAV, M4A</div>
-      <input type="file" id="arch" accept=".mkv,.mp4,.mov,.avi,.webm,.mp3,.wav,.m4a,video/*,audio/*" multiple hidden>
+<!-- BARRA DE 4 PASOS CLAROS -->
+<nav class="pasos-stepper" id="stepper-nav">
+  <button type="button" class="step-btn activo" data-step="1">
+    <span class="step-num">Paso 1</span>
+    <span class="step-title">🎵 Video / Audio a MP3</span>
+    <span class="step-sub">Extraer o convertir a MP3 con recorte por minuto</span>
+  </button>
+  <button type="button" class="step-btn" data-step="2">
+    <span class="step-num">Paso 2</span>
+    <span class="step-title">📝 Transcripción</span>
+    <span class="step-sub">Transcribir con IA o subir de Tactiq / YouTube / Whisper</span>
+  </button>
+  <button type="button" class="step-btn" data-step="3">
+    <span class="step-num">Paso 3</span>
+    <span class="step-title">👥 Hablantes y Mi Voz</span>
+    <span class="step-sub">Etiquetar por Grupo/Excel, matchear 1ra clase y aislar voz</span>
+  </button>
+  <button type="button" class="step-btn" data-step="4">
+    <span class="step-num">Paso 4</span>
+    <span class="step-title">🎬 Subtítulos y Video</span>
+    <span class="step-sub">Sincronizar transcripción con video sin audio (Drive)</span>
+  </button>
+</nav>
+
+<!-- ====================================================================== -->
+<!-- PASO 1: CARGAR VIDEO O AUDIO Y CONVERTIR A MP3 CON RECORTE POR MINUTO  -->
+<!-- ====================================================================== -->
+<section class="step-section activo" id="step-1">
+  <div class="card">
+    <h2>Paso 1: Cargar archivo de Video o Audio y obtener MP3</h2>
+    <p class="sub-desc">
+      Si subís un <strong>video</strong> (MP4, MKV, MOV, AVI), extrae el audio en MP3. Si subís un <strong>audio en otro formato</strong> (WAV, M4A, OGG), lo convierte a MP3. Podés recortarlo opcionalmente indicando minuto de inicio y fin.
+    </p>
+
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="dropzone" id="zona-p1">
+        <div style="font-size:2rem;margin-bottom:6px">📥</div>
+        <div style="font-weight:700;font-size:1rem">Hacé clic o arrastrá acá tu Video o Audio</div>
+        <div style="font-size:0.82rem;color:var(--muted);margin-top:4px">Formatos: MP4, MKV, MOV, AVI, WEBM, WAV, M4A, MP3</div>
+        <input type="file" id="arch-p1" accept=".mkv,.mp4,.mov,.avi,.webm,.mp3,.wav,.m4a,.ogg,video/*,audio/*" multiple hidden>
+      </div>
+
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;justify-content:space-between;gap:12px">
+        <div>
+          <strong style="font-size:0.92rem">✂️ Opciones de conversión y recorte por minuto</strong>
+          <div class="grid-2" style="margin-top:10px;gap:10px">
+            <div class="campo">
+              <label for="p1-desde">Minuto de inicio (opcional)</label>
+              <input id="p1-desde" type="text" placeholder="ej. 02:00 o 00:10:00">
+            </div>
+            <div class="campo">
+              <label for="p1-hasta">Minuto de fin (opcional)</label>
+              <input id="p1-hasta" type="text" placeholder="ej. 45:00">
+            </div>
+            <div class="campo">
+              <label for="p1-cal">Calidad MP3</label>
+              <select id="p1-cal">
+                <option value="128k">128 kbps</option>
+                <option value="192k" selected>192 kbps (recomendada)</option>
+                <option value="320k">320 kbps (alta calidad)</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="p1-mb">Límite MB (opcional)</label>
+              <input id="p1-mb" type="number" min="1" step="0.5" placeholder="sin límite">
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.86rem;margin-top:10px;cursor:pointer">
+            <input type="checkbox" id="p1-mono" checked>
+            <span>Convertir a canal <strong>Mono</strong> (recomendado para voz)</span>
+          </label>
+        </div>
+
+        <button type="button" class="btn-primary" id="btn-p1-convertir" disabled style="width:100%;justify-content:center">
+          🎵 Extraer / Convertir a MP3
+        </button>
+      </div>
     </div>
 
-    <div class="panel-existentes">
+    <div id="p1-cola-box" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong id="p1-cola-titulo" style="font-size:0.9rem">Archivos seleccionados (0)</strong>
+        <button type="button" class="btn-danger-soft btn-xs" id="btn-p1-limpiar">Vaciar lista</button>
+      </div>
+      <ul class="cola-lista" id="p1-cola-lista"></ul>
+    </div>
+
+    <div id="p1-progreso"></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
       <div>
-        <label for="sel-existente">📂 O elegir un audio ya extraído en <code>audios/</code></label>
-        <p style="font-size:0.82rem;color:var(--muted);margin:4px 0 8px">Si ya convertiste un video antes, podés abrirlo directo sin volver a subir el archivo pesado.</p>
-        <select id="sel-existente">
-          <option value="">Cargando lista de audios…</option>
+        <h3 style="margin:0">📂 Tus MP3 ya listos en la carpeta <code>audios/</code></h3>
+        <p style="font-size:0.84rem;color:var(--muted);margin:2px 0 0">Si ya extrajiste el MP3 antes, podés ir directo al Paso 2 sin volver a convertir.</p>
+      </div>
+      <button type="button" class="btn-secondary btn-sm" onclick="irAPaso(2)">👉 Ir directo al Paso 2: Transcripción</button>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<!-- PASO 2: TRANSCRIBIR CON IA O SUBIR TRANSCRIPCIÓN (TACTIQ/YOUTUBE/ETC) -->
+<!-- ====================================================================== -->
+<section class="step-section" id="step-2">
+  <!-- Sesiones ya guardadas para abrir sin esperar -->
+  <div class="card" id="card-sesiones-previas">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+      <div>
+        <h2 style="margin:0">⚡ Transcripciones ya procesadas (Abrir al instante)</h2>
+        <p style="font-size:0.84rem;color:var(--muted);margin:2px 0 0">
+          Tus transcripciones se guardan automáticamente en disco. Hacé clic en cualquiera para abrirla en el Paso 3 o Paso 4 sin volver a esperar.
+        </p>
+      </div>
+    </div>
+    <div id="lista-sesiones-guardadas" style="display:flex;flex-direction:column;gap:8px">
+      <span style="font-size:0.85rem;color:var(--muted)">Cargando transcripciones guardadas…</span>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- OPCIÓN A: TRANSCRIBIR CON WHISPER -->
+    <div class="card">
+      <h2>Opción A: 🗣️ Transcribir un audio MP3 acá (con Whisper)</h2>
+      <p class="sub-desc">Elegí el MP3 que extrajiste en el Paso 1 (o cualquier audio de tu carpeta <code>audios/</code>) para transcribirlo y separar las voces de los hablantes.</p>
+
+      <div class="campo" style="margin-bottom:12px">
+        <label for="p2-sel-mp3">1. Elegí el archivo de audio MP3:</label>
+        <select id="p2-sel-mp3">
+          <option value="">Cargando audios…</option>
         </select>
       </div>
-      <button type="button" class="btn-outline btn-sm" id="btn-agregar-existente" style="align-self:flex-start">➕ Agregar a la cola</button>
-    </div>
-  </div>
 
-  <div id="cola-box">
-    <div class="cola-header">
-      <span id="cola-titulo">Archivos listos para procesar (0)</span>
-      <button type="button" class="btn-danger-soft" id="btn-limpiar-cola">Vaciar cola</button>
-    </div>
-    <ul class="cola-lista" id="cola-lista"></ul>
-  </div>
-</div>
-
-<!-- PASO 2: ELEGIR MODO Y CONFIGURAR -->
-<div class="card">
-  <div class="card-header-line">
-    <h2>2. Configuración y Modo de Ejecución</h2>
-    <span id="aviso-cola" style="font-size:0.85rem;color:var(--muted)">Cargá al menos un archivo arriba para activar los botones.</span>
-  </div>
-
-  <!-- Tarjetas de Modo -->
-  <div class="modos-grid">
-    <div class="modo-card destacado">
-      <div>
-        <h3>🧠 Modo Estudio Completo con IA (Recomendado)</h3>
-        <p>Transcribe con Whisper, detecta cada hablante, reconoce tu voz, busca marcas por frases y abre el <strong>Estudio Interactivo</strong> para aislar tu voz limpia o recortar.</p>
+      <div class="grid-2" style="margin-bottom:12px">
+        <div class="campo">
+          <label for="p2-modelo">2. Modelo de IA:</label>
+          <select id="p2-modelo">
+            <option value="base">Whisper Base (más rápido)</option>
+            <option value="small" selected>Whisper Small (más preciso)</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="p2-hablantes">3. Cantidad de hablantes a separar:</label>
+          <select id="p2-hablantes">
+            <option value="0" selected>Automático (detectar entre 2 y 6)</option>
+            <option value="1">1 solo hablante</option>
+            <option value="2">2 hablantes</option>
+            <option value="3">3 hablantes</option>
+            <option value="4">4 hablantes</option>
+            <option value="5">5 hablantes</option>
+            <option value="6">6 hablantes</option>
+          </select>
+        </div>
       </div>
-      <button type="button" class="btn-primary" id="btn-analizar" disabled style="width:100%;justify-content:center">
-        🚀 Iniciar Estudio Completo
+
+      <button type="button" class="btn-primary" id="btn-p2-transcribir" style="width:100%;justify-content:center">
+        🚀 Transcribir Audio y Pasar al Paso 3
       </button>
+      <div id="p2-progreso-whisper"></div>
     </div>
 
-    <div class="modo-card">
-      <div>
-        <h3>⚡ Modo Rápido: Solo Extraer Audio</h3>
-        <p>Extrae el audio directo a MP3 o WAV a máxima velocidad sin transcripción ni análisis de hablantes.</p>
+    <!-- OPCIÓN B: SUBIR TRANSCRIPCIÓN YA HECHA -->
+    <div class="card">
+      <h2>Opción B: 📄 Subir una Transcripción ya hecha</h2>
+      <p class="sub-desc">
+        Si ya tenés la transcripción, subila acá para seguir directo al etiquetado de hablantes o armado de subtítulos.
+        <strong>Detecta automáticamente si el formato es de Tactiq, de YouTube, de Whisper o SRT.</strong>
+      </p>
+
+      <div class="dropzone" id="zona-p2-trans" style="padding:20px;margin-bottom:12px">
+        <div style="font-size:1.7rem;margin-bottom:4px">📄</div>
+        <div style="font-weight:700;font-size:0.95rem" id="lbl-arch-trans">Hacé clic o arrastrá tu archivo de transcripción (.TXT, .SRT, .VTT, .DOCX, .PDF)</div>
+        <div style="font-size:0.8rem;color:var(--muted);margin-top:3px">Soporta exportaciones de Tactiq, YouTube, Whisper y subtítulos</div>
+        <input type="file" id="arch-p2-trans" accept=".txt,.srt,.vtt,.sbv,.docx,.pdf,.json" hidden>
       </div>
-      <button type="button" class="btn-secondary" id="btn-solo-mp3" disabled style="width:100%;justify-content:center">
-        🎵 Extraer Audio Directo
+
+      <div class="campo" style="margin-bottom:12px">
+        <label for="p2-trans-mp3">Opcional: Vincular con un audio MP3 de <code>audios/</code> (si querés escuchar las voces)</label>
+        <select id="p2-trans-mp3">
+          <option value="">— Sin audio (solo trabajar con la transcripción y subtítulos) —</option>
+        </select>
+      </div>
+
+      <button type="button" class="btn-secondary" id="btn-p2-subir-trans" disabled style="width:100%;justify-content:center">
+        📂 Cargar Transcripción y Pasar al Paso 3
       </button>
+      <div id="p2-res-import"></div>
     </div>
   </div>
+</section>
 
-  <!-- Opciones y Ajustes -->
-  <div class="opciones-grid">
-    <div class="campo">
-      <label for="cal">Calidad MP3</label>
-      <select id="cal">
-        <option value="64k">64 kbps (liviano)</option>
-        <option value="128k">128 kbps</option>
-        <option value="192k" selected>192 kbps (recomendado)</option>
-        <option value="320k">320 kbps (alta fidelidad)</option>
-      </select>
-    </div>
-    <div class="campo">
-      <label for="modelo">Modelo de transcripción IA</label>
-      <select id="modelo">
-        <option value="base">Whisper Base (más rápido)</option>
-        <option value="small" selected>Whisper Small (más preciso)</option>
-      </select>
-    </div>
-    <div class="campo">
-      <label for="hablantes">Cantidad de hablantes</label>
-      <select id="hablantes">
-        <option value="0" selected>Automático (detectar)</option>
-        <option value="1">1 hablante</option>
-        <option value="2">2 hablantes</option>
-        <option value="3">3 hablantes</option>
-        <option value="4">4 hablantes</option>
-        <option value="5">5 hablantes</option>
-        <option value="6">6 hablantes</option>
-      </select>
-    </div>
-    <div class="campo">
-      <label for="desde">Desde tiempo (opcional)</label>
-      <input id="desde" type="text" placeholder="ej. 02:00">
-    </div>
-    <div class="campo">
-      <label for="hasta">Hasta tiempo (opcional)</label>
-      <input id="hasta" type="text" placeholder="ej. 15:30">
-    </div>
-    <div class="campo">
-      <label for="mb">Tamaño máx. MB (opcional)</label>
-      <input id="mb" type="number" min="1" step="0.5" placeholder="sin límite">
-    </div>
+<!-- ====================================================================== -->
+<!-- PASO 3: ETIQUETAR HABLANTES POR GRUPO, PRIMERA CLASE Y AISLAR MI VOZ   -->
+<!-- ====================================================================== -->
+<section class="step-section" id="step-3">
+  <div id="p3-vacio" class="card" style="text-align:center;padding:40px 20px">
+    <h3>Todavía no seleccionaste ninguna transcripción activa</h3>
+    <p style="color:var(--muted);font-size:0.9rem">Elegí o abrí una transcripción en el <strong>Paso 2</strong> para etiquetar a los hablantes, matchear voces o extraer tu voz limpia.</p>
+    <button type="button" class="btn-primary" onclick="irAPaso(2)">👈 Ir al Paso 2 para abrir o crear una transcripción</button>
   </div>
 
-  <!-- Opción de frases iniciales -->
-  <div class="frases-init-box">
-    <div style="font-size:0.86rem;font-weight:700;color:#1e3a8a;margin-bottom:8px">
-      🔎 Opcional: Detectar marcas de tiempo por frase de inicio y fin desde el inicio
-      <span style="font-weight:400;color:var(--muted)">(también disponible en vivo dentro del estudio)</span>
-    </div>
-    <div class="sub-grid-2">
-      <div class="campo">
-        <label for="frase-ini-global">⛳ Frase donde empieza el recorte (opcional)</label>
-        <input id="frase-ini-global" type="text" placeholder='ej. "bueno empezamos con la clase"'>
-      </div>
-      <div class="campo">
-        <label for="frase-fin-global">🏁 Frase donde termina el recorte (opcional)</label>
-        <input id="frase-fin-global" type="text" placeholder='ej. "hasta acá llegamos hoy"'>
+  <div id="p3-contenido" style="display:none">
+    <!-- BARRA DE GRUPO DE HABLANTES -->
+    <div class="card" style="background:#f0f7ff;border-color:#bfdbfe">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <strong style="font-size:1.02rem;color:#1e3a8a">🗂️ Grupo de Hablantes activo:</strong>
+            <select id="p3-sel-grupo" style="width:auto;min-width:200px;font-weight:700"></select>
+            <button type="button" class="btn-outline btn-sm" id="btn-nuevo-grupo">➕ Crear nuevo grupo</button>
+          </div>
+          <div style="font-size:0.8rem;color:#475569;margin-top:4px">
+            Los nombres y las huellas de voz quedan guardados dentro de este grupo para reutilizarlos automáticamente en futuras grabaciones (preparado a futuro para Materia / Cátedra / Comisión).
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="badge badge-azul" id="badge-info-grupo">0 nombres · 0 voces guardadas</span>
+        </div>
       </div>
     </div>
+
+    <!-- CUADRO DE DIAGNÓSTICO CLARO: ¿QUÉ DETECTÓ EL SISTEMA? -->
+    <div class="diagnostico-grid">
+      <div class="diag-box" id="diag-hablantes-box">
+        <h4>👥 1. ¿Cuántos hablantes se detectaron?</h4>
+        <p id="diag-hablantes-txt">Analizando…</p>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px">
+          <span style="font-size:0.8rem;font-weight:700">¿Querés separar en otra cantidad?:</span>
+          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="2">2 hablantes</button>
+          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="3">3 hablantes</button>
+          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="4">4 hablantes</button>
+          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="5">5 hablantes</button>
+          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="6">6 hablantes</button>
+        </div>
+      </div>
+
+      <div class="diag-box" id="diag-mivoz-box">
+        <h4>🎙️ 2. ¿Se detectó tu voz o voces guardadas del grupo?</h4>
+        <p id="diag-mivoz-txt">Analizando…</p>
+      </div>
+    </div>
+
+    <!-- REPRODUCTOR STICKY -->
+    <div class="player-sticky" id="p3-player-bar">
+      <audio id="p3-audio" controls preload="metadata"></audio>
+      <div style="font-size:0.84rem;color:#cbd5e1" id="p3-player-info">
+        Usá el botón <strong>"▶ Escuchar ejemplo"</strong> en cada tarjeta abajo para oír la voz de cada hablante.
+      </div>
+    </div>
+
+    <!-- PANEL ESPECIAL: PRIMER MATCHEO DE VOCES (1RA CLASE DONDE SE PRESENTAN / EXCEL / TACTIQ) -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+        <div>
+          <h3 style="margin:0;color:#1e3a8a">🪄 Herramientas para Etiquetar Hablantes (Listado Excel + Auto-Matcheo de 1ra Clase)</h3>
+          <p style="font-size:0.83rem;color:var(--muted);margin:3px 0 0">
+            Cargá el listado de nombres del grupo y usá el matcheo automático si es la primera grabación donde dicen su nombre o si tenés la transcripción de Tactiq.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid-3">
+        <!-- 1. Subir Excel / Listado de nombres -->
+        <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:12px">
+          <strong style="font-size:0.88rem;display:block;margin-bottom:4px">📋 A. Subir Excel o Lista de Nombres</strong>
+          <p style="font-size:0.79rem;color:var(--muted);margin:0 0 8px">
+            Subí un Excel (<code>.xlsx</code>), <code>.csv</code> o <code>.txt</code> con los nombres de los hablantes del grupo para elegirlos de una lista desplegable sin escribir a mano.
+          </p>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <input type="file" id="arch-listado-nombres" accept=".xlsx,.csv,.txt" hidden>
+            <button type="button" class="btn-outline btn-sm" onclick="document.getElementById('arch-listado-nombres').click()">📤 Subir Excel / CSV / TXT</button>
+            <button type="button" class="btn-outline btn-sm" id="btn-pegar-nombres">✍️ Pegar nombres</button>
+          </div>
+          <div id="chips-nombres-grupo" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;max-height:90px;overflow-y:auto"></div>
+        </div>
+
+        <!-- 2. Auto-detectar por lo que dicen al presentarse -->
+        <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:12px">
+          <strong style="font-size:0.88rem;display:block;margin-bottom:4px">🗣️ B. Auto-Matchear por Presentación en Audio</strong>
+          <p style="font-size:0.79rem;color:var(--muted);margin:0 0 8px">
+            Ideal para la 1ra clase: busca cuando cada hablante dice <em>"mi nombre es…"</em>, <em>"yo soy…"</em> o menciona su nombre del listado y lo etiqueta solo.
+          </p>
+          <button type="button" class="btn-primary btn-sm" id="btn-auto-presentacion" style="width:100%;justify-content:center">
+            🪄 Detectar nombres dichos en el audio
+          </button>
+          <div id="res-auto-presentacion" style="font-size:0.79rem;margin-top:6px"></div>
+        </div>
+
+        <!-- 3. Auto-sincronizar y matchear con Tactiq -->
+        <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:12px">
+          <strong style="font-size:0.88rem;display:block;margin-bottom:4px">🔄 C. Sincronizar y Matchear con Tactiq</strong>
+          <p style="font-size:0.79rem;color:var(--muted);margin:0 0 8px">
+            Subí la transcripción de Tactiq de esta grabación: el sistema <strong>sincroniza solo el desfase de tiempo</strong> con el audio y asigna los nombres de Tactiq a cada voz.
+          </p>
+          <input type="file" id="arch-tactiq-sync" accept=".txt,.docx,.srt,.vtt,.json" hidden>
+          <button type="button" class="btn-secondary btn-sm" onclick="document.getElementById('arch-tactiq-sync').click()" style="width:100%;justify-content:center">
+            📄 Subir Tactiq para sincronizar y etiquetar voces
+          </button>
+          <div id="res-tactiq-sync" style="font-size:0.79rem;margin-top:6px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TARJETAS DE HABLANTES -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+        <div>
+          <h2 style="margin:0">👥 Hablantes de esta grabación</h2>
+          <p style="font-size:0.84rem;color:var(--muted);margin:2px 0 0">
+            Escuchá un ejemplo con <strong>▶ Escuchar</strong>, elegí su nombre del listado (o escribilo) y tocá <strong>💾 Guardar en Grupo</strong> para que su voz quede registrada.
+          </p>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button type="button" class="btn-outline btn-xs" id="btn-p3-silenciar-todos">🔇 Silenciar todos</button>
+          <button type="button" class="btn-outline btn-xs" id="btn-p3-activar-todos">🔊 Activar todos</button>
+          <button type="button" class="btn-outline btn-xs" id="btn-p3-nuevo-spk">➕ Agregar hablante</button>
+        </div>
+      </div>
+
+      <div class="hablantes-grid" id="p3-hablantes-grid"></div>
+    </div>
+
+    <!-- RECORTE POR FRASE DE INICIO Y FIN + EXTRACCIÓN DE AUDIO (MI VOZ / SILENCIAR HABLANTES) -->
+    <div class="grid-2">
+      <!-- Recorte por frases -->
+      <div class="card">
+        <h3>✂️ Recortar por Frase de Inicio y Frase de Fin (Opcional)</h3>
+        <p style="font-size:0.83rem;color:var(--muted);margin-top:0">
+          Detecta la marca de tiempo exacta de cuando decís una frase para empezar y otra al terminar.
+        </p>
+        <div class="grid-2" style="gap:10px;margin-bottom:10px">
+          <div class="campo">
+            <label for="p3-f-ini">⛳ Frase de inicio:</label>
+            <input type="text" id="p3-f-ini" placeholder='ej. "bueno empezamos"'>
+            <div id="p3-pill-ini"></div>
+          </div>
+          <div class="campo">
+            <label for="p3-f-fin">🏁 Frase de fin:</label>
+            <input type="text" id="p3-f-fin" placeholder='ej. "hasta acá llegamos"'>
+            <div id="p3-pill-fin"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="btn-primary btn-sm" id="btn-p3-buscar-frases">🔍 Detectar marcas de tiempo</button>
+          <span style="font-size:0.82rem">Desde:</span>
+          <input type="text" id="p3-t-ini" placeholder="00:00" style="width:78px;padding:4px 6px;font-family:monospace">
+          <span style="font-size:0.82rem">Hasta:</span>
+          <input type="text" id="p3-t-fin" placeholder="fin" style="width:78px;padding:4px 6px;font-family:monospace">
+          <button type="button" class="btn-outline btn-xs" id="btn-p3-limpiar-rango">✕ Todo</button>
+        </div>
+      </div>
+
+      <!-- Extraer Audio Procesado (Aislar mi voz / Silenciar hablantes) -->
+      <div class="card">
+        <h3>🎯 Extraer Audio (Solo mi voz limpia o hablantes silenciados)</h3>
+        <div class="grid-2" style="gap:10px;margin-bottom:10px">
+          <div class="campo">
+            <label for="p3-modo-audio">Qué hacer con el audio:</label>
+            <select id="p3-modo-audio">
+              <option value="aislar" selected>🎯 Dejar SOLO las voces activas (unir sin silencios para entrenar voz)</option>
+              <option value="recortar">✂️ Quitar hablantes silenciados (acortar audio)</option>
+              <option value="silenciar">🔇 Poner en mudo (volumen 0) a los hablantes silenciados</option>
+              <option value="rango_directo">📏 Solo recortar entre inicio y fin (sin filtrar hablantes)</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="p3-fmt-audio">Formato de salida:</label>
+            <select id="p3-fmt-audio">
+              <option value="mp3" selected>MP3</option>
+              <option value="wav">WAV 44.1 kHz (alta calidad para entrenar modelo)</option>
+              <option value="zip">📦 Dataset ZIP (clips WAV + metadata.csv)</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="p3-max-min">Duración máxima:</label>
+            <select id="p3-max-min">
+              <option value="0" selected>Todo el tiempo disponible</option>
+              <option value="2">Los mejores 2 min</option>
+              <option value="5">Los mejores 5 min</option>
+              <option value="10">Los mejores 10 min</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="p3-min-seg">Filtro de frases cortas:</label>
+            <select id="p3-min-seg">
+              <option value="0">Conservar todas</option>
+              <option value="1.0" selected>Ignorar &lt; 1 seg ("sí", "claro")</option>
+              <option value="2.0">Ignorar &lt; 2 seg</option>
+            </select>
+          </div>
+        </div>
+        <div id="p3-resumen-audio" style="font-size:0.83rem;background:#eff6ff;color:#1e40af;padding:8px 10px;border-radius:8px;margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn-primary btn-sm" id="btn-p3-export-audio">💾 Generar Audio Procesado</button>
+          <button type="button" class="btn-secondary btn-sm" onclick="irAPaso(4)">👉 Ir al Paso 4: Subtítulos y Video sin audio</button>
+        </div>
+        <div id="p3-res-audio"></div>
+      </div>
+    </div>
+
+    <!-- DETALLE DE LA TRANSCRIPCIÓN LÍNEA POR LÍNEA -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+        <h3 style="margin:0">📝 Transcripción línea por línea (<span id="p3-cont-seg">0</span> fragmentos)</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input type="text" id="p3-buscar" placeholder="🔍 Buscar palabra o frase…" style="width:200px">
+          <select id="p3-filtro-spk" style="width:180px">
+            <option value="">Todos los hablantes</option>
+          </select>
+        </div>
+      </div>
+      <div class="segmentos-wrap" id="p3-seg-wrap"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<!-- PASO 4: CONVERTIR A SUBTÍTULOS Y SINCRONIZAR CON VIDEO SIN AUDIO       -->
+<!-- ====================================================================== -->
+<section class="step-section" id="step-4">
+  <div id="p4-vacio" class="card" style="text-align:center;padding:40px 20px">
+    <h3>Primero elegí o subí una transcripción en el Paso 2</h3>
+    <p style="color:var(--muted);font-size:0.9rem">Para generar los subtítulos y sincronizarlos con tu video, primero abrí o subí la transcripción en el Paso 2.</p>
+    <button type="button" class="btn-primary" onclick="irAPaso(2)">👈 Ir al Paso 2</button>
   </div>
 
-  <label class="check-inline">
-    <input type="checkbox" id="mono" checked>
-    <span>Convertir a <strong>Mono</strong> (recomendado para entrenar modelos de voz: pesa la mitad y evita desfases)</span>
-  </label>
-</div>
+  <div id="p4-contenido" style="display:none">
+    <div class="card">
+      <h2>Paso 4: Convertir Transcripción a Subtítulos y Sincronizar con Video ("Salva-videos sin audio")</h2>
+      <p class="sub-desc">
+        Ideal cuando grabaste un video (por ejemplo el que está en Google Drive), el micrófono o los hablantes no salieron en el audio, pero sí tenés la transcripción. Acá podés <strong>sincronizar el tiempo del video con la transcripción</strong> para que los subtítulos calcen exacto.
+      </p>
 
-<!-- PROGRESO Y RESULTADOS DIRECTOS -->
-<div id="zona-progreso"></div>
-<div id="zona-estudios"></div>
+      <div class="grid-2">
+        <!-- Columna Izquierda: Reproductor de Video con Subtítulos en Vivo -->
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+            <strong style="font-size:0.92rem">1. Cargar el video local para previsualizar y sincronizar:</strong>
+            <input type="file" id="arch-p4-video" accept=".mp4,.mkv,.webm,.mov,video/*" hidden>
+            <button type="button" class="btn-outline btn-sm" onclick="document.getElementById('arch-p4-video').click()">🎬 Elegir archivo de Video de tu PC</button>
+          </div>
+
+          <div class="video-stage">
+            <video id="p4-video" controls></video>
+            <div class="sub-overlay"><span id="p4-sub-live">Cargá tu video o dale Play para ver los subtítulos sincronizados acá</span></div>
+          </div>
+          <div style="font-size:0.8rem;color:var(--muted);text-align:center" id="p4-video-nombre">
+            (El video se reproduce directo en tu navegador sin gastarte datos ni subirlo a internet)
+          </div>
+        </div>
+
+        <!-- Columna Derecha: Controles de Sincronización y Descarga de Subtítulos -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px">
+            <strong style="font-size:0.95rem;color:#1e3a8a;display:block;margin-bottom:6px">
+              ⏱️ 2. Sincronizar el Video con la Transcripción (Ajustar desfase)
+            </strong>
+            <p style="font-size:0.82rem;color:#334155;margin:0 0 10px">
+              Si el video empezó a grabarse antes o después que la transcripción, elegí una frase de referencia abajo, buscá ese momento en el video y tocá <strong>"📍 Sincronizar con el segundo actual del video"</strong>.
+            </p>
+
+            <div class="campo" style="margin-bottom:8px">
+              <label for="p4-sel-frase-ref">Frase de referencia de la transcripción:</label>
+              <select id="p4-sel-frase-ref"></select>
+            </div>
+
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+              <button type="button" class="btn-primary btn-sm" id="btn-p4-sync-video">
+                📍 Sincronizar esta frase con el segundo actual del video
+              </button>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:8px;border-top:1px dashed #93c5fd">
+              <label style="font-size:0.83rem;font-weight:700">Desfase aplicado (segundos):</label>
+              <input type="number" id="p4-offset-seg" step="0.5" value="0" style="width:95px;font-family:monospace;font-weight:700">
+              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(-1)">-1 seg</button>
+              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(+1)">+1 seg</button>
+              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(0, true)">Reset (0s)</button>
+            </div>
+          </div>
+
+          <!-- Descargar archivos de subtítulos -->
+          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:14px">
+            <strong style="font-size:0.95rem;display:block;margin-bottom:8px">
+              ⬇ 3. Descargar Subtítulos Sincronizados (Para Drive / YouTube / VLC)
+            </strong>
+            <label style="display:flex;align-items:center;gap:8px;font-size:0.86rem;margin-bottom:6px;cursor:pointer">
+              <input type="checkbox" id="p4-inc-nom" checked>
+              <span>Incluir el <strong>nombre del hablante</strong> en cada subtítulo (ej. <code>[Nombre]: texto</code>)</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:0.86rem;margin-bottom:12px;cursor:pointer">
+              <input type="checkbox" id="p4-inc-sil">
+              <span>Incluir también fragmentos de hablantes silenciados</span>
+            </label>
+
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" class="btn-primary btn-sm" onclick="descargarSubtitulosPaso4('srt')">
+                🎬 Descargar Subtítulos .SRT (Para Google Drive y YouTube)
+              </button>
+              <button type="button" class="btn-outline btn-sm" onclick="descargarSubtitulosPaso4('vtt')">
+                ⬇ Descargar .VTT
+              </button>
+              <button type="button" class="btn-outline btn-sm" onclick="descargarSubtitulosPaso4('txt_ts')">
+                ⬇ Descargar .TXT con tiempos
+              </button>
+            </div>
+          </div>
+
+          <!-- Opción de unir video + subtítulos en un nuevo MP4 -->
+          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:14px">
+            <strong style="font-size:0.92rem;display:block;margin-bottom:6px">
+              🎞️ 4. Opcional: Unir el Video con los Subtítulos en un nuevo archivo .MP4
+            </strong>
+            <p style="font-size:0.8rem;color:var(--muted);margin:0 0 8px">
+              Si elegiste el archivo de video arriba, podés generar un nuevo <code>.mp4</code> con los subtítulos ya integrados.
+            </p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <select id="p4-modo-unir" style="width:auto;flex:1">
+                <option value="soft" selected>⚡ Pista de subtítulos interna (Rápido, tarda pocos segundos)</option>
+                <option value="burn">🔥 Quemar/grabar subtítulos fijos sobre la imagen del video</option>
+              </select>
+              <button type="button" class="btn-secondary btn-sm" id="btn-p4-unir-video">
+                🎬 Unir Video + Subtítulos
+              </button>
+            </div>
+            <div id="p4-res-unir" style="margin-top:8px;font-size:0.84rem"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
 <script>
-const zona = document.getElementById('zona');
-const arch = document.getElementById('arch');
-const colaBox = document.getElementById('cola-box');
-const colaLista = document.getElementById('cola-lista');
-const colaTitulo = document.getElementById('cola-titulo');
-const btnAnalizar = document.getElementById('btn-analizar');
-const btnSoloMp3 = document.getElementById('btn-solo-mp3');
-const avisoCola = document.getElementById('aviso-cola');
-const selExistente = document.getElementById('sel-existente');
-const zonaProgreso = document.getElementById('zona-progreso');
-const zonaEstudios = document.getElementById('zona-estudios');
+// ==============================================================================
+// ESTADO GLOBAL DEL CLIENTE
+// ==============================================================================
+let colaP1 = [];
+let sesionActiva = null;   // Objeto con la sesión actual cargada en Paso 3 y Paso 4
+let grupoActivo = 'General';
+let listaGrupos = [];
+let nombresGrupoActual = [];
+let archivoVideoP4 = null;
 
-let cola = [];
-const sesiones = {};
-
-// Sincronizador de GitHub en el frontend
-async function consultarGitEstado(forzarVerificar = false) {
-  try {
-    const r = await fetch('/api/git_estado?verificar=' + (forzarVerificar ? '1' : '0'));
-    if (!r.ok) return;
-    const st = await r.json();
-    const txt = document.getElementById('git-estado-txt');
-    const btnCfg = document.getElementById('btn-git-cfg');
-    if (!txt) return;
-
-    if (!st.tiene_remote) {
-      txt.innerHTML = '<span style="color:#d97706">Local (Sin GitHub remoto)</span>';
-      btnCfg.style.display = 'inline-block';
-      btnCfg.onclick = () => configurarGitRemote();
-      return;
-    }
-
-    btnCfg.style.display = 'none';
-    if (st.estado === 'sincronizado') {
-      txt.innerHTML = `<span style="color:#15803d">✔ Al día (${escHtml(st.rama)})</span>`;
-    } else if (st.behind > 0) {
-      txt.innerHTML = `<span style="color:#2563eb">📥 ${st.behind} cambios en GitHub (Click Sincronizar)</span>`;
-    } else if (st.ahead > 0) {
-      txt.innerHTML = `<span style="color:#0891b2">📤 ${st.ahead} cambios locales pendientes</span>`;
-    } else {
-      txt.innerHTML = `<span>${escHtml(st.mensaje || st.estado)}</span>`;
-    }
-  } catch (e) {
-    console.error('Error git estado:', e);
-  }
+function escHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
-
-async function sincronizarGitManual() {
-  const btn = document.getElementById('btn-git-sinc');
-  const txt = document.getElementById('git-estado-txt');
-  btn.disabled = true;
-  txt.textContent = 'Sincronizando con GitHub…';
-  try {
-    const r = await fetch('/api/git_sincronizar', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ accion: 'auto' })
-    });
-    if (!r.ok) throw new Error(await r.text());
-    const res = await r.json();
-    alert(res.mensaje || 'Sincronización completada.');
-    consultarGitEstado(false);
-  } catch (e) {
-    alert('Error al sincronizar con GitHub: ' + e.message);
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function configurarGitRemote() {
-  const url = prompt('Pegá la URL de tu repositorio en GitHub (HTTPS o SSH):\nEjemplo: https://github.com/tu-usuario/extraer-audio.git');
-  if (!url || !url.trim()) return;
-  try {
-    const r = await fetch('/api/git_sincronizar', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ accion: 'configurar_remote', remote_url: url.trim() })
-    });
-    if (!r.ok) throw new Error(await r.text());
-    alert('¡Remoto de GitHub conectado con éxito! Ahora tus cambios se sincronizarán automáticamente.');
-    consultarGitEstado(true);
-  } catch (e) {
-    alert('Error al conectar remoto: ' + e.message);
-  }
-}
-
-document.getElementById('btn-git-sinc').onclick = () => sincronizarGitManual();
-consultarGitEstado(false);
 
 function fmtHMS(seg) {
   if (seg === null || seg === undefined || isNaN(seg)) return '--:--';
-  seg = Math.max(0, Number(seg));
+  const neg = seg < 0 ? '-' : '';
+  seg = Math.abs(Number(seg));
   const total = Math.floor(seg);
   const dec = Math.round((seg - total) * 10);
   const h = Math.floor(total / 3600);
@@ -2382,7 +3053,7 @@ function fmtHMS(seg) {
   const base = h > 0
     ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
     : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-  return dec > 0 ? `${base}.${dec}` : base;
+  return neg + (dec > 0 && dec < 10 ? `${base}.${dec}` : base);
 }
 
 function parseTiempoCliente(txt) {
@@ -2400,221 +3071,356 @@ function fmtMB(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-function escHtml(str) {
-  return String(str ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+// ==============================================================================
+// NAVEGACIÓN ENTRE LOS 4 PASOS
+// ==============================================================================
+function irAPaso(num) {
+  document.querySelectorAll('#stepper-nav .step-btn').forEach(b => {
+    b.classList.toggle('activo', Number(b.dataset.step) === Number(num));
+  });
+  document.querySelectorAll('.step-section').forEach((sec, idx) => {
+    sec.classList.toggle('activo', (idx + 1) === Number(num));
+  });
+  if (num === 2) {
+    cargarAudiosDisponibles();
+    cargarSesionesGuardadas();
+  }
+  if (num === 3 && sesionActiva) {
+    renderPaso3();
+  }
+  if (num === 4 && sesionActiva) {
+    renderPaso4();
+  }
 }
 
-async function cargarListaAudiosExistentes() {
+document.querySelectorAll('#stepper-nav .step-btn').forEach(b => {
+  b.onclick = () => irAPaso(Number(b.dataset.step));
+});
+
+// ==============================================================================
+// GITHUB SYNC
+// ==============================================================================
+async function consultarGitEstado(forzar = false) {
   try {
-    const r = await fetch('/api/audios_existentes');
-    const lista = await r.json();
-    selExistente.innerHTML = '';
-    if (!lista.length) {
-      selExistente.innerHTML = '<option value="">(No hay audios previos en /audios)</option>';
+    const r = await fetch('/api/git_estado?verificar=' + (forzar ? '1' : '0'));
+    if (!r.ok) return;
+    const st = await r.json();
+    const txt = document.getElementById('git-estado-txt');
+    const btnCfg = document.getElementById('btn-git-cfg');
+    if (!st.tiene_remote) {
+      txt.innerHTML = '<span style="color:#d97706">Local (Sin remoto)</span>';
+      btnCfg.style.display = 'inline-block';
       return;
     }
-    selExistente.innerHTML = '<option value="">— Elegí un audio de /audios —</option>';
-    for (const item of lista) {
-      const opt = document.createElement('option');
-      opt.value = item.nombre;
-      opt.textContent = `${item.nombre} (${fmtMB(item.bytes)})`;
-      opt.dataset.bytes = item.bytes;
-      selExistente.appendChild(opt);
+    btnCfg.style.display = 'none';
+    if (st.estado === 'sincronizado') {
+      txt.innerHTML = `<span style="color:#15803d">✔ Al día (${escHtml(st.rama)})</span>`;
+    } else {
+      txt.innerHTML = `<span>${escHtml(st.mensaje || st.estado)}</span>`;
     }
-  } catch (e) {
-    selExistente.innerHTML = '<option value="">Error cargando lista</option>';
-  }
+  } catch (e) {}
 }
-cargarListaAudiosExistentes();
+document.getElementById('btn-git-sinc').onclick = async () => {
+  const r = await fetch('/api/git_sincronizar', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({accion:'auto'}) });
+  if (r.ok) { const d = await r.json(); alert(d.mensaje || 'Sincronizado'); consultarGitEstado(); }
+};
+document.getElementById('btn-git-cfg').onclick = async () => {
+  const url = prompt('Pegá la URL de tu repositorio en GitHub:');
+  if (!url) return;
+  await fetch('/api/git_sincronizar', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({accion:'configurar_remote', remote_url: url.trim()}) });
+  consultarGitEstado(true);
+};
+consultarGitEstado(false);
 
-function agregarArchivosACola(files) {
+// ==============================================================================
+// PASO 1: CONVERTIR VIDEO / AUDIO A MP3 CON RECORTE POR MINUTO
+// ==============================================================================
+const zonaP1 = document.getElementById('zona-p1');
+const archP1 = document.getElementById('arch-p1');
+const btnP1Convertir = document.getElementById('btn-p1-convertir');
+
+zonaP1.onclick = () => archP1.click();
+zonaP1.ondragover = e => { e.preventDefault(); zonaP1.classList.add('sobre'); };
+zonaP1.ondragleave = () => zonaP1.classList.remove('sobre');
+zonaP1.ondrop = e => { e.preventDefault(); zonaP1.classList.remove('sobre'); agregarColaP1(e.dataTransfer.files); };
+archP1.onchange = () => { agregarColaP1(archP1.files); archP1.value = ''; };
+
+function agregarColaP1(files) {
   for (const f of files) {
-    cola.push({
-      id: Math.random().toString(36).slice(2),
-      tipo: 'file',
-      file: f,
-      nombre: f.name,
-      bytes: f.size
-    });
+    colaP1.push({ id: Math.random().toString(36).slice(2), file: f, nombre: f.name, bytes: f.size });
   }
-  renderCola();
+  renderColaP1();
 }
 
-document.getElementById('btn-agregar-existente').onclick = () => {
-  const val = selExistente.value;
-  if (!val) return;
-  const opt = selExistente.selectedOptions[0];
-  cola.push({
-    id: Math.random().toString(36).slice(2),
-    tipo: 'existente',
-    nombre: val,
-    bytes: Number(opt?.dataset?.bytes || 0)
-  });
-  selExistente.value = '';
-  renderCola();
-};
-
-document.getElementById('btn-limpiar-cola').onclick = () => {
-  cola = [];
-  renderCola();
-};
-
-function quitarDeCola(id) {
-  cola = cola.filter(x => x.id !== id);
-  renderCola();
-}
-
-function renderCola() {
-  if (cola.length === 0) {
-    colaBox.style.display = 'none';
-    btnAnalizar.disabled = true;
-    btnSoloMp3.disabled = true;
-    avisoCola.style.display = 'inline';
+function renderColaP1() {
+  const box = document.getElementById('p1-cola-box');
+  const lista = document.getElementById('p1-cola-lista');
+  const tit = document.getElementById('p1-cola-titulo');
+  if (!colaP1.length) {
+    box.style.display = 'none';
+    btnP1Convertir.disabled = true;
     return;
   }
-  colaBox.style.display = 'block';
-  btnAnalizar.disabled = false;
-  btnSoloMp3.disabled = false;
-  avisoCola.style.display = 'none';
-  colaTitulo.textContent = `Archivos en cola listos para procesar (${cola.length})`;
-  colaLista.innerHTML = '';
-
-  for (const item of cola) {
-    const li = document.createElement('li');
-    li.className = 'cola-item';
-    const ext = (item.nombre.split('.').pop() || '').toUpperCase();
-    const origenBadge = item.tipo === 'existente'
-      ? '<span class="badge badge-azul">En /audios</span>'
-      : `<span class="badge">${escHtml(ext)}</span>`;
-    li.innerHTML = `
-      <div class="info">
-        ${origenBadge}
-        <span class="nombre" title="${escHtml(item.nombre)}">${escHtml(item.nombre)}</span>
-        <span style="color:var(--muted);font-size:0.82rem">${fmtMB(item.bytes)}</span>
-      </div>
-      <button type="button" class="btn-danger-soft" data-id="${item.id}">✕ Quitar</button>
-    `;
-    li.querySelector('button').onclick = () => quitarDeCola(item.id);
-    colaLista.appendChild(li);
-  }
+  box.style.display = 'block';
+  btnP1Convertir.disabled = false;
+  tit.textContent = `Archivos listos para extraer/convertir a MP3 (${colaP1.length})`;
+  lista.innerHTML = colaP1.map(it => `
+    <li class="cola-item">
+      <span><strong>${escHtml(it.nombre)}</strong> <small style="color:var(--muted)">(${fmtMB(it.bytes)})</small></span>
+      <button type="button" class="btn-danger-soft btn-xs" onclick="quitarColaP1('${it.id}')">✕ Quitar</button>
+    </li>
+  `).join('');
 }
 
-zona.onclick = () => arch.click();
-arch.onchange = () => {
-  agregarArchivosACola(arch.files);
-  arch.value = '';
+window.quitarColaP1 = function(id) {
+  colaP1 = colaP1.filter(x => x.id !== id);
+  renderColaP1();
 };
-zona.ondragover = e => { e.preventDefault(); zona.classList.add('sobre'); };
-zona.ondragleave = () => zona.classList.remove('sobre');
-zona.ondrop = e => {
-  e.preventDefault();
-  zona.classList.remove('sobre');
-  agregarArchivosACola(e.dataTransfer.files);
-};
+document.getElementById('btn-p1-limpiar').onclick = () => { colaP1 = []; renderColaP1(); };
 
-btnAnalizar.onclick = () => procesarCola(false);
-btnSoloMp3.onclick = () => procesarCola(true);
+btnP1Convertir.onclick = async () => {
+  if (!colaP1.length) return;
+  const lotes = [...colaP1];
+  colaP1 = [];
+  renderColaP1();
 
-async function procesarCola(soloExtraer) {
-  if (!cola.length) return;
-  const lotes = [...cola];
-  cola = [];
-  renderCola();
-
-  const paramsBase = {
-    cal: document.getElementById('cal').value,
-    desde: document.getElementById('desde').value.trim(),
-    hasta: document.getElementById('hasta').value.trim(),
-    frase_ini: document.getElementById('frase-ini-global').value.trim(),
-    frase_fin: document.getElementById('frase-fin-global').value.trim(),
-    mb: document.getElementById('mb').value.trim(),
-    mono: document.getElementById('mono').checked ? '1' : '0',
-    modelo: document.getElementById('modelo').value,
-    hablantes: document.getElementById('hablantes').value,
-    solo_extraer: soloExtraer ? '1' : '0'
+  const params = {
+    cal: document.getElementById('p1-cal').value,
+    desde: document.getElementById('p1-desde').value.trim(),
+    hasta: document.getElementById('p1-hasta').value.trim(),
+    mb: document.getElementById('p1-mb').value.trim(),
+    mono: document.getElementById('p1-mono').checked ? '1' : '0',
+    solo_extraer: '1'
   };
 
   for (const item of lotes) {
-    await ejecutarItem(item, paramsBase);
+    const pBox = document.createElement('div');
+    pBox.className = 'progreso-item';
+    pBox.innerHTML = `
+      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:0.9rem">
+        <span>⏳ Convirtiendo ${escHtml(item.nombre)} a MP3… <span class="msg"></span></span>
+        <span class="pct">10%</span>
+      </div>
+      <div class="barra-fondo"><div class="barra-relleno" style="width:10%"></div></div>
+    `;
+    document.getElementById('p1-progreso').prepend(pBox);
+
+    try {
+      const q = new URLSearchParams({ ...params, nombre: item.nombre, usar_mp3_existente: '0' });
+      const r = await fetch('/api/iniciar?' + q.toString(), { method: 'POST', body: item.file });
+      if (!r.ok) throw new Error(await r.text());
+      const { job_id } = await r.json();
+
+      while (true) {
+        await new Promise(res => setTimeout(res, 700));
+        const st = await fetch('/api/estado?id=' + encodeURIComponent(job_id));
+        const d = await st.json();
+        pBox.querySelector('.msg').textContent = d.mensaje || '';
+        pBox.querySelector('.pct').textContent = (d.progreso || 0) + '%';
+        pBox.querySelector('.barra-relleno').style.width = (d.progreso || 0) + '%';
+        if (d.estado === 'error') throw new Error(d.error || 'Error');
+        if (d.estado === 'completado') {
+          const nomMp3 = d.resultado.nombre_mp3;
+          await cargarAudiosDisponibles(nomMp3);
+          pBox.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+              <div><strong style="color:var(--ok)">✔ MP3 listo:</strong> ${escHtml(nomMp3)}</div>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <audio controls src="/audios/${encodeURIComponent(nomMp3)}" style="height:34px"></audio>
+                <a class="btn-outline btn-sm" style="text-decoration:none" href="/audios/${encodeURIComponent(nomMp3)}" download>⬇ Descargar MP3</a>
+                <button type="button" class="btn-primary btn-sm" onclick="seleccionarMp3EIrAPaso2('${escHtml(nomMp3)}')">
+                  👉 Seguir al Paso 2 (Transcribir este MP3)
+                </button>
+              </div>
+            </div>
+          `;
+          break;
+        }
+      }
+    } catch (e) {
+      pBox.innerHTML = `<div style="color:var(--danger);font-weight:700">✘ Error: ${escHtml(e.message)}</div>`;
+    }
   }
-  cargarListaAudiosExistentes();
+};
+
+window.seleccionarMp3EIrAPaso2 = async function(nomMp3) {
+  await cargarAudiosDisponibles(nomMp3);
+  irAPaso(2);
+};
+
+// ==============================================================================
+// PASO 2: TRANSCRIBIR CON WHISPER O SUBIR TRANSCRIPCIÓN (TACTIQ / YOUTUBE / SRT)
+// ==============================================================================
+async function cargarAudiosDisponibles(seleccionarNombre = '') {
+  try {
+    const r = await fetch('/api/audios_existentes');
+    const lista = await r.json();
+    const selA = document.getElementById('p2-sel-mp3');
+    const selB = document.getElementById('p2-trans-mp3');
+
+    if (!lista.length) {
+      selA.innerHTML = '<option value="">(Aún no hay MP3 en /audios — creá uno en el Paso 1)</option>';
+    } else {
+      selA.innerHTML = lista.map(a => `<option value="${escHtml(a.nombre)}" ${a.nombre === seleccionarNombre ? 'selected' : ''}>${escHtml(a.nombre)} (${fmtMB(a.bytes)})</option>`).join('');
+    }
+    selB.innerHTML = '<option value="">— Sin audio (solo trabajar con la transcripción y subtítulos) —</option>' +
+      lista.map(a => `<option value="${escHtml(a.nombre)}">${escHtml(a.nombre)} (${fmtMB(a.bytes)})</option>`).join('');
+  } catch (e) {}
 }
 
-async function ejecutarItem(item, paramsBase) {
-  const pBox = document.createElement('div');
-  pBox.className = 'progreso-item';
-  pBox.innerHTML = `
-    <div class="progreso-top">
-      <span>⏳ ${escHtml(item.nombre)} — <span class="msg">Subiendo archivo…</span></span>
-      <span class="pct">2%</span>
+async function cargarSesionesGuardadas() {
+  try {
+    const r = await fetch('/api/sesiones_guardadas');
+    const lista = await r.json();
+    const cont = document.getElementById('lista-sesiones-guardadas');
+    if (!lista.length) {
+      cont.innerHTML = '<span style="font-size:0.84rem;color:var(--muted)">Todavía no hay transcripciones guardadas. Creá una con la Opción A o subí una con la Opción B abajo.</span>';
+      return;
+    }
+    cont.innerHTML = lista.map(s => `
+      <div class="cola-item" style="background:#f0fdf4;border-color:#bbf7d0">
+        <div>
+          <strong>🎙️ ${escHtml(s.nombre_original)}</strong>
+          <span class="badge badge-azul" style="margin-left:6px">${escHtml(s.modelo)}</span>
+          <span style="font-size:0.82rem;color:#334155;margin-left:8px">
+            Duración: <strong>${fmtHMS(s.duracion)}</strong> · <strong>${s.cantidad_segmentos}</strong> fragmentos · <strong>${s.cantidad_hablantes}</strong> hablantes detectados
+          </span>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button type="button" class="btn-primary btn-sm" onclick="abrirSesionGuardada('${escHtml(s.sesion_id)}', 3)">
+            👥 Abrir en Paso 3 (Hablantes)
+          </button>
+          <button type="button" class="btn-secondary btn-sm" onclick="abrirSesionGuardada('${escHtml(s.sesion_id)}', 4)">
+            🎬 Abrir en Paso 4 (Subtítulos/Video)
+          </button>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {}
+}
+
+window.abrirSesionGuardada = async function(sid, pasoDestino = 3) {
+  const r = await fetch('/api/sesion?id=' + encodeURIComponent(sid));
+  if (!r.ok) { alert('No se pudo cargar la sesión'); return; }
+  const d = await r.json();
+  activarSesion(d);
+  irAPaso(pasoDestino);
+};
+
+// Opción A: Transcribir con Whisper
+document.getElementById('btn-p2-transcribir').onclick = async () => {
+  const nomMp3 = document.getElementById('p2-sel-mp3').value;
+  if (!nomMp3) { alert('Elegí primero un archivo MP3 o convertí tu video en el Paso 1.'); return; }
+  const modelo = document.getElementById('p2-modelo').value;
+  const hablantes = document.getElementById('p2-hablantes').value;
+
+  const btn = document.getElementById('btn-p2-transcribir');
+  const prog = document.getElementById('p2-progreso-whisper');
+  btn.disabled = true;
+  prog.innerHTML = `
+    <div class="progreso-item">
+      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:0.88rem">
+        <span class="msg">Iniciando transcripción con Whisper…</span>
+        <span class="pct">5%</span>
+      </div>
+      <div class="barra-fondo"><div class="barra-relleno" style="width:5%"></div></div>
     </div>
-    <div class="barra-fondo"><div class="barra-relleno" style="width:2%"></div></div>
   `;
-  zonaProgreso.prepend(pBox);
-  const elMsg = pBox.querySelector('.msg');
-  const elPct = pBox.querySelector('.pct');
-  const elBar = pBox.querySelector('.barra-relleno');
 
   try {
     const q = new URLSearchParams({
-      ...paramsBase,
-      nombre: item.nombre,
-      usar_mp3_existente: item.tipo === 'existente' ? '1' : '0'
+      nombre: nomMp3,
+      usar_mp3_existente: '1',
+      solo_extraer: '0',
+      modelo,
+      hablantes
     });
-
-    const r = await fetch('/api/iniciar?' + q.toString(), {
-      method: 'POST',
-      body: item.tipo === 'file' ? item.file : null
-    });
+    const r = await fetch('/api/iniciar?' + q.toString(), { method: 'POST' });
     if (!r.ok) throw new Error(await r.text());
     const { job_id } = await r.json();
 
     while (true) {
       await new Promise(res => setTimeout(res, 850));
       const st = await fetch('/api/estado?id=' + encodeURIComponent(job_id));
-      if (!st.ok) throw new Error(await st.text());
       const d = await st.json();
-      elMsg.textContent = d.mensaje || 'Procesando…';
-      elPct.textContent = (d.progreso || 0) + '%';
-      elBar.style.width = (d.progreso || 0) + '%';
-
-      if (d.estado === 'error') {
-        throw new Error(d.error || d.mensaje || 'Error desconocido');
-      }
+      prog.querySelector('.msg').textContent = d.mensaje || 'Procesando…';
+      prog.querySelector('.pct').textContent = (d.progreso || 0) + '%';
+      prog.querySelector('.barra-relleno').style.width = (d.progreso || 0) + '%';
+      if (d.estado === 'error') throw new Error(d.error || 'Error');
       if (d.estado === 'completado') {
-        if (d.resultado.modo === 'solo_mp3') {
-          const nom = d.resultado.nombre_mp3;
-          pBox.innerHTML = `
-            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-              <div><strong style="color:var(--ok)">✔ MP3 extraído:</strong> ${escHtml(nom)}</div>
-              <div style="display:flex;gap:10px;align-items:center">
-                <audio controls src="/audios/${encodeURIComponent(nom)}" style="height:34px"></audio>
-                <a class="btn-primary btn-sm" style="text-decoration:none" href="/audios/${encodeURIComponent(nom)}" download>⬇ Descargar MP3</a>
-              </div>
-            </div>
-          `;
-        } else {
-          pBox.remove();
-          montarEstudio(d.resultado);
-        }
+        prog.innerHTML = '';
+        activarSesion(d.resultado);
+        irAPaso(3);
         break;
       }
     }
   } catch (e) {
-    pBox.style.background = '#fef2f2';
-    pBox.style.borderColor = '#fecaca';
-    pBox.innerHTML = `<div style="color:var(--danger);font-weight:600">✘ Error con ${escHtml(item.nombre)}: ${escHtml(e.message)}</div>`;
+    prog.innerHTML = `<div style="color:var(--danger);font-weight:700;margin-top:8px">✘ ${escHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
   }
+};
+
+// Opción B: Subir transcripción existente (Tactiq, YouTube, Whisper, SRT)
+let archivoTransSubir = null;
+const zonaP2Trans = document.getElementById('zona-p2-trans');
+const archP2Trans = document.getElementById('arch-p2-trans');
+const btnP2SubirTrans = document.getElementById('btn-p2-subir-trans');
+
+zonaP2Trans.onclick = () => archP2Trans.click();
+zonaP2Trans.ondragover = e => { e.preventDefault(); zonaP2Trans.classList.add('sobre'); };
+zonaP2Trans.ondragleave = () => zonaP2Trans.classList.remove('sobre');
+zonaP2Trans.ondrop = e => {
+  e.preventDefault();
+  zonaP2Trans.classList.remove('sobre');
+  if (e.dataTransfer.files.length) seleccionarArchivoTrans(e.dataTransfer.files[0]);
+};
+archP2Trans.onchange = () => {
+  if (archP2Trans.files.length) seleccionarArchivoTrans(archP2Trans.files[0]);
+};
+
+function seleccionarArchivoTrans(f) {
+  archivoTransSubir = f;
+  document.getElementById('lbl-arch-trans').textContent = `📄 Archivo listo: ${f.name} (${fmtMB(f.size)})`;
+  btnP2SubirTrans.disabled = false;
 }
 
-// ==============================================================================
-// ESTUDIO INTERACTIVO ORGANIZADO EN 4 PESTAÑAS (TABS)
-// ==============================================================================
+btnP2SubirTrans.onclick = async () => {
+  if (!archivoTransSubir) return;
+  btnP2SubirTrans.disabled = true;
+  const nomMp3 = document.getElementById('p2-trans-mp3').value;
+  const resDiv = document.getElementById('p2-res-import');
+  resDiv.innerHTML = '<div style="margin-top:8px;font-size:0.86rem">⏳ Detectando formato y cargando transcripción…</div>';
 
-function montarEstudio(datos) {
-  const sid = datos.sesion_id;
+  try {
+    const q = new URLSearchParams({ nombre: archivoTransSubir.name, nombre_mp3: nomMp3 });
+    const r = await fetch('/api/subir_transcripcion?' + q.toString(), {
+      method: 'POST',
+      body: archivoTransSubir
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    resDiv.innerHTML = `
+      <div style="margin-top:10px;padding:10px;border-radius:8px;background:#f0fdf4;border:1px solid #86efac;font-size:0.86rem">
+        ✔ <strong>Formato detectado automáticamente: ${escHtml(d.formato_detectado)}</strong> ·
+        ${d.segmentos.length} fragmentos · ${d.hablantes.length} hablantes detectados.
+      </div>
+    `;
+    activarSesion(d);
+    setTimeout(() => irAPaso(3), 600);
+  } catch (e) {
+    resDiv.innerHTML = `<div style="margin-top:8px;color:var(--danger);font-weight:700">✘ ${escHtml(e.message)}</div>`;
+  } finally {
+    btnP2SubirTrans.disabled = false;
+  }
+};
+
+// ==============================================================================
+// PASO 3: HABLANTES, GRUPO CON NOMBRE, AUTO-MATCHEO 1RA CLASE Y MI VOZ
+// ==============================================================================
+function activarSesion(datos) {
   const rd = datos.rango_detectado || {};
-  sesiones[sid] = {
+  sesionActiva = {
     ...datos,
     miVozId: null,
     muestraIdx: {},
@@ -2624,803 +3430,337 @@ function montarEstudio(datos) {
     rangoInicio: rd.inicio_seg ?? null,
     rangoFin: rd.fin_seg ?? null,
     matchIni: rd.match_ini ?? null,
-    matchFin: rd.match_fin ?? null
+    matchFin: rd.match_fin ?? null,
+    offsetSub: 0
   };
-
-  const card = document.createElement('div');
-  card.className = 'card estudio-card';
-  card.id = 'estudio-' + sid;
-  card.innerHTML = `
-    <!-- Encabezado del Estudio -->
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-      <div>
-        <h2 style="margin:0;font-size:1.25rem">🎙️ ${escHtml(datos.nombre_original)}</h2>
-        <div style="font-size:0.84rem;color:var(--muted);margin-top:2px">
-          Duración analizada: <strong>${fmtHMS(datos.duracion)}</strong> · Modelo: <strong>Whisper ${escHtml(datos.modelo)}</strong> ·
-          Audio base: <a href="/audios/${encodeURIComponent(datos.nombre_mp3)}" download>${escHtml(datos.nombre_mp3)}</a>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <label style="font-size:0.83rem;font-weight:700">Re-agrupar voces:</label>
-        <select id="recluster-sel-${sid}" style="width:auto;padding:5px 8px;font-size:0.84rem">
-          <option value="0">Automático</option>
-          <option value="1">1 hablante</option>
-          <option value="2">2 hablantes</option>
-          <option value="3">3 hablantes</option>
-          <option value="4">4 hablantes</option>
-          <option value="5">5 hablantes</option>
-          <option value="6">6 hablantes</option>
-        </select>
-        <button type="button" class="btn-outline btn-sm" id="btn-recluster-${sid}">🔄 Recalcular</button>
-      </div>
-    </div>
-
-    <!-- Barra de Reproducción Fija (Sticky) con Indicadores de Estado -->
-    <div class="player-sticky">
-      <audio id="audio-${sid}" controls preload="metadata" src="/audios/${encodeURIComponent(datos.nombre_mp3)}"></audio>
-      <div class="player-chips">
-        <span class="player-chip" id="chip-voz-${sid}">⭐ Voz: Sin asignar</span>
-        <span class="player-chip" id="chip-rango-${sid}">📏 Rango: Completo</span>
-      </div>
-      <div class="player-info" id="pinfo-${sid}">Elegí tu voz con <strong>"⭐ Es mi voz"</strong> o marcá frases de recorte para comenzar.</div>
-    </div>
-
-    <!-- Barra de Pestañas (Workflow organizado) -->
-    <div class="tabs-nav" id="tabs-nav-${sid}">
-      <button type="button" class="tab-btn activo" data-tab="hablantes">
-        👥 1. Hablantes & Mi Voz <span class="tab-badge" id="badge-tab-spk-${sid}">${datos.hablantes.length}</span>
-      </button>
-      <button type="button" class="tab-btn" data-tab="recorte">
-        ✂️ 2. Recorte por Frases & Tiempo <span class="tab-badge" id="badge-tab-cut-${sid}">Auto</span>
-      </button>
-      <button type="button" class="tab-btn" data-tab="transcripcion">
-        📝 3. Transcripción <span class="tab-badge" id="badge-tab-trans-${sid}">${datos.segmentos.length}</span>
-      </button>
-      <button type="button" class="tab-btn" data-tab="exportar">
-        💾 4. Exportar Audio & Subtítulos
-      </button>
-    </div>
-
-    <!-- PESTAÑA 1: HABLANTES Y MI VOZ -->
-    <div class="tab-pane activo" data-pane="hablantes">
-      <div class="hablantes-intro-banner">
-        <div>
-          <p>🎯 <strong>Objetivo de clonación:</strong> Hacé clic en <strong>"⭐ Es mi voz"</strong> en tu tarjeta para dejarte a vos como único hablante activo y silenciar automáticamente a los demás.</p>
-        </div>
-        <div style="display:flex;gap:6px">
-          <button type="button" class="btn-outline btn-xs" id="btn-silenciar-todos-${sid}">🔇 Silenciar a todos</button>
-          <button type="button" class="btn-outline btn-xs" id="btn-activar-todos-${sid}">🔊 Activar a todos</button>
-        </div>
-      </div>
-
-      <!-- Memoria de Voces Conocidas -->
-      <div class="panel-memoria">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-          <div>
-            <strong style="font-size:0.92rem;color:#0f172a">🧠 Registro de Voces Conocidas (Memoria Inteligente)</strong>
-            <span style="font-size:0.82rem;color:var(--muted);margin-left:6px" id="lbl-voces-reg-cont">Cargando perfiles…</span>
-          </div>
-          <button type="button" class="btn-outline btn-xs" id="btn-toggle-panel-voces">Ver voces guardadas</button>
-        </div>
-        <div id="panel-voces-lista" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed #cbd5e1">
-          <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px">
-            Las voces guardadas se usarán para reconocer y auto-etiquetar a las personas en grabaciones futuras. Podés guardar la voz de cada hablante haciendo clic en <strong>"💾 Guardar voz"</strong> en su tarjeta.
-          </div>
-          <div id="lista-voces-tags" style="display:flex;flex-wrap:wrap;gap:8px"></div>
-        </div>
-      </div>
-
-      <!-- Tarjetas de Hablantes -->
-      <div class="hablantes-grid" id="hablantes-grid-${sid}"></div>
-
-      <div style="background:#f1f5f9;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-        <span style="font-size:0.85rem;color:#334155">¿Ya elegiste tu voz? Podés definir marcas de inicio y fin en el recorte o ir directo a exportar.</span>
-        <button type="button" class="btn-primary btn-sm btn-nav-goto" data-goto="exportar">👉 Ir al paso 4: Exportar Audio Limpio</button>
-      </div>
-    </div>
-
-    <!-- PESTAÑA 2: RECORTE POR FRASES Y TIEMPO -->
-    <div class="tab-pane" data-pane="recorte">
-      <div class="box-recorte">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-          <div style="font-weight:700;font-size:0.98rem;color:#1e3a8a">
-            🔎 Detección Automática por Frases Habladas (Inicio y Fin)
-          </div>
-          <div style="font-size:0.8rem;color:#475569">
-            El sistema busca las marcas de tiempo exactas donde pronunciás estas frases.
-          </div>
-        </div>
-
-        <div class="sub-grid-2" style="margin-bottom:12px">
-          <div class="campo">
-            <label for="f-ini-${sid}">⛳ Cuando digo la frase de inicio:</label>
-            <input type="text" id="f-ini-${sid}" value="${escHtml(rd.frase_ini || '')}" placeholder='ej. "bueno empezamos con la clase"'>
-            <div id="pill-ini-${sid}"></div>
-          </div>
-          <div class="campo">
-            <label for="f-fin-${sid}">🏁 Cuando finalizo con la frase:</label>
-            <input type="text" id="f-fin-${sid}" value="${escHtml(rd.frase_fin || '')}" placeholder='ej. "hasta acá llegamos hoy"'>
-            <div id="pill-fin-${sid}"></div>
-          </div>
-        </div>
-
-        <div style="display:flex;flex-wrap:wrap;gap:8px">
-          <button type="button" class="btn-primary btn-sm" id="btn-buscar-frases-${sid}">
-            🔍 Detectar marcas de tiempo por frases
-          </button>
-          <button type="button" class="btn-outline btn-sm" id="btn-limpiar-rango-${sid}">
-            ✕ Quitar recorte (usar audio completo)
-          </button>
-        </div>
-      </div>
-
-      <div class="box-recorte" style="background:#ffffff">
-        <div style="font-weight:700;font-size:0.95rem;color:#1e293b;margin-bottom:10px">
-          ⏱️ Ajuste Manual del Rango Activo y Descarga Rápida
-        </div>
-        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
-          <div style="display:flex;align-items:center;gap:6px">
-            <label style="font-size:0.84rem;font-weight:700">Desde:</label>
-            <input type="text" id="t-ini-man-${sid}" placeholder="00:00" style="width:90px;padding:6px 8px;font-family:monospace;font-size:0.88rem">
-          </div>
-          <div style="display:flex;align-items:center;gap:6px">
-            <label style="font-size:0.84rem;font-weight:700">Hasta:</label>
-            <input type="text" id="t-fin-man-${sid}" placeholder="${fmtHMS(datos.duracion)}" style="width:90px;padding:6px 8px;font-family:monospace;font-size:0.88rem">
-          </div>
-          <button type="button" class="btn-outline btn-sm" id="btn-preview-rango-${sid}">▶ Escuchar inicio del recorte</button>
-          <button type="button" class="btn-secondary btn-sm" id="btn-export-rango-directo-${sid}">
-            ✂️ Descargar este tramo directo (MP3)
-          </button>
-        </div>
-        <p style="font-size:0.8rem;color:var(--muted);margin:8px 0 0">
-          💡 Tip: También podés hacer clic en los botones <strong>⛳ Inicio</strong> o <strong>🏁 Fin</strong> en cualquier línea de la pestaña <strong>Transcripción</strong> para fijar los límites.
-        </p>
-      </div>
-    </div>
-
-    <!-- PESTAÑA 3: TRANSCRIPCIÓN INTERACTIVA -->
-    <div class="tab-pane" data-pane="transcripcion">
-      <div class="trans-toolbar">
-        <div style="display:flex;align-items:center;gap:8px">
-          <strong style="font-size:0.95rem">Fragmentos:</strong>
-          <span class="badge" id="cont-seg-${sid}">${datos.segmentos.length}</span>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <input type="text" id="buscar-${sid}" placeholder="🔍 Filtrar texto…" style="width:190px;padding:6px 10px;font-size:0.84rem">
-          <select id="filtro-spk-${sid}" style="width:165px;padding:6px 10px;font-size:0.84rem">
-            <option value="">Todos los hablantes</option>
-          </select>
-          <button type="button" class="btn-outline btn-sm" id="btn-nuevo-spk-${sid}">➕ Nuevo hablante</button>
-        </div>
-      </div>
-      <div class="segmentos-wrap" id="seg-wrap-${sid}"></div>
-    </div>
-
-    <!-- PESTAÑA 4: EXPORTAR AUDIO Y SUBTÍTULOS -->
-    <div class="tab-pane" data-pane="exportar">
-      <!-- Barra de Presets Rápidos -->
-      <div style="margin-bottom:12px;font-size:0.86rem;font-weight:700;color:#334155">
-        ⚡ Presets Rápidos de Exportación:
-      </div>
-      <div class="export-presets-bar">
-        <div class="preset-card" id="preset-entreno-${sid}">
-          <strong>🎯 Entrenar Voz (XTTS / RVC)</strong>
-          <span>Aísla solo tu voz limpia en WAV sin pérdida y descarta frases menores a 1 seg.</span>
-        </div>
-        <div class="preset-card" id="preset-limpio-${sid}">
-          <strong>✂️ Audio Silenciado (MP3)</strong>
-          <span>Mantiene el audio completo pero silencia a los demás hablantes.</span>
-        </div>
-        <div class="preset-card" id="preset-recorte-${sid}">
-          <strong>📏 Solo Tramo Recortado</strong>
-          <span>Descarga exactamente el lapso entre la marca de inicio y la de fin.</span>
-        </div>
-      </div>
-
-      <div class="export-grid">
-        <!-- Panel de Audio -->
-        <div class="export-box">
-          <h3>🎯 Exportar Audio con mi Voz Limpia</h3>
-          <div class="campo" style="margin-bottom:10px">
-            <label for="modo-mute-${sid}">Modo de extracción</label>
-            <select id="modo-mute-${sid}">
-              <option value="aislar" selected>🎯 Aislar SOLO la voz activa (Ideal entrenamiento de voz: concatena solo tus frases limpias)</option>
-              <option value="recortar">✂️ Recortar fragmentos silenciados (acorta el audio eliminando voces ajenas)</option>
-              <option value="silenciar">🔇 Silenciar a volumen 0 (conserva la duración original)</option>
-              <option value="rango_directo">📏 Solo recortar entre marca de inicio y fin (sin filtrar hablantes)</option>
-            </select>
-          </div>
-
-          <div class="sub-grid-2" id="opciones-entreno-${sid}">
-            <div class="campo">
-              <label for="max-min-${sid}">Duración máxima a extraer</label>
-              <select id="max-min-${sid}">
-                <option value="0" selected>Todo el tiempo disponible en el rango</option>
-                <option value="1">Los mejores 1 min de mi voz</option>
-                <option value="2">Los mejores 2 min de mi voz</option>
-                <option value="3">Los mejores 3 min de mi voz</option>
-                <option value="5">Los mejores 5 min de mi voz</option>
-                <option value="10">Los mejores 10 min de mi voz</option>
-              </select>
-            </div>
-            <div class="campo">
-              <label for="min-seg-${sid}">Ignorar frases muy cortas</label>
-              <select id="min-seg-${sid}">
-                <option value="0">Conservar todas las frases</option>
-                <option value="1.0" selected>Ignorar &lt; 1 seg (muletillas: "sí", "claro")</option>
-                <option value="2.0">Ignorar &lt; 2 seg (solo frases completas)</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="sub-grid-2">
-            <div class="campo">
-              <label for="fmt-audio-${sid}">Formato del archivo de salida</label>
-              <select id="fmt-audio-${sid}">
-                <option value="mp3" selected>MP3 (liviano, universal)</option>
-                <option value="wav">WAV 44.1 kHz sin pérdida (máxima fidelidad para entrenar)</option>
-                <option value="zip">📦 Dataset ZIP (clips WAV + metadata.csv para XTTS/RVC)</option>
-              </select>
-            </div>
-            <div class="campo">
-              <label for="pausa-seg-${sid}">Pausa limpia entre frases</label>
-              <select id="pausa-seg-${sid}">
-                <option value="0.15">0.15 seg (continua)</option>
-                <option value="0.30" selected>0.30 seg (natural, recomendado)</option>
-                <option value="0.60">0.60 seg (pausada)</option>
-              </select>
-            </div>
-          </div>
-
-          <div id="resumen-mute-${sid}" style="font-size:0.86rem;color:#1e40af;background:#eff6ff;padding:10px 12px;border-radius:8px;margin-bottom:12px;border:1px solid #bfdbfe"></div>
-          <button type="button" class="btn-primary" id="btn-export-mp3-${sid}" style="width:100%;justify-content:center">
-            💾 Generar y Descargar Audio Procesado
-          </button>
-          <div id="res-mp3-${sid}"></div>
-        </div>
-
-        <!-- Panel de Subtítulos y Transcripción -->
-        <div class="export-box">
-          <h3>📄 Transcripción y Subtítulos</h3>
-          <p style="font-size:0.84rem;color:var(--muted);margin-top:0">Exportá el texto de la grabación respetando el rango y los hablantes activos.</p>
-          <label class="check-inline" style="margin-bottom:8px">
-            <input type="checkbox" id="inc-sil-${sid}">
-            <span>Incluir fragmentos silenciados en el archivo</span>
-          </label>
-          <label class="check-inline" style="margin-bottom:16px">
-            <input type="checkbox" id="inc-nom-${sid}" checked>
-            <span>Incluir nombre del hablante en cada línea</span>
-          </label>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <button type="button" class="btn-outline btn-sm" data-fmt="srt" style="justify-content:center">
-              🎬 Subtítulos SRT (Para YouTube, Premiere o VLC)
-            </button>
-            <button type="button" class="btn-outline btn-sm" data-fmt="txt_ts" style="justify-content:center">
-              ⏱️ TXT con marcas de tiempo [MM:SS]
-            </button>
-            <button type="button" class="btn-outline btn-sm" data-fmt="txt" style="justify-content:center">
-              📝 TXT de texto corrido
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-  zonaEstudios.prepend(card);
-
-  // Manejo de cambio de pestañas (Tabs)
-  const navTabs = card.querySelector('#tabs-nav-' + sid);
-  function cambiarTab(tabKey) {
-    navTabs.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('activo', b.dataset.tab === tabKey));
-    card.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('activo', p.dataset.pane === tabKey));
-  }
-  navTabs.querySelectorAll('.tab-btn').forEach(b => {
-    b.onclick = () => cambiarTab(b.dataset.tab);
-  });
-  card.querySelectorAll('.btn-nav-goto').forEach(b => {
-    b.onclick = () => cambiarTab(b.dataset.goto);
-  });
-
-  // Presets rápidos de exportación
-  const pEntreno = document.getElementById('preset-entreno-' + sid);
-  if (pEntreno) {
-    pEntreno.onclick = () => {
-      document.getElementById('modo-mute-' + sid).value = 'aislar';
-      document.getElementById('fmt-audio-' + sid).value = 'wav';
-      document.getElementById('min-seg-' + sid).value = '1.0';
-      document.getElementById('pausa-seg-' + sid).value = '0.30';
-      actualizarResumenMute(sid);
-    };
-  }
-  const pLimpio = document.getElementById('preset-limpio-' + sid);
-  if (pLimpio) {
-    pLimpio.onclick = () => {
-      document.getElementById('modo-mute-' + sid).value = 'recortar';
-      document.getElementById('fmt-audio-' + sid).value = 'mp3';
-      actualizarResumenMute(sid);
-    };
-  }
-  const pRecorte = document.getElementById('preset-recorte-' + sid);
-  if (pRecorte) {
-    pRecorte.onclick = () => {
-      document.getElementById('modo-mute-' + sid).value = 'rango_directo';
-      document.getElementById('fmt-audio-' + sid).value = 'mp3';
-      actualizarResumenMute(sid);
-    };
-  }
-
-  const audioEl = document.getElementById('audio-' + sid);
-  const pInfo = document.getElementById('pinfo-' + sid);
-
-  audioEl.ontimeupdate = () => {
-    const st = sesiones[sid];
-    if (st.pararEn !== null && audioEl.currentTime >= st.pararEn) {
-      audioEl.pause();
-      st.pararEn = null;
-      pInfo.textContent = 'Muestra finalizada.';
-    }
-  };
-
-  // Eventos de búsqueda de frases de inicio y fin
-  document.getElementById('btn-buscar-frases-' + sid).onclick = () => detectarMarcasPorFrase(sid);
-  document.getElementById('f-ini-' + sid).onkeydown = e => { if (e.key === 'Enter') detectarMarcasPorFrase(sid); };
-  document.getElementById('f-fin-' + sid).onkeydown = e => { if (e.key === 'Enter') detectarMarcasPorFrase(sid); };
-
-  document.getElementById('btn-limpiar-rango-' + sid).onclick = () => {
-    const st = sesiones[sid];
-    st.rangoInicio = null;
-    st.rangoFin = null;
-    st.matchIni = null;
-    st.matchFin = null;
-    document.getElementById('f-ini-' + sid).value = '';
-    document.getElementById('f-fin-' + sid).value = '';
-    sincronizarInputsRango(sid);
-    renderSegmentos(sid);
-    actualizarResumenMute(sid);
-  };
-
-  document.getElementById('t-ini-man-' + sid).onchange = e => {
-    sesiones[sid].rangoInicio = parseTiempoCliente(e.target.value);
-    sincronizarInputsRango(sid);
-    renderSegmentos(sid);
-    actualizarResumenMute(sid);
-  };
-  document.getElementById('t-fin-man-' + sid).onchange = e => {
-    sesiones[sid].rangoFin = parseTiempoCliente(e.target.value);
-    sincronizarInputsRango(sid);
-    renderSegmentos(sid);
-    actualizarResumenMute(sid);
-  };
-
-  document.getElementById('btn-preview-rango-' + sid).onclick = () => {
-    const st = sesiones[sid];
-    const ini = st.rangoInicio ?? 0;
-    const fin = Math.min(st.duracion, ini + 8);
-    reproducirRango(sid, ini, fin, 'Inicio del recorte');
-  };
-
-  document.getElementById('btn-export-rango-directo-' + sid).onclick = () => {
-    cambiarTab('exportar');
-    document.getElementById('modo-mute-' + sid).value = 'rango_directo';
-    actualizarResumenMute(sid);
-    exportarAudioFiltrado(sid);
-  };
-
-  document.getElementById('modo-mute-' + sid).onchange = () => actualizarResumenMute(sid);
-  document.getElementById('min-seg-' + sid).onchange = () => actualizarResumenMute(sid);
-  document.getElementById('max-min-' + sid).onchange = () => actualizarResumenMute(sid);
-  document.getElementById('fmt-audio-' + sid).onchange = () => actualizarResumenMute(sid);
-
-  document.getElementById('buscar-' + sid).oninput = e => {
-    sesiones[sid].filtroTexto = e.target.value.toLowerCase();
-    renderSegmentos(sid);
-  };
-  document.getElementById('filtro-spk-' + sid).onchange = e => {
-    sesiones[sid].filtroSpk = e.target.value;
-    renderSegmentos(sid);
-  };
-  document.getElementById('btn-nuevo-spk-' + sid).onclick = () => {
-    const st = sesiones[sid];
-    const num = st.hablantes.length + 1;
-    const nuevoId = 'SPK_' + Date.now().toString().slice(-4);
-    const colores = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#db2777", "#0891b2", "#dc2626"];
-    st.hablantes.push({
-      id: nuevoId,
-      nombre: `Hablante ${num}`,
-      color: colores[(num - 1) % colores.length],
-      silenciado: false,
-      cantidad: 0,
-      duracion: 0,
-      muestras: []
-    });
-    renderHablantes(sid);
-    renderSegmentos(sid);
-  };
-
-  document.getElementById('btn-recluster-' + sid).onclick = async () => {
-    const k = document.getElementById('recluster-sel-' + sid).value;
-    const btn = document.getElementById('btn-recluster-' + sid);
-    btn.disabled = true;
-    try {
-      const r = await fetch('/api/reagrupar', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ sesion_id: sid, num_hablantes: Number(k) })
-      });
-      if (!r.ok) throw new Error(await r.text());
-      const d = await r.json();
-      sesiones[sid].hablantes = d.hablantes;
-      sesiones[sid].segmentos = d.segmentos;
-      sesiones[sid].miVozId = null;
-      renderHablantes(sid);
-      renderSegmentos(sid);
-    } catch (e) {
-      alert('Error al reagrupar hablantes: ' + e.message);
-    } finally {
-      btn.disabled = false;
-    }
-  };
-
-  document.getElementById('btn-export-mp3-' + sid).onclick = () => exportarAudioFiltrado(sid);
-
-  document.getElementById('btn-silenciar-todos-' + sid).onclick = () => {
-    const st = sesiones[sid];
-    for (const h of st.hablantes) h.silenciado = true;
-    for (const s of st.segmentos) delete s.override_mute;
-    renderHablantes(sid);
-    renderSegmentos(sid);
-  };
-
-  document.getElementById('btn-activar-todos-' + sid).onclick = () => {
-    const st = sesiones[sid];
-    for (const h of st.hablantes) h.silenciado = false;
-    for (const s of st.segmentos) delete s.override_mute;
-    renderHablantes(sid);
-    renderSegmentos(sid);
-  };
-
-  for (const b of card.querySelectorAll('[data-fmt]')) {
-    b.onclick = () => descargarTranscripcion(sid, b.dataset.fmt);
-  }
-
-  // Manejo del panel desplegable de memoria de voces
-  const btnToggleVoces = document.getElementById('btn-toggle-panel-voces');
-  if (btnToggleVoces) {
-    btnToggleVoces.onclick = () => {
-      const p = document.getElementById('panel-voces-lista');
-      if (p.style.display === 'none') {
-        p.style.display = 'block';
-        btnToggleVoces.textContent = 'Ocultar voces guardadas';
-      } else {
-        p.style.display = 'none';
-        btnToggleVoces.textContent = 'Ver voces guardadas';
-      }
-    };
-  }
-
-  actualizarListaVocesRegistradasGlobal();
-  sincronizarInputsRango(sid);
-  renderHablantes(sid);
-  renderSegmentos(sid);
 }
 
-async function actualizarListaVocesRegistradasGlobal() {
+async function cargarGruposYListado() {
   try {
     const r = await fetch('/api/voces_registradas');
-    if (!r.ok) return;
-    const perfiles = await r.json();
-    const lbl = document.getElementById('lbl-voces-reg-cont');
-    const tags = document.getElementById('lista-voces-tags');
-    if (lbl) {
-      lbl.textContent = perfiles.length === 1 ? '1 persona registrada' : `${perfiles.length} personas registradas`;
+    const d = await r.json();
+    listaGrupos = d.grupos || [];
+    if (!listaGrupos.length) {
+      listaGrupos = [{ nombre: 'General', cantidad_nombres: 0, cantidad_voces: 0, nombres: [], perfiles: [] }];
     }
-    if (tags) {
-      if (!perfiles.length) {
-        tags.innerHTML = '<span style="font-size:0.82rem;color:var(--muted)">Todavía no registraste ninguna voz. Hacé clic en "💾 Guardar voz" en la tarjeta de cualquier persona para recordarla automáticamente en el futuro.</span>';
-        return;
-      }
-      tags.innerHTML = perfiles.map(p => `
-        <span class="badge" style="background:#e0f2fe;color:#0369a1;display:inline-flex;align-items:center;gap:6px;padding:5px 9px;font-size:0.83rem">
-          <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${escHtml(p.color || '#0284c7')}"></span>
-          <strong>${escHtml(p.nombre)}</strong> (${p.n_muestras || 1})
-          <button type="button" class="btn-xs btn-del-voz" data-nombre="${escHtml(p.nombre)}" style="background:transparent;border:none;cursor:pointer;color:#dc2626;font-size:0.88rem;padding:0 3px" title="Eliminar de la memoria">✕</button>
+    const selG = document.getElementById('p3-sel-grupo');
+    if (!listaGrupos.some(g => g.nombre === grupoActivo)) {
+      grupoActivo = listaGrupos[0].nombre;
+    }
+    selG.innerHTML = listaGrupos.map(g =>
+      `<option value="${escHtml(g.nombre)}" ${g.nombre === grupoActivo ? 'selected' : ''}>${escHtml(g.nombre)} (${g.cantidad_nombres} nombres · ${g.cantidad_voces} voces)</option>`
+    ).join('');
+
+    const gObj = listaGrupos.find(g => g.nombre === grupoActivo) || listaGrupos[0];
+    nombresGrupoActual = gObj.nombres || [];
+    document.getElementById('badge-info-grupo').textContent =
+      `Grupo "${gObj.nombre}": ${nombresGrupoActual.length} nombres en lista · ${(gObj.perfiles || []).length} voces con huella`;
+
+    const chips = document.getElementById('chips-nombres-grupo');
+    if (!nombresGrupoActual.length) {
+      chips.innerHTML = '<span style="font-size:0.78rem;color:var(--muted)">Aún no cargaste lista de nombres en este grupo.</span>';
+    } else {
+      chips.innerHTML = nombresGrupoActual.map(n => `
+        <span class="badge" style="display:inline-flex;align-items:center;gap:4px">
+          ${escHtml(n)}
+          <button type="button" style="border:none;background:none;color:#dc2626;cursor:pointer;padding:0;font-size:0.75rem" onclick="borrarNombreDeGrupo('${escHtml(n)}')" title="Quitar nombre">✕</button>
         </span>
       `).join('');
-
-      for (const btn of tags.querySelectorAll('.btn-del-voz')) {
-        btn.onclick = async () => {
-          const nom = btn.dataset.nombre;
-          if (!confirm(`¿Eliminar la voz de "${nom}" de la memoria?`)) return;
-          await fetch('/api/eliminar_voz_registro', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ nombre: nom })
-          });
-          actualizarListaVocesRegistradasGlobal();
-        };
-      }
     }
-  } catch (e) {
-    console.error('Error cargando voces registradas:', e);
-  }
+  } catch (e) {}
 }
 
-function sincronizarInputsRango(sid) {
-  const st = sesiones[sid];
-  const inIni = document.getElementById('t-ini-man-' + sid);
-  const inFin = document.getElementById('t-fin-man-' + sid);
-  const pillIni = document.getElementById('pill-ini-' + sid);
-  const pillFin = document.getElementById('pill-fin-' + sid);
-  const chipRango = document.getElementById('chip-rango-' + sid);
-  const badgeCut = document.getElementById('badge-tab-cut-' + sid);
+document.getElementById('p3-sel-grupo').onchange = async e => {
+  grupoActivo = e.target.value;
+  await cargarGruposYListado();
+  if (sesionActiva) renderHablantesPaso3();
+};
 
-  inIni.value = st.rangoInicio !== null ? fmtHMS(st.rangoInicio) : '';
-  inFin.value = st.rangoFin !== null ? fmtHMS(st.rangoFin) : '';
+document.getElementById('btn-nuevo-grupo').onclick = async () => {
+  const nom = prompt('Nombre del nuevo Grupo de Hablantes (ej. "Grupo Martes", "Curso IA", "Comisión 1"):');
+  if (!nom || !nom.trim()) return;
+  await fetch('/api/crear_grupo', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ nombre: nom.trim() })
+  });
+  grupoActivo = nom.trim();
+  await cargarGruposYListado();
+  if (sesionActiva) renderHablantesPaso3();
+};
 
-  if (chipRango) {
-    if (st.rangoInicio !== null || st.rangoFin !== null) {
-      const r0 = st.rangoInicio ?? 0;
-      const r1 = st.rangoFin ?? st.duracion;
-      chipRango.className = 'player-chip destacado';
-      chipRango.innerHTML = `✂️ Recorte: [${fmtHMS(r0)} → ${fmtHMS(r1)}]`;
-      if (badgeCut) badgeCut.textContent = `${fmtHMS(r0)} → ${fmtHMS(r1)}`;
-    } else {
-      chipRango.className = 'player-chip';
-      chipRango.innerHTML = `📏 Audio completo (${fmtHMS(st.duracion)})`;
-      if (badgeCut) badgeCut.textContent = 'Completo';
-    }
+window.borrarNombreDeGrupo = async function(nom) {
+  await fetch('/api/eliminar_nombre_listado', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ nombre: nom, grupo: grupoActivo })
+  });
+  await cargarGruposYListado();
+  if (sesionActiva) renderHablantesPaso3();
+};
+
+// Subir Excel / CSV / TXT de nombres de hablantes
+document.getElementById('arch-listado-nombres').onchange = async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  e.target.value = '';
+  const q = new URLSearchParams({ nombre: f.name, grupo: grupoActivo });
+  const r = await fetch('/api/subir_listado_nombres?' + q.toString(), { method: 'POST', body: f });
+  if (!r.ok) { alert(await r.text()); return; }
+  const d = await r.json();
+  alert(`¡Listo! Se cargaron ${d.agregados} nombres de hablantes en el grupo "${grupoActivo}".`);
+  await cargarGruposYListado();
+  if (sesionActiva) renderHablantesPaso3();
+};
+
+document.getElementById('btn-pegar-nombres').onclick = async () => {
+  const txt = prompt('Pegá los nombres de los hablantes separados por coma o uno debajo del otro:');
+  if (!txt || !txt.trim()) return;
+  const blob = new Blob([txt.replace(/,/g, '\n')], { type: 'text/plain' });
+  const q = new URLSearchParams({ nombre: 'pegado.txt', grupo: grupoActivo });
+  const r = await fetch('/api/subir_listado_nombres?' + q.toString(), { method: 'POST', body: blob });
+  if (r.ok) {
+    await cargarGruposYListado();
+    if (sesionActiva) renderHablantesPaso3();
   }
+};
 
-  if (st.matchIni) {
-    pillIni.innerHTML = `
-      <div class="match-pill">
-        <span>✔ Detectado en <strong>${fmtHMS(st.matchIni.frase_inicio)}</strong>: <em>"${escHtml(st.matchIni.texto.slice(0, 65))}"</em></span>
-        <button type="button" class="btn-outline btn-xs" id="play-m-ini-${sid}">▶</button>
-      </div>
-    `;
-    document.getElementById('play-m-ini-' + sid).onclick = () =>
-      reproducirRango(sid, st.matchIni.seg_inicio, st.matchIni.seg_fin, 'Frase de inicio');
+// Auto-matchear por presentación en el audio ("mi nombre es...", "soy...")
+document.getElementById('btn-auto-presentacion').onclick = async () => {
+  if (!sesionActiva) return;
+  const resBox = document.getElementById('res-auto-presentacion');
+  resBox.innerHTML = '⏳ Buscando presentaciones en la transcripción…';
+  const r = await fetch('/api/auto_matchear_presentaciones', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ sesion_id: sesionActiva.sesion_id, grupo: grupoActivo })
+  });
+  if (!r.ok) { resBox.innerHTML = '✘ Error'; return; }
+  const d = await r.json();
+  sesionActiva.segmentos = d.segmentos;
+  sesionActiva.hablantes = d.hablantes;
+  if (!d.hallazgos.length) {
+    resBox.innerHTML = `<span style="color:#b45309">No se encontraron frases explícitas tipo "soy [Nombre]" o "mi nombre es [Nombre]". Podés subir el archivo de Tactiq al lado o elegir el nombre en las tarjetas abajo.</span>`;
   } else {
-    pillIni.innerHTML = '';
+    resBox.innerHTML = `<span style="color:var(--ok);font-weight:700">✔ Se detectaron ${d.hallazgos.length} presentaciones automáticas: ${d.hallazgos.map(h => escHtml(h.nombre_detectado)).join(', ')}.</span>`;
   }
+  await cargarGruposYListado();
+  renderPaso3();
+};
 
-  if (st.matchFin) {
-    pillFin.innerHTML = `
-      <div class="match-pill">
-        <span>✔ Detectado en <strong>${fmtHMS(st.matchFin.frase_fin)}</strong>: <em>"${escHtml(st.matchFin.texto.slice(0, 65))}"</em></span>
-        <button type="button" class="btn-outline btn-xs" id="play-m-fin-${sid}">▶</button>
-      </div>
-    `;
-    document.getElementById('play-m-fin-' + sid).onclick = () =>
-      reproducirRango(sid, st.matchFin.seg_inicio, st.matchFin.seg_fin, 'Frase de cierre');
-  } else {
-    pillFin.innerHTML = '';
-  }
-}
-
-async function detectarMarcasPorFrase(sid) {
-  const st = sesiones[sid];
-  const fIni = document.getElementById('f-ini-' + sid).value.trim();
-  const fFin = document.getElementById('f-fin-' + sid).value.trim();
-  if (!fIni && !fFin) {
-    alert('Escribí al menos una frase de inicio o una frase de cierre para buscar su marca de tiempo.');
+// Auto-sincronizar y matchear con Tactiq
+document.getElementById('arch-tactiq-sync').onchange = async e => {
+  const f = e.target.files[0];
+  if (!f || !sesionActiva) return;
+  e.target.value = '';
+  const resBox = document.getElementById('res-tactiq-sync');
+  resBox.innerHTML = '⏳ Sincronizando tiempos de Tactiq con el audio y asignando hablantes…';
+  const q = new URLSearchParams({
+    sesion_id: sesionActiva.sesion_id,
+    nombre: f.name,
+    grupo: grupoActivo
+  });
+  const r = await fetch('/api/sincronizar_tactiq_voces?' + q.toString(), { method: 'POST', body: f });
+  if (!r.ok) {
+    resBox.innerHTML = `<span style="color:var(--danger)">✘ ${escHtml(await r.text())}</span>`;
     return;
   }
+  const d = await r.json();
+  sesionActiva.segmentos = d.segmentos;
+  sesionActiva.hablantes = d.hablantes;
+  resBox.innerHTML = `
+    <span style="color:var(--ok);font-weight:700">
+      ✔ Sincronizado (desfase detectado: ${d.offset_segundos >= 0 ? '+' : ''}${d.offset_segundos}s) ·
+      ${Object.keys(d.mapeo_hablantes || {}).length} hablantes etiquetados automáticamente desde Tactiq.
+    </span>
+  `;
+  await cargarGruposYListado();
+  renderPaso3();
+};
 
-  try {
-    const r = await fetch('/api/buscar_frases', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        sesion_id: sid,
-        frase_ini: fIni,
-        frase_fin: fFin,
-        segmentos: st.segmentos
-      })
-    });
-    if (!r.ok) throw new Error(await r.text());
-    const d = await r.json();
-
-    if (fIni) {
-      if (d.match_ini) {
-        st.rangoInicio = d.match_ini.frase_inicio;
-        st.matchIni = d.match_ini;
-      } else {
-        st.matchIni = null;
-        alert(`No encontré una frase parecida a "${fIni}" en la transcripción.`);
-      }
-    }
-    if (fFin) {
-      if (d.match_fin) {
-        st.rangoFin = d.match_fin.frase_fin;
-        st.matchFin = d.match_fin;
-      } else {
-        st.matchFin = null;
-        alert(`No encontré una frase parecida a "${fFin}" después del inicio.`);
-      }
-    }
-    sincronizarInputsRango(sid);
-    renderSegmentos(sid);
-    actualizarResumenMute(sid);
-  } catch (e) {
-    alert('Error buscando frases: ' + e.message);
+function renderPaso3() {
+  if (!sesionActiva) {
+    document.getElementById('p3-vacio').style.display = 'block';
+    document.getElementById('p3-contenido').style.display = 'none';
+    return;
   }
+  document.getElementById('p3-vacio').style.display = 'none';
+  document.getElementById('p3-contenido').style.display = 'block';
+
+  const audioEl = document.getElementById('p3-audio');
+  const pBar = document.getElementById('p3-player-bar');
+  if (sesionActiva.nombre_mp3) {
+    pBar.style.display = 'flex';
+    const srcEsperado = '/audios/' + encodeURIComponent(sesionActiva.nombre_mp3);
+    if (!audioEl.getAttribute('src') || !audioEl.getAttribute('src').endsWith(encodeURIComponent(sesionActiva.nombre_mp3))) {
+      audioEl.src = srcEsperado;
+    }
+  } else {
+    pBar.style.display = 'none';
+  }
+
+  audioEl.ontimeupdate = () => {
+    if (sesionActiva && sesionActiva.pararEn !== null && audioEl.currentTime >= sesionActiva.pararEn) {
+      audioEl.pause();
+      sesionActiva.pararEn = null;
+      document.getElementById('p3-player-info').textContent = 'Muestra finalizada.';
+    }
+  };
+
+  cargarGruposYListado().then(() => {
+    renderHablantesPaso3();
+    renderSegmentosPaso3();
+    actualizarResumenAudioPaso3();
+  });
 }
 
-function reproducirRango(sid, inicio, fin, etiqueta) {
-  const st = sesiones[sid];
-  const audioEl = document.getElementById('audio-' + sid);
-  const pInfo = document.getElementById('pinfo-' + sid);
-  st.pararEn = fin;
-  audioEl.currentTime = Math.max(0, inicio);
-  audioEl.play();
-  pInfo.textContent = `▶ Escuchando: ${etiqueta} (${fmtHMS(inicio)} → ${fmtHMS(fin)})`;
-}
-
-function recalcularEstadisticasHablantes(sid) {
-  const st = sesiones[sid];
-  for (const h of st.hablantes) {
-    const segs = st.segmentos.filter(s => s.hablante === h.id);
+function recalcularEstadisticasSesion() {
+  if (!sesionActiva) return;
+  for (const h of sesionActiva.hablantes) {
+    const segs = sesionActiva.segmentos.filter(s => s.hablante === h.id);
     h.cantidad = segs.length;
     h.duracion = Math.round(segs.reduce((acc, s) => acc + Math.max(0, s.fin - s.inicio), 0) * 10) / 10;
     const ordenados = [...segs].sort((a, b) => (b.fin - b.inicio) - (a.fin - a.inicio));
-    h.muestras = ordenados.slice(0, 5).map(m => ({ inicio: m.inicio, fin: m.fin, texto: m.texto.slice(0, 90) }));
+    h.muestras = ordenados.slice(0, 5).map(m => ({ inicio: m.inicio, fin: m.fin, texto: m.texto.slice(0, 95) }));
   }
 }
 
-function esSegmentoSilenciado(st, seg) {
-  if (seg.override_mute !== undefined && seg.override_mute !== null) {
-    return Boolean(seg.override_mute);
-  }
-  const h = st.hablantes.find(x => x.id === seg.hablante);
-  return Boolean(h && h.silenciado);
-}
+function renderDiagnosticoClaridad() {
+  const st = sesionActiva;
+  const boxH = document.getElementById('diag-hablantes-box');
+  const txtH = document.getElementById('diag-hablantes-txt');
+  const boxV = document.getElementById('diag-mivoz-box');
+  const txtV = document.getElementById('diag-mivoz-txt');
 
-function estaDentroDelRango(st, seg) {
-  const r0 = st.rangoInicio ?? 0;
-  const r1 = st.rangoFin ?? st.duracion;
-  return seg.fin > r0 && seg.inicio < r1;
-}
-
-function actualizarResumenMute(sid) {
-  const st = sesiones[sid];
-  const modo = document.getElementById('modo-mute-' + sid)?.value || 'aislar';
-  const minSeg = Number(document.getElementById('min-seg-' + sid)?.value || 0);
-  const maxMin = Number(document.getElementById('max-min-' + sid)?.value || 0);
-  const boxEntreno = document.getElementById('opciones-entreno-' + sid);
-  if (boxEntreno) {
-    boxEntreno.style.display = modo === 'aislar' ? 'grid' : 'none';
-  }
-
-  const r0 = st.rangoInicio ?? 0;
-  const r1 = st.rangoFin ?? st.duracion;
-  const durRango = Math.max(0, r1 - r0);
-  const txtRango = (st.rangoInicio !== null || st.rangoFin !== null)
-    ? ` dentro del recorte <strong>[${fmtHMS(r0)} → ${fmtHMS(r1)}]</strong>`
-    : '';
-
-  const segsEnRango = st.segmentos.filter(s => estaDentroDelRango(st, s));
-  let activos = segsEnRango.filter(s => !esSegmentoSilenciado(st, s));
-  if (modo === 'aislar' && minSeg > 0) {
-    activos = activos.filter(s => (Math.min(s.fin, r1) - Math.max(s.inicio, r0)) >= minSeg);
-  }
-  let durActiva = activos.reduce((acc, s) => acc + Math.max(0, Math.min(s.fin, r1) - Math.max(s.inicio, r0)), 0);
-  if (modo === 'aislar' && maxMin > 0 && durActiva > maxMin * 60) {
-    durActiva = maxMin * 60;
-  }
-
-  const silenciados = segsEnRango.filter(s => esSegmentoSilenciado(st, s));
-  const durSil = silenciados.reduce((acc, s) => acc + Math.max(0, Math.min(s.fin, r1) - Math.max(s.inicio, r0)), 0);
-
-  const el = document.getElementById('resumen-mute-' + sid);
-  if (modo === 'rango_directo') {
-    el.innerHTML = `📏 <strong>Recorte directo:</strong> desde <strong>${fmtHMS(r0)}</strong> hasta <strong>${fmtHMS(r1)}</strong> (Duración estimada: <strong>${fmtHMS(durRango)}</strong>).`;
-  } else if (modo === 'aislar') {
-    el.innerHTML = `✨ <strong>Voz activa lista para extraer${txtRango}:</strong> ${activos.length} frases limpias · Duración estimada: <strong>${fmtHMS(durActiva)}</strong>.`;
+  const nSpk = st.hablantes.length;
+  if (nSpk <= 1) {
+    boxH.className = 'diag-box warn';
+    txtH.innerHTML = `⚠️ <strong>Hay 1 solo hablante agrupado</strong> (${st.segmentos.length} frases). Si en la grabación hablan varias personas, hacé clic abajo en <strong>"2 hablantes"</strong>, <strong>"3 hablantes"</strong> o <strong>"4 hablantes"</strong> para separar sus voces.`;
   } else {
-    el.innerHTML = `🔇 Se silenciarán <strong>${silenciados.length} fragmentos</strong> (<strong>${fmtHMS(durSil)}</strong>)${txtRango} y quedarán <strong>${fmtHMS(Math.max(0, durRango - durSil))}</strong>.`;
+    boxH.className = 'diag-box ok';
+    txtH.innerHTML = `✅ <strong>Se separaron ${nSpk} hablantes distintos</strong> en los ${st.segmentos.length} fragmentos de la grabación. Abajo tenés una tarjeta por cada hablante para escuchar su voz y ponerle su nombre.`;
+  }
+
+  const autoReconocidos = st.hablantes.filter(h => h.auto_etiquetado);
+  const miHablante = st.hablantes.find(h => h.id === st.miVozId && !h.silenciado);
+
+  if (miHablante) {
+    boxV.className = 'diag-box ok';
+    txtV.innerHTML = `✅ <strong>Elegiste cuál es tu voz:</strong> Marcaste a <strong>"${escHtml(miHablante.nombre)}"</strong> como tu voz (${miHablante.cantidad} frases · ${fmtHMS(miHablante.duracion)} hablados). Los demás hablantes están silenciados para que puedas extraer solo tu voz limpia.`;
+  } else if (autoReconocidos.length > 0) {
+    boxV.className = 'diag-box ok';
+    txtV.innerHTML = `🧠 <strong>Voces reconocidas automáticamente:</strong> El sistema reconoció a <strong>${autoReconocidos.map(x => escHtml(x.nombre)).join(', ')}</strong> usando las huellas guardadas en el grupo. Si uno sos vos, tocá <strong>"⭐ Esta es mi voz"</strong> en su tarjeta.`;
+  } else {
+    boxV.className = 'diag-box warn';
+    txtV.innerHTML = `ℹ️ <strong>Todavía no sabés cuál tarjeta corresponde a cada persona:</strong> Tocá el botón <strong>"▶ Escuchar ejemplo"</strong> en cada tarjeta abajo. Cuando escuches la tuya, tocá <strong>"⭐ Esta es mi voz"</strong>; y a los demás elegiles el nombre y tocá <strong>"💾 Guardar en Grupo"</strong>.`;
   }
 }
 
-function renderHablantes(sid) {
-  const st = sesiones[sid];
-  recalcularEstadisticasHablantes(sid);
-  const grid = document.getElementById('hablantes-grid-' + sid);
-  const selFiltro = document.getElementById('filtro-spk-' + sid);
-  const chipVoz = document.getElementById('chip-voz-' + sid);
-  const badgeSpk = document.getElementById('badge-tab-spk-' + sid);
-  const filtroActual = selFiltro.value;
+function renderHablantesPaso3() {
+  const st = sesionActiva;
+  recalcularEstadisticasSesion();
+  renderDiagnosticoClaridad();
 
+  const grid = document.getElementById('p3-hablantes-grid');
+  const selFiltro = document.getElementById('p3-filtro-spk');
+  const filtroActual = selFiltro.value;
   selFiltro.innerHTML = '<option value="">Todos los hablantes</option>';
   grid.innerHTML = '';
-
-  const miHablante = st.hablantes.find(x => x.id === st.miVozId && !x.silenciado);
-  if (chipVoz) {
-    if (miHablante) {
-      chipVoz.className = 'player-chip destacado';
-      chipVoz.innerHTML = `⭐ Mi Voz: <strong>${escHtml(miHablante.nombre)}</strong>`;
-      if (badgeSpk) badgeSpk.textContent = `⭐ ${miHablante.nombre}`;
-    } else {
-      chipVoz.className = 'player-chip';
-      chipVoz.innerHTML = '⚪ Voz: Sin asignar';
-      if (badgeSpk) badgeSpk.textContent = `${st.hablantes.length}`;
-    }
-  }
 
   for (const h of st.hablantes) {
     const opt = document.createElement('option');
     opt.value = h.id;
-    opt.textContent = `${h.nombre} (${h.cantidad})`;
+    opt.textContent = `${h.nombre} (${h.cantidad} frases)`;
     selFiltro.appendChild(opt);
 
     const esMiVoz = st.miVozId === h.id && !h.silenciado;
-    const esAuto = Boolean(h.auto_etiquetado);
     const card = document.createElement('div');
     card.className = 'spk-card' + (h.silenciado ? ' silenciado' : '') + (esMiVoz ? ' es-mi-voz' : '');
+
+    const opcionesLista = `<option value="">— Elegir nombre del Grupo (${nombresGrupoActual.length}) —</option>` +
+      nombresGrupoActual.map(nom => `<option value="${escHtml(nom)}" ${nom === h.nombre ? 'selected' : ''}>${escHtml(nom)}</option>`).join('');
+
+    const ejemplosTexto = h.muestras.slice(0, 2).map(m => `[${fmtHMS(m.inicio)}] "${escHtml(m.texto)}"`).join('<br>');
+
     card.innerHTML = `
-      <div class="spk-top">
-        <span class="spk-dot" style="background:${h.color}"></span>
-        <input type="text" class="spk-name-input" value="${escHtml(h.nombre)}" title="Hacé clic para renombrar a este hablante">
-        ${esAuto ? '<span class="badge badge-azul" title="Reconocido automáticamente desde el registro de voces">🧠 Reconocido</span>' : ''}
-        ${esMiVoz ? '<span class="badge badge-verde">⭐ Tu Voz</span>' : ''}
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:14px;height:14px;border-radius:50%;background:${h.color};display:inline-block"></span>
+          <strong style="font-size:1.02rem">${escHtml(h.nombre)}</strong>
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          ${h.auto_etiquetado ? '<span class="badge badge-azul">🧠 Voz reconocida</span>' : '<span class="badge">Sin guardar huella</span>'}
+          ${esMiVoz ? '<span class="badge badge-verde">⭐ Es tu voz</span>' : ''}
+          <span class="badge ${h.silenciado ? 'badge-ambar' : 'badge-verde'}">${h.silenciado ? '🔇 Silenciado' : '🔊 Se escucha'}</span>
+        </div>
       </div>
-      <div class="spk-meta">
-        ${h.cantidad} intervenciones · <strong>${fmtHMS(h.duracion)}</strong> hablados
+
+      <div style="font-size:0.82rem;color:var(--muted)">
+        <strong>${h.cantidad}</strong> intervenciones · <strong>${fmtHMS(h.duracion)}</strong> hablados en total
       </div>
-      <div class="spk-actions">
-        <button type="button" class="btn-outline btn-sm btn-muestra" ${h.muestras.length ? '' : 'disabled'}>
-          ▶ Ejemplo
-        </button>
-        <button type="button" class="btn-gold btn-aislar ${esMiVoz ? 'activo' : ''}" title="Dejar activa SOLO esta voz y silenciar a todos los demás">
-          ${esMiVoz ? '✔ Es mi voz' : '⭐ Es mi voz'}
-        </button>
-        <button type="button" class="btn-outline btn-sm btn-guardar-voz" title="Guardar la huella acústica de esta persona para auto-etiquetarla en grabaciones futuras">
-          💾 Guardar
-        </button>
-        <label class="mute-toggle">
-          <input type="checkbox" class="chk-mute" ${h.silenciado ? 'checked' : ''} hidden>
-          <span>${h.silenciado ? '🔇 Silenciado' : '🔊 Activo'}</span>
+
+      <div class="spk-frases-preview">
+        ${ejemplosTexto || 'Sin frases asignadas'}
+      </div>
+
+      <!-- Etiquetar por nombre (desde listado o escribiendo) -->
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:8px">
+        <label style="font-size:0.76rem;font-weight:700;color:#334155;display:block;margin-bottom:4px">
+          🏷️ Etiquetar nombre de este hablante (elegí de la lista o escribí):
         </label>
+        ${nombresGrupoActual.length ? `<select class="sel-nom-lista" style="margin-bottom:6px;font-size:0.84rem">${opcionesLista}</select>` : ''}
+        <div style="display:flex;gap:6px">
+          <input type="text" class="inp-nom-manual" value="${escHtml(h.nombre)}" placeholder="Escribir nombre del hablante…" style="font-size:0.86rem;padding:6px 8px">
+          <button type="button" class="btn-primary btn-xs btn-guardar-hablante" title="Asigna este nombre y guarda su huella de voz en el Grupo activo para reconocerlo en el futuro">
+            💾 Guardar en Grupo
+          </button>
+        </div>
+      </div>
+
+      <!-- Botones de escuchar muestra, marcar Mi Voz y Silenciar -->
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        <button type="button" class="btn-outline btn-sm btn-muestra" ${(!st.nombre_mp3 || !h.muestras.length) ? 'disabled' : ''}>
+          ▶ Escuchar ejemplo
+        </button>
+        <button type="button" class="btn-gold btn-sm btn-mi-voz ${esMiVoz ? 'activo' : ''}">
+          ${esMiVoz ? '✔ Es mi voz (activa)' : '⭐ Esta es mi voz'}
+        </button>
+        <button type="button" class="btn-outline btn-sm btn-mute-spk" style="${h.silenciado ? 'background:#dc2626;color:#fff;border-color:#dc2626' : ''}">
+          ${h.silenciado ? '🔇 Silenciado (clic para activar)' : '🔇 Silenciar / Excluir'}
+        </button>
       </div>
     `;
 
-    const inputNombre = card.querySelector('.spk-name-input');
-    inputNombre.onchange = () => {
-      h.nombre = inputNombre.value.trim() || h.id;
-      renderHablantes(sid);
-      renderSegmentos(sid);
-    };
+    const inpNom = card.querySelector('.inp-nom-manual');
+    const selLista = card.querySelector('.sel-nom-lista');
+    if (selLista) {
+      selLista.onchange = () => {
+        if (selLista.value) inpNom.value = selLista.value;
+      };
+    }
 
-    const btnGuardarVoz = card.querySelector('.btn-guardar-voz');
-    btnGuardarVoz.onclick = async () => {
-      const nom = h.nombre.trim();
-      if (!nom || nom.startsWith('Hablante ')) {
-        const nuevoNom = prompt('Ingresá el nombre real de esta persona para guardarla en el registro:', nom.startsWith('Hablante ') ? '' : nom);
-        if (!nuevoNom || !nuevoNom.trim()) return;
-        h.nombre = nuevoNom.trim();
-      }
-      btnGuardarVoz.disabled = true;
-      btnGuardarVoz.textContent = 'Guardando…';
-      try {
-        const r = await fetch('/api/guardar_voz_registro', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            sesion_id: sid,
-            spk_id: h.id,
-            nombre: h.nombre,
-            color: h.color
-          })
-        });
-        if (!r.ok) throw new Error(await r.text());
-        alert(`¡Listo! La voz de "${h.nombre}" quedó registrada. Cuando transcribas nuevas grabaciones donde hable, se etiquetará automáticamente.`);
-        actualizarListaVocesRegistradasGlobal();
-        renderHablantes(sid);
-      } catch (e) {
-        alert('Error al registrar voz: ' + e.message);
-      } finally {
-        btnGuardarVoz.disabled = false;
-        btnGuardarVoz.textContent = '💾 Guardar';
+    card.querySelector('.btn-guardar-hablante').onclick = async () => {
+      const nuevoNom = inpNom.value.trim();
+      if (!nuevoNom) return;
+      h.nombre = nuevoNom;
+      const r = await fetch('/api/guardar_voz_registro', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          sesion_id: st.sesion_id,
+          spk_id: h.id,
+          nombre: nuevoNom,
+          color: h.color,
+          grupo: grupoActivo
+        })
+      });
+      if (r.ok) {
+        h.auto_etiquetado = true;
+        await cargarGruposYListado();
+        renderHablantesPaso3();
+        renderSegmentosPaso3();
+      } else {
+        alert(await r.text());
       }
     };
 
@@ -3430,51 +3770,116 @@ function renderHablantes(sid) {
       const idx = (st.muestraIdx[h.id] || 0) % h.muestras.length;
       st.muestraIdx[h.id] = idx + 1;
       const m = h.muestras[idx];
-      btnMuestra.textContent = h.muestras.length > 1 ? `⏭ Ejemplo (${idx + 1}/${h.muestras.length})` : '▶ Ejemplo';
-      reproducirRango(sid, m.inicio, m.fin, `${h.nombre}: "${m.texto}"`);
+      btnMuestra.textContent = `⏭ Ejemplo (${idx + 1}/${h.muestras.length})`;
+      reproducirFragmentoPaso3(m.inicio, m.fin, `${h.nombre}: "${m.texto}"`);
     };
 
-    card.querySelector('.btn-aislar').onclick = () => {
+    card.querySelector('.btn-mi-voz').onclick = () => {
       st.miVozId = h.id;
-      if (h.nombre.startsWith('Hablante ')) {
-        h.nombre = 'Mi voz (' + h.nombre + ')';
-      }
       for (const otro of st.hablantes) {
         otro.silenciado = (otro.id !== h.id);
       }
-      for (const s of st.segmentos) {
-        delete s.override_mute;
-      }
-      document.getElementById('modo-mute-' + sid).value = 'aislar';
-      renderHablantes(sid);
-      renderSegmentos(sid);
+      for (const s of st.segmentos) delete s.override_mute;
+      renderHablantesPaso3();
+      renderSegmentosPaso3();
+      actualizarResumenAudioPaso3();
     };
 
-    const chkMute = card.querySelector('.chk-mute');
-    chkMute.onchange = () => {
-      h.silenciado = chkMute.checked;
+    card.querySelector('.btn-mute-spk').onclick = () => {
+      h.silenciado = !h.silenciado;
       if (h.silenciado && st.miVozId === h.id) st.miVozId = null;
       for (const s of st.segmentos) {
         if (s.hablante === h.id) delete s.override_mute;
       }
-      renderHablantes(sid);
-      renderSegmentos(sid);
+      renderHablantesPaso3();
+      renderSegmentosPaso3();
+      actualizarResumenAudioPaso3();
     };
 
     grid.appendChild(card);
   }
 
   selFiltro.value = filtroActual;
-  actualizarResumenMute(sid);
 }
 
-function renderSegmentos(sid) {
-  const st = sesiones[sid];
-  const wrap = document.getElementById('seg-wrap-' + sid);
+// Botones rápidos para separar en 2, 3, 4, 5, 6 hablantes
+document.querySelectorAll('.btn-recluster-k').forEach(btn => {
+  btn.onclick = async () => {
+    if (!sesionActiva) return;
+    const k = Number(btn.dataset.k);
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/reagrupar', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ sesion_id: sesionActiva.sesion_id, num_hablantes: k })
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const d = await r.json();
+      sesionActiva.hablantes = d.hablantes;
+      sesionActiva.segmentos = d.segmentos;
+      sesionActiva.miVozId = null;
+      renderPaso3();
+    } catch (e) {
+      alert('No se pudo reagrupar: ' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+});
+
+document.getElementById('btn-p3-silenciar-todos').onclick = () => {
+  if (!sesionActiva) return;
+  for (const h of sesionActiva.hablantes) h.silenciado = true;
+  renderHablantesPaso3(); renderSegmentosPaso3(); actualizarResumenAudioPaso3();
+};
+document.getElementById('btn-p3-activar-todos').onclick = () => {
+  if (!sesionActiva) return;
+  for (const h of sesionActiva.hablantes) h.silenciado = false;
+  renderHablantesPaso3(); renderSegmentosPaso3(); actualizarResumenAudioPaso3();
+};
+document.getElementById('btn-p3-nuevo-spk').onclick = () => {
+  if (!sesionActiva) return;
+  const num = sesionActiva.hablantes.length + 1;
+  const colores = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#db2777", "#0891b2"];
+  sesionActiva.hablantes.push({
+    id: 'SPK_' + Date.now().toString().slice(-4),
+    nombre: `Hablante ${num}`,
+    color: colores[(num - 1) % colores.length],
+    silenciado: false, cantidad: 0, duracion: 0, muestras: []
+  });
+  renderHablantesPaso3(); renderSegmentosPaso3();
+};
+
+function reproducirFragmentoPaso3(ini, fin, etiqueta) {
+  const audioEl = document.getElementById('p3-audio');
+  if (!sesionActiva || !sesionActiva.nombre_mp3) return;
+  sesionActiva.pararEn = fin;
+  audioEl.currentTime = Math.max(0, ini);
+  audioEl.play();
+  document.getElementById('p3-player-info').textContent = `▶ Escuchando: ${etiqueta} (${fmtHMS(ini)} → ${fmtHMS(fin)})`;
+}
+
+function esSegSilenciado(st, seg) {
+  if (seg.override_mute !== undefined && seg.override_mute !== null) return Boolean(seg.override_mute);
+  const h = st.hablantes.find(x => x.id === seg.hablante);
+  return Boolean(h && h.silenciado);
+}
+
+function estaEnRango(st, seg) {
+  const r0 = st.rangoInicio ?? 0;
+  const r1 = st.rangoFin ?? st.duracion;
+  return seg.fin > r0 && seg.inicio < r1;
+}
+
+function renderSegmentosPaso3() {
+  const st = sesionActiva;
+  if (!st) return;
+  const wrap = document.getElementById('p3-seg-wrap');
   wrap.innerHTML = '';
 
-  const mapaHablantes = {};
-  for (const h of st.hablantes) mapaHablantes[h.id] = h;
+  const mapaH = {};
+  for (const h of st.hablantes) mapaH[h.id] = h;
 
   const filtrados = st.segmentos.filter(s => {
     if (st.filtroSpk && s.hablante !== st.filtroSpk) return false;
@@ -3482,200 +3887,301 @@ function renderSegmentos(sid) {
     return true;
   });
 
-  document.getElementById('cont-seg-' + sid).textContent = filtrados.length;
-  const badgeTrans = document.getElementById('badge-tab-trans-' + sid);
-  if (badgeTrans) badgeTrans.textContent = `${filtrados.length}`;
+  document.getElementById('p3-cont-seg').textContent = filtrados.length;
 
   for (const seg of filtrados) {
-    const sil = esSegmentoSilenciado(st, seg);
-    const enRango = estaDentroDelRango(st, seg);
-    const spk = mapaHablantes[seg.hablante] || { nombre: seg.hablante, color: '#6b7280' };
+    const sil = esSegSilenciado(st, seg);
+    const enR = estaEnRango(st, seg);
+    const spk = mapaH[seg.hablante] || { nombre: seg.hablante, color: '#64748b' };
 
     const row = document.createElement('div');
     let cls = 'seg-row';
     if (sil) cls += ' seg-silenciado';
-    if (!enRango) cls += ' fuera-de-rango';
+    if (!enR) cls += ' fuera-de-rango';
     if (st.rangoInicio !== null && Math.abs(seg.inicio - st.rangoInicio) < 1.5) cls += ' marca-inicio';
     if (st.rangoFin !== null && Math.abs(seg.fin - st.rangoFin) < 1.5) cls += ' marca-fin';
     row.className = cls;
 
-    const opcionesSpk = st.hablantes.map(h =>
+    const opts = st.hablantes.map(h =>
       `<option value="${h.id}" ${h.id === seg.hablante ? 'selected' : ''}>${escHtml(h.nombre)}</option>`
     ).join('');
 
     row.innerHTML = `
-      <button type="button" class="seg-time-btn" title="Escuchar este fragmento">
-        ▶ ${fmtHMS(seg.inicio)} - ${fmtHMS(seg.fin)}
-      </button>
-      <select class="seg-spk-select" style="border-left: 4px solid ${spk.color}">
-        ${opcionesSpk}
-      </select>
-      <div class="seg-texto" contenteditable="true" spellcheck="false">${escHtml(seg.texto)}</div>
-      <div style="display:flex;gap:4px;align-items:center">
-        <button type="button" class="btn-outline btn-xs btn-set-ini" title="Fijar inicio del recorte acá (${fmtHMS(seg.inicio)})">⛳ Inicio</button>
-        <button type="button" class="btn-outline btn-xs btn-set-fin" title="Fijar fin del recorte acá (${fmtHMS(seg.fin)})">🏁 Fin</button>
-        <button type="button" class="btn-outline btn-xs btn-seg-mute" title="Silenciar o activar este fragmento puntual">
-          ${sil ? '🔇' : '🔊'}
-        </button>
+      <button type="button" class="seg-time-btn">▶ ${fmtHMS(seg.inicio)} - ${fmtHMS(seg.fin)}</button>
+      <select style="border-left:4px solid ${spk.color};font-weight:700;font-size:0.82rem">${opts}</select>
+      <div class="seg-texto" contenteditable="true" spellcheck="false" style="font-size:0.9rem;padding:4px">${escHtml(seg.texto)}</div>
+      <div style="display:flex;gap:4px">
+        <button type="button" class="btn-outline btn-xs btn-ini" title="Marcar inicio de recorte acá">⛳ Inicio</button>
+        <button type="button" class="btn-outline btn-xs btn-fin" title="Marcar fin de recorte acá">🏁 Fin</button>
+        <button type="button" class="btn-outline btn-xs btn-mute">${sil ? '🔇' : '🔊'}</button>
       </div>
     `;
 
-    row.querySelector('.seg-time-btn').onclick = () => {
-      reproducirRango(sid, seg.inicio, seg.fin, `${spk.nombre}`);
-    };
-
-    const selSpk = row.querySelector('.seg-spk-select');
-    selSpk.onchange = () => {
-      seg.hablante = selSpk.value;
+    row.querySelector('.seg-time-btn').onclick = () => reproducirFragmentoPaso3(seg.inicio, seg.fin, spk.nombre);
+    const sel = row.querySelector('select');
+    sel.onchange = () => {
+      seg.hablante = sel.value;
       delete seg.override_mute;
-      renderHablantes(sid);
-      renderSegmentos(sid);
+      renderHablantesPaso3(); renderSegmentosPaso3(); actualizarResumenAudioPaso3();
     };
-
-    const divTxt = row.querySelector('.seg-texto');
-    divTxt.onblur = () => {
-      seg.texto = divTxt.textContent.trim();
-    };
-
-    row.querySelector('.btn-set-ini').onclick = () => {
+    const txtEl = row.querySelector('.seg-texto');
+    txtEl.onblur = () => { seg.texto = txtEl.textContent.trim(); };
+    row.querySelector('.btn-ini').onclick = () => {
       st.rangoInicio = seg.inicio;
-      st.matchIni = { seg_inicio: seg.inicio, seg_fin: seg.fin, frase_inicio: seg.inicio, frase_fin: seg.fin, texto: seg.texto };
-      sincronizarInputsRango(sid);
-      renderSegmentos(sid);
-      actualizarResumenMute(sid);
+      document.getElementById('p3-t-ini').value = fmtHMS(seg.inicio);
+      renderSegmentosPaso3(); actualizarResumenAudioPaso3();
     };
-
-    row.querySelector('.btn-set-fin').onclick = () => {
+    row.querySelector('.btn-fin').onclick = () => {
       st.rangoFin = seg.fin;
-      st.matchFin = { seg_inicio: seg.inicio, seg_fin: seg.fin, frase_inicio: seg.inicio, frase_fin: seg.fin, texto: seg.texto };
-      sincronizarInputsRango(sid);
-      renderSegmentos(sid);
-      actualizarResumenMute(sid);
+      document.getElementById('p3-t-fin').value = fmtHMS(seg.fin);
+      renderSegmentosPaso3(); actualizarResumenAudioPaso3();
     };
-
-    row.querySelector('.btn-seg-mute').onclick = () => {
+    row.querySelector('.btn-mute').onclick = () => {
       seg.override_mute = !sil;
-      renderSegmentos(sid);
-      actualizarResumenMute(sid);
+      renderSegmentosPaso3(); actualizarResumenAudioPaso3();
     };
 
     wrap.appendChild(row);
   }
 }
 
-async function exportarAudioFiltrado(sid) {
-  const st = sesiones[sid];
-  const btn = document.getElementById('btn-export-mp3-' + sid);
-  const resBox = document.getElementById('res-mp3-' + sid);
-  const modo = document.getElementById('modo-mute-' + sid).value;
-  const formato = document.getElementById('fmt-audio-' + sid).value;
-  const maxMin = Number(document.getElementById('max-min-' + sid).value || 0);
-  const minSeg = Number(document.getElementById('min-seg-' + sid).value || 0);
-  const pausaSeg = Number(document.getElementById('pausa-seg-' + sid).value || 0.3);
+document.getElementById('p3-buscar').oninput = e => {
+  if (!sesionActiva) return;
+  sesionActiva.filtroTexto = e.target.value.toLowerCase();
+  renderSegmentosPaso3();
+};
+document.getElementById('p3-filtro-spk').onchange = e => {
+  if (!sesionActiva) return;
+  sesionActiva.filtroSpk = e.target.value;
+  renderSegmentosPaso3();
+};
 
-  const intervalosSilenciados = st.segmentos
-    .filter(s => esSegmentoSilenciado(st, s))
-    .map(s => [s.inicio, s.fin]);
+// Recorte por frases en Paso 3
+document.getElementById('btn-p3-buscar-frases').onclick = async () => {
+  if (!sesionActiva) return;
+  const fIni = document.getElementById('p3-f-ini').value.trim();
+  const fFin = document.getElementById('p3-f-fin').value.trim();
+  if (!fIni && !fFin) { alert('Escribí una frase de inicio o de fin.'); return; }
+  const r = await fetch('/api/buscar_frases', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ sesion_id: sesionActiva.sesion_id, frase_ini: fIni, frase_fin: fFin, segmentos: sesionActiva.segmentos })
+  });
+  const d = await r.json();
+  if (d.match_ini) {
+    sesionActiva.rangoInicio = d.match_ini.frase_inicio;
+    document.getElementById('p3-t-ini').value = fmtHMS(d.match_ini.frase_inicio);
+    document.getElementById('p3-pill-ini').innerHTML = `<div style="font-size:0.78rem;color:var(--ok);margin-top:4px">✔ En ${fmtHMS(d.match_ini.frase_inicio)}: "${escHtml(d.match_ini.texto.slice(0,50))}"</div>`;
+  }
+  if (d.match_fin) {
+    sesionActiva.rangoFin = d.match_fin.frase_fin;
+    document.getElementById('p3-t-fin').value = fmtHMS(d.match_fin.frase_fin);
+    document.getElementById('p3-pill-fin').innerHTML = `<div style="font-size:0.78rem;color:var(--ok);margin-top:4px">✔ En ${fmtHMS(d.match_fin.frase_fin)}: "${escHtml(d.match_fin.texto.slice(0,50))}"</div>`;
+  }
+  renderSegmentosPaso3(); actualizarResumenAudioPaso3();
+};
 
-  const intervalosActivos = st.segmentos
-    .filter(s => !esSegmentoSilenciado(st, s))
-    .map(s => ({
-      inicio: s.inicio,
-      fin: s.fin,
-      texto: s.texto,
-      confianza: s.confianza || 0.8
-    }));
+document.getElementById('p3-t-ini').onchange = e => {
+  if (!sesionActiva) return;
+  sesionActiva.rangoInicio = parseTiempoCliente(e.target.value);
+  renderSegmentosPaso3(); actualizarResumenAudioPaso3();
+};
+document.getElementById('p3-t-fin').onchange = e => {
+  if (!sesionActiva) return;
+  sesionActiva.rangoFin = parseTiempoCliente(e.target.value);
+  renderSegmentosPaso3(); actualizarResumenAudioPaso3();
+};
+document.getElementById('btn-p3-limpiar-rango').onclick = () => {
+  if (!sesionActiva) return;
+  sesionActiva.rangoInicio = null; sesionActiva.rangoFin = null;
+  document.getElementById('p3-t-ini').value = ''; document.getElementById('p3-t-fin').value = '';
+  document.getElementById('p3-pill-ini').innerHTML = ''; document.getElementById('p3-pill-fin').innerHTML = '';
+  renderSegmentosPaso3(); actualizarResumenAudioPaso3();
+};
 
-  if (modo === 'aislar' || formato === 'zip') {
-    if (!intervalosActivos.length) {
-      alert('No hay ningún hablante o frase activa para extraer. Desmarcá al menos tu voz.');
-      return;
-    }
-  } else if (modo !== 'rango_directo' && !intervalosSilenciados.length && st.rangoInicio === null && st.rangoFin === null) {
-    alert('Marcá al menos un hablante con 🔇, o definí una marca de inicio/fin, o usá el modo "Aislar SOLO la voz activa".');
+function actualizarResumenAudioPaso3() {
+  if (!sesionActiva) return;
+  const st = sesionActiva;
+  const modo = document.getElementById('p3-modo-audio').value;
+  const minSeg = Number(document.getElementById('p3-min-seg').value || 0);
+  const maxMin = Number(document.getElementById('p3-max-min').value || 0);
+  const r0 = st.rangoInicio ?? 0;
+  const r1 = st.rangoFin ?? st.duracion;
+  const segsR = st.segmentos.filter(s => estaEnRango(st, s));
+  let activos = segsR.filter(s => !esSegSilenciado(st, s));
+  if (modo === 'aislar' && minSeg > 0) {
+    activos = activos.filter(s => (Math.min(s.fin, r1) - Math.max(s.inicio, r0)) >= minSeg);
+  }
+  let durAct = activos.reduce((acc, s) => acc + Math.max(0, Math.min(s.fin, r1) - Math.max(s.inicio, r0)), 0);
+  if (modo === 'aislar' && maxMin > 0 && durAct > maxMin * 60) durAct = maxMin * 60;
+  document.getElementById('p3-resumen-audio').innerHTML =
+    `✨ Fragmentos activos a incluir: <strong>${activos.length}</strong> · Duración estimada de salida: <strong>${fmtHMS(durAct)}</strong>`;
+}
+
+['p3-modo-audio','p3-fmt-audio','p3-max-min','p3-min-seg'].forEach(id => {
+  document.getElementById(id).onchange = () => actualizarResumenAudioPaso3();
+});
+
+document.getElementById('btn-p3-export-audio').onclick = async () => {
+  if (!sesionActiva || !sesionActiva.nombre_mp3) {
+    alert('Esta sesión no tiene un archivo de audio MP3 vinculado.');
     return;
   }
-
+  const st = sesionActiva;
+  const btn = document.getElementById('btn-p3-export-audio');
+  const resBox = document.getElementById('p3-res-audio');
   btn.disabled = true;
-  resBox.innerHTML = '<div style="margin-top:10px;font-size:0.88rem">⏳ Generando archivo de audio…</div>';
+  resBox.innerHTML = '<div style="margin-top:8px;font-size:0.85rem">⏳ Generando audio…</div>';
 
   try {
     const r = await fetch('/api/exportar_mp3', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
-        sesion_id: sid,
-        modo,
-        formato,
-        max_minutos: maxMin,
-        min_dur_seg: minSeg,
-        pausa_seg: pausaSeg,
+        sesion_id: st.sesion_id,
+        modo: document.getElementById('p3-modo-audio').value,
+        formato: document.getElementById('p3-fmt-audio').value,
+        max_minutos: Number(document.getElementById('p3-max-min').value || 0),
+        min_dur_seg: Number(document.getElementById('p3-min-seg').value || 0),
+        pausa_seg: 0.3,
         rango_inicio: st.rangoInicio,
         rango_fin: st.rangoFin,
-        intervalos: intervalosSilenciados,
-        activos: intervalosActivos
+        intervalos: st.segmentos.filter(s => esSegSilenciado(st, s)).map(s => [s.inicio, s.fin]),
+        activos: st.segmentos.filter(s => !esSegSilenciado(st, s)).map(s => ({inicio:s.inicio, fin:s.fin, texto:s.texto, confianza:s.confianza||0.8}))
       })
     });
     if (!r.ok) throw new Error(await r.text());
     const d = await r.json();
-    const esAudioReproducible = d.nombre_archivo.endsWith('.mp3') || d.nombre_archivo.endsWith('.wav');
     resBox.innerHTML = `
-      <div class="resultado-mp3-box">
-        <div style="font-weight:700;color:var(--ok);margin-bottom:6px">
-          ✔ Listo: ${escHtml(d.nombre_archivo)} · Duración resultante: ${fmtHMS(d.duracion_final)}
-        </div>
-        ${esAudioReproducible ? `<audio controls src="/audios/${encodeURIComponent(d.nombre_archivo)}" style="width:100%;height:34px;margin-bottom:8px"></audio>` : ''}
-        <a class="btn-primary btn-sm" style="text-decoration:none" href="/audios/${encodeURIComponent(d.nombre_archivo)}" download>
-          ⬇ Descargar ${escHtml(d.nombre_archivo)}
-        </a>
+      <div style="margin-top:10px;padding:10px;border-radius:8px;background:#f0fdf4;border:1px solid #86efac">
+        <div style="font-weight:700;color:var(--ok);margin-bottom:6px">✔ Listo: ${escHtml(d.nombre_archivo)} (${fmtHMS(d.duracion_final)})</div>
+        <audio controls src="/audios/${encodeURIComponent(d.nombre_archivo)}" style="width:100%;height:34px;margin-bottom:6px"></audio>
+        <a class="btn-primary btn-sm" style="text-decoration:none" href="/audios/${encodeURIComponent(d.nombre_archivo)}" download>⬇ Descargar ${escHtml(d.nombre_archivo)}</a>
       </div>
     `;
-    cargarListaAudiosExistentes();
   } catch (e) {
-    resBox.innerHTML = `<div style="margin-top:10px;color:var(--danger);font-weight:600">✘ ${escHtml(e.message)}</div>`;
+    resBox.innerHTML = `<div style="margin-top:8px;color:var(--danger);font-weight:700">✘ ${escHtml(e.message)}</div>`;
   } finally {
     btn.disabled = false;
   }
+};
+
+// ==============================================================================
+// PASO 4: CONVERTIR A SUBTÍTULOS Y SINCRONIZAR CON VIDEO SIN AUDIO (DRIVE)
+// ==============================================================================
+function renderPaso4() {
+  if (!sesionActiva) {
+    document.getElementById('p4-vacio').style.display = 'block';
+    document.getElementById('p4-contenido').style.display = 'none';
+    return;
+  }
+  document.getElementById('p4-vacio').style.display = 'none';
+  document.getElementById('p4-contenido').style.display = 'block';
+
+  const selRef = document.getElementById('p4-sel-frase-ref');
+  selRef.innerHTML = sesionActiva.segmentos.slice(0, 60).map((s, idx) =>
+    `<option value="${s.inicio}">[${fmtHMS(s.inicio)}] ${escHtml(s.texto.slice(0, 75))}</option>`
+  ).join('');
 }
 
-function fmtSrtTs(seg) {
+document.getElementById('arch-p4-video').onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  archivoVideoP4 = f;
+  const v = document.getElementById('p4-video');
+  v.src = URL.createObjectURL(f);
+  document.getElementById('p4-video-nombre').textContent = `🎬 Video cargado para previsualización y sincronización: ${f.name} (${fmtMB(f.size)})`;
+};
+
+// Actualizar subtítulo en vivo sobre el video mientras se reproduce
+const videoP4 = document.getElementById('p4-video');
+videoP4.ontimeupdate = () => {
+  if (!sesionActiva) return;
+  const t = videoP4.currentTime;
+  const offset = Number(document.getElementById('p4-offset-seg').value || 0);
+  const incNom = document.getElementById('p4-inc-nom').checked;
+  const incSil = document.getElementById('p4-inc-sil').checked;
+  const mapaNom = {};
+  for (const h of sesionActiva.hablantes) mapaNom[h.id] = h.nombre;
+
+  const actual = sesionActiva.segmentos.find(s => {
+    if (!incSil && esSegSilenciado(sesionActiva, s)) return false;
+    const ini = s.inicio + offset;
+    const fin = s.fin + offset;
+    return t >= ini && t <= fin;
+  });
+
+  const subEl = document.getElementById('p4-sub-live');
+  if (actual) {
+    const pref = incNom ? `[${mapaNom[actual.hablante] || actual.hablante}]: ` : '';
+    subEl.textContent = pref + actual.texto;
+    subEl.style.display = 'inline-block';
+  } else {
+    subEl.style.display = 'none';
+  }
+};
+
+document.getElementById('btn-p4-sync-video').onclick = () => {
+  if (!sesionActiva) return;
+  const tFraseOrig = Number(document.getElementById('p4-sel-frase-ref').value || 0);
+  const tVideoActual = videoP4.currentTime || 0;
+  const nuevoOffset = Math.round((tVideoActual - tFraseOrig) * 10) / 10;
+  document.getElementById('p4-offset-seg').value = nuevoOffset;
+  sesionActiva.offsetSub = nuevoOffset;
+  alert(`¡Sincronizado! Se aplicó un ajuste de ${nuevoOffset >= 0 ? '+' : ''}${nuevoOffset} segundos a todos los subtítulos para que calcen con este punto del video.`);
+};
+
+window.ajustarOffsetSub = function(delta, reset = false) {
+  const inp = document.getElementById('p4-offset-seg');
+  const val = reset ? 0 : Math.round((Number(inp.value || 0) + delta) * 10) / 10;
+  inp.value = val;
+  if (sesionActiva) sesionActiva.offsetSub = val;
+};
+
+function fmtSrt(seg, sepMs = ',') {
   const msTotal = Math.max(0, Math.round(seg * 1000));
   const h = Math.floor(msTotal / 3600000);
   const m = Math.floor((msTotal % 3600000) / 60000);
   const s = Math.floor((msTotal % 60000) / 1000);
   const ms = msTotal % 1000;
-  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')},${String(ms).padStart(3,'0')}`;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}${sepMs}${String(ms).padStart(3,'0')}`;
 }
 
-function descargarTranscripcion(sid, formato) {
-  const st = sesiones[sid];
-  const incSil = document.getElementById('inc-sil-' + sid).checked;
-  const incNom = document.getElementById('inc-nom-' + sid).checked;
+window.descargarSubtitulosPaso4 = function(formato) {
+  if (!sesionActiva) return;
+  const st = sesionActiva;
+  const offset = Number(document.getElementById('p4-offset-seg').value || 0);
+  const incNom = document.getElementById('p4-inc-nom').checked;
+  const incSil = document.getElementById('p4-inc-sil').checked;
   const mapaNom = {};
   for (const h of st.hablantes) mapaNom[h.id] = h.nombre;
 
-  const segs = st.segmentos.filter(s => estaDentroDelRango(st, s) && (incSil || !esSegmentoSilenciado(st, s)));
+  const segs = st.segmentos.filter(s => estaEnRango(st, s) && (incSil || !esSegSilenciado(st, s)));
   let contenido = '';
-  let ext = '.txt';
+  let ext = '.srt';
 
-  if (formato === 'txt_ts') {
-    contenido = segs.map(s => {
-      const pref = incNom ? `${mapaNom[s.hablante] || s.hablante}: ` : '';
-      return `[${fmtHMS(s.inicio)} - ${fmtHMS(s.fin)}] ${pref}${s.texto}`;
-    }).join('\n');
-    ext = '_marcas.txt';
-  } else if (formato === 'txt') {
-    contenido = segs.map(s => {
-      const pref = incNom ? `${mapaNom[s.hablante] || s.hablante}: ` : '';
-      return `${pref}${s.texto}`;
-    }).join('\n\n');
-    ext = '.txt';
-  } else if (formato === 'srt') {
+  if (formato === 'srt') {
     contenido = segs.map((s, i) => {
+      const ini = Math.max(0, s.inicio + offset);
+      const fin = Math.max(ini + 0.5, s.fin + offset);
       const pref = incNom ? `[${mapaNom[s.hablante] || s.hablante}] ` : '';
-      return `${i + 1}\n${fmtSrtTs(s.inicio)} --> ${fmtSrtTs(s.fin)}\n${pref}${s.texto}\n`;
+      return `${i + 1}\n${fmtSrt(ini, ',')} --> ${fmtSrt(fin, ',')}\n${pref}${s.texto}\n`;
     }).join('\n');
-    ext = '.srt';
+    ext = '_sincronizado.srt';
+  } else if (formato === 'vtt') {
+    contenido = 'WEBVTT\n\n' + segs.map((s) => {
+      const ini = Math.max(0, s.inicio + offset);
+      const fin = Math.max(ini + 0.5, s.fin + offset);
+      const pref = incNom ? `[${mapaNom[s.hablante] || s.hablante}] ` : '';
+      return `${fmtSrt(ini, '.')} --> ${fmtSrt(fin, '.')}\n${pref}${s.texto}\n`;
+    }).join('\n');
+    ext = '_sincronizado.vtt';
+  } else {
+    contenido = segs.map(s => {
+      const ini = Math.max(0, s.inicio + offset);
+      const fin = Math.max(ini + 0.5, s.fin + offset);
+      const pref = incNom ? `${mapaNom[s.hablante] || s.hablante}: ` : '';
+      return `[${fmtHMS(ini)} - ${fmtHMS(fin)}] ${pref}${s.texto}`;
+    }).join('\n');
+    ext = '_marcas_sincronizadas.txt';
   }
 
   const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
@@ -3684,7 +4190,66 @@ function descargarTranscripcion(sid, formato) {
   a.href = URL.createObjectURL(blob);
   a.download = `${base}${ext}`;
   a.click();
-}
+};
+
+document.getElementById('btn-p4-unir-video').onclick = async () => {
+  if (!sesionActiva) return;
+  if (!archivoVideoP4) {
+    alert('Primero elegí el archivo de video con el botón "🎬 Elegir archivo de Video de tu PC" arriba a la izquierda.');
+    return;
+  }
+  const btn = document.getElementById('btn-p4-unir-video');
+  const resDiv = document.getElementById('p4-res-unir');
+  btn.disabled = true;
+  resDiv.innerHTML = '⏳ Uniendo subtítulos al video con ffmpeg…';
+
+  try {
+    const q = new URLSearchParams({
+      sesion_id: sesionActiva.sesion_id,
+      nombre_video: archivoVideoP4.name,
+      modo: document.getElementById('p4-modo-unir').value,
+      offset: document.getElementById('p4-offset-seg').value || '0',
+      inc_nom: document.getElementById('p4-inc-nom').checked ? '1' : '0',
+      inc_sil: document.getElementById('p4-inc-sil').checked ? '1' : '0'
+    });
+    const r = await fetch('/api/unir_subtitulos_video?' + q.toString(), {
+      method: 'POST',
+      body: archivoVideoP4
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    resDiv.innerHTML = `
+      <div style="padding:10px;border-radius:8px;background:#f0fdf4;border:1px solid #86efac">
+        <strong style="color:var(--ok)">✔ Video con subtítulos creado:</strong> ${escHtml(d.nombre_archivo)}
+        <div style="margin-top:6px">
+          <a class="btn-primary btn-sm" style="text-decoration:none" href="/audios/${encodeURIComponent(d.nombre_archivo)}" download>
+            ⬇ Descargar ${escHtml(d.nombre_archivo)}
+          </a>
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    resDiv.innerHTML = `<div style="color:var(--danger);font-weight:700">✘ ${escHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// Inicialización automática: si hay una sesión guardada, dejarla pre-cargada
+(async function init() {
+  await cargarAudiosDisponibles();
+  await cargarSesionesGuardadas();
+  try {
+    const r = await fetch('/api/sesiones_guardadas');
+    const lista = await r.json();
+    if (lista.length > 0) {
+      const rSes = await fetch('/api/sesion?id=' + encodeURIComponent(lista[0].sesion_id));
+      if (rSes.ok) {
+        activarSesion(await rSes.json());
+      }
+    }
+  } catch (e) {}
+})();
 </script>
 </body>
 </html>
@@ -3756,7 +4321,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_text(200, HTML, "text/html; charset=utf-8")
 
         if p.path == "/api/git_estado":
-            # Si se pasa ?verificar=1 fuerza fetch y check de estado
             q = urllib.parse.parse_qs(p.query)
             if q.get("verificar", ["0"])[0] == "1":
                 st = verificar_y_sincronizar_git(accion_automatica=False)
@@ -3780,9 +4344,41 @@ class Handler(BaseHTTPRequestHandler):
             archivos.sort(key=lambda x: x["mtime"], reverse=True)
             return self._send_json(200, archivos)
 
+        if p.path == "/api/sesiones_guardadas":
+            lista = []
+            with JOBS_LOCK:
+                for sid, s in SESIONES.items():
+                    lista.append({
+                        "sesion_id": sid,
+                        "nombre_original": s.get("nombre_original", sid),
+                        "nombre_mp3": s.get("nombre_mp3", ""),
+                        "duracion": s.get("duracion", 0),
+                        "modelo": s.get("modelo", "whisper"),
+                        "cantidad_segmentos": len(s.get("segmentos", [])),
+                        "cantidad_hablantes": len(s.get("hablantes", [])),
+                    })
+            return self._send_json(200, lista)
+
+        if p.path == "/api/sesion":
+            q = urllib.parse.parse_qs(p.query)
+            sid = q.get("id", [""])[0]
+            with JOBS_LOCK:
+                s = SESIONES.get(sid)
+            if not s:
+                return self._send_text(404, "Sesión no encontrada")
+            return self._send_json(200, {
+                "sesion_id": s["sesion_id"],
+                "nombre_original": s.get("nombre_original", ""),
+                "nombre_mp3": s.get("nombre_mp3", ""),
+                "duracion": s.get("duracion", 0),
+                "modelo": s.get("modelo", ""),
+                "hablantes": s.get("hablantes", []),
+                "segmentos": s.get("segmentos", []),
+                "rango_detectado": s.get("rango_detectado", {}),
+            })
+
         if p.path == "/api/voces_registradas":
-            reg = cargar_registro_voces()
-            # Devolver resumen de perfiles sin el vector gigante
+            reg = _asegurar_estructura_grupos(cargar_registro_voces())
             resumen = []
             for nom, info in reg.get("perfiles", {}).items():
                 resumen.append({
@@ -3791,7 +4387,10 @@ class Handler(BaseHTTPRequestHandler):
                     "n_muestras": info.get("n_muestras", 1),
                     "actualizado_en": info.get("actualizado_en") or info.get("creado_en", "")
                 })
-            return self._send_json(200, resumen)
+            return self._send_json(200, {
+                "perfiles": resumen,
+                "grupos": listar_grupos()
+            })
 
         if p.path == "/api/estado":
             q = urllib.parse.parse_qs(p.query)
@@ -3822,15 +4421,14 @@ class Handler(BaseHTTPRequestHandler):
                     body = json.loads(self.rfile.read(largo).decode("utf-8"))
                 except Exception:
                     body = {}
-            accion = body.get("accion", "auto")  # "auto", "pull", "push", "configurar_remote"
+            accion = body.get("accion", "auto")
             url_remote = (body.get("remote_url") or "").strip()
 
             if accion == "configurar_remote" and url_remote:
-                code_r, _, _ = ejecutar_git("remote", "remove", "origin")
+                ejecutar_git("remote", "remove", "origin")
                 code_a, _, err_a = ejecutar_git("remote", "add", "origin", url_remote)
                 if code_a != 0:
                     return self._send_text(400, f"Error al configurar remote: {err_a}")
-                # Hacer commit de archivos si hay cambios pendientes antes de sincronizar
                 ejecutar_git("add", ".gitignore", "app.py", "README.md", "Extraer audio.bat", "voces_registradas.json")
                 ejecutar_git("commit", "-m", "chore: guardar estado local antes de sincronizar con remote")
 
@@ -3854,9 +4452,163 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         return self._send_text(500, f"Error en git push: {err_p}")
 
-            # Accion auto
             res = verificar_y_sincronizar_git(accion_automatica=True)
             return self._send_json(200, res)
+
+        if p.path == "/api/crear_grupo":
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            body = json.loads(self.rfile.read(largo).decode("utf-8")) if largo > 0 else {}
+            nom = (body.get("nombre") or "").strip()
+            if not nom:
+                return self._send_text(400, "El nombre del grupo es obligatorio.")
+            g = crear_o_actualizar_grupo(nom, body.get("materia", ""), body.get("catedra", ""), body.get("comision", ""))
+            return self._send_json(200, {"ok": True, "grupo": g, "grupos": listar_grupos()})
+
+        if p.path == "/api/subir_listado_nombres":
+            q = urllib.parse.parse_qs(p.query)
+            nombre_arch = os.path.basename(q.get("nombre", ["nombres.txt"])[0])
+            grupo = q.get("grupo", ["General"])[0]
+            reemplazar = q.get("reemplazar", ["0"])[0] == "1"
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            datos_bytes = self.rfile.read(largo) if largo > 0 else b""
+            if not datos_bytes:
+                return self._send_text(400, "No se enviaron datos.")
+            try:
+                extraidos = extraer_nombres_desde_archivo(datos_bytes, nombre_arch)
+                lista_final = agregar_nombres_al_listado(extraidos, grupo=grupo, reemplazar=reemplazar)
+                return self._send_json(200, {"agregados": len(extraidos), "nombres": lista_final})
+            except Exception as e:
+                return self._send_text(400, f"Error leyendo el listado de nombres: {e}")
+
+        if p.path == "/api/eliminar_nombre_listado":
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            body = json.loads(self.rfile.read(largo).decode("utf-8"))
+            nom_borrar = (body.get("nombre") or "").strip().lower()
+            grupo = (body.get("grupo") or "General").strip()
+            reg = _asegurar_estructura_grupos(cargar_registro_voces())
+            if grupo in reg["grupos"]:
+                reg["grupos"][grupo]["nombres"] = [x for x in reg["grupos"][grupo].get("nombres", []) if x.lower() != nom_borrar]
+            reg["listado_nombres"] = [x for x in reg.get("listado_nombres", []) if x.lower() != nom_borrar]
+            guardar_registro_voces(reg)
+            return self._send_json(200, {"nombres": obtener_listado_nombres(grupo)})
+
+        if p.path == "/api/subir_transcripcion":
+            q = urllib.parse.parse_qs(p.query)
+            nombre_arch = os.path.basename(q.get("nombre", ["transcripcion.txt"])[0])
+            nombre_mp3 = os.path.basename(q.get("nombre_mp3", [""])[0]) if q.get("nombre_mp3", [""])[0] else ""
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            datos_bytes = self.rfile.read(largo) if largo > 0 else b""
+            if not datos_bytes:
+                return self._send_text(400, "El archivo de transcripción está vacío.")
+            try:
+                parsed = parsear_transcripcion_externa(datos_bytes, nombre_arch)
+            except Exception as e:
+                return self._send_text(400, f"Error leyendo la transcripción: {e}")
+            if not parsed["segmentos"]:
+                return self._send_text(400, "No se encontraron líneas en la transcripción.")
+
+            sid = uuid.uuid4().hex[:12]
+            ruta_mp3 = os.path.join(SALIDA, nombre_mp3) if nombre_mp3 else ""
+            sesion_data = {
+                "sesion_id": sid,
+                "nombre_original": nombre_arch,
+                "nombre_base": os.path.splitext(nombre_arch)[0],
+                "nombre_mp3": nombre_mp3,
+                "ruta_mp3": ruta_mp3,
+                "ruta_wav16k": "",
+                "cal": "192k",
+                "mono": True,
+                "duracion": parsed["duracion"],
+                "modelo": f"Importado ({parsed['formato_detectado']})",
+                "formato_detectado": parsed["formato_detectado"],
+                "segmentos": parsed["segmentos"],
+                "hablantes": parsed["hablantes"],
+                "X": None,
+            }
+            with JOBS_LOCK:
+                SESIONES[sid] = sesion_data
+            guardar_sesion_disco(sesion_data)
+            return self._send_json(200, {
+                "sesion_id": sid,
+                "nombre_original": nombre_arch,
+                "nombre_mp3": nombre_mp3,
+                "duracion": parsed["duracion"],
+                "modelo": sesion_data["modelo"],
+                "formato_detectado": parsed["formato_detectado"],
+                "hablantes": parsed["hablantes"],
+                "segmentos": parsed["segmentos"],
+            })
+
+        if p.path == "/api/auto_matchear_presentaciones":
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            body = json.loads(self.rfile.read(largo).decode("utf-8"))
+            sid = body.get("sesion_id", "")
+            grupo = body.get("grupo", "General")
+            with JOBS_LOCK:
+                sesion = SESIONES.get(sid)
+            if not sesion:
+                return self._send_text(404, "Sesión no encontrada")
+
+            listado = obtener_listado_nombres(grupo)
+            hallazgos = detectar_presentaciones_en_segmentos(sesion["segmentos"], listado)
+            # Asignar los nombres detectados a los hablantes correspondientes
+            mapa_spk_nom = {}
+            for h_item in hallazgos:
+                mapa_spk_nom[h_item["spk_id"]] = h_item["nombre_detectado"]
+
+            for h in sesion["hablantes"]:
+                if h["id"] in mapa_spk_nom:
+                    h["nombre"] = mapa_spk_nom[h["id"]]
+                    h["auto_etiquetado"] = True
+                    # Si hay matriz acústica X, registrar su huella en el grupo
+                    X = sesion.get("X")
+                    if X is not None:
+                        idx_s = [i for i, s in enumerate(sesion["segmentos"]) if s.get("hablante") == h["id"]]
+                        if idx_s and len(X) > max(idx_s):
+                            registrar_voz_en_grupo(grupo, h["nombre"], np.mean(X[idx_s], axis=0), color=h.get("color", "#2563eb"), origen="presentacion")
+
+            guardar_sesion_disco(sesion)
+            return self._send_json(200, {
+                "hallazgos": hallazgos,
+                "segmentos": sesion["segmentos"],
+                "hablantes": sesion["hablantes"]
+            })
+
+        if p.path == "/api/sincronizar_tactiq_voces":
+            q = urllib.parse.parse_qs(p.query)
+            sid = q.get("sesion_id", [""])[0]
+            nombre_arch = os.path.basename(q.get("nombre", ["tactiq.txt"])[0])
+            grupo = q.get("grupo", ["General"])[0]
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            datos_bytes = self.rfile.read(largo) if largo > 0 else b""
+            with JOBS_LOCK:
+                sesion = SESIONES.get(sid)
+            if not sesion:
+                return self._send_text(404, "Sesión no encontrada")
+            try:
+                parsed_t = parsear_transcripcion_externa(datos_bytes, nombre_arch)
+                listado = obtener_listado_nombres(grupo)
+                res_sync = sincronizar_y_matchear_con_tactiq(
+                    sesion["segmentos"], parsed_t["segmentos"], parsed_t["hablantes"], listado
+                )
+                mapeo = res_sync.get("mapeo_hablantes", {})
+                for h in sesion["hablantes"]:
+                    if h["id"] in mapeo:
+                        h["nombre"] = mapeo[h["id"]]
+                        h["auto_etiquetado"] = True
+                        X = sesion.get("X")
+                        if X is not None:
+                            idx_s = [i for i, s in enumerate(sesion["segmentos"]) if s.get("hablante") == h["id"]]
+                            if idx_s and len(X) > max(idx_s):
+                                registrar_voz_en_grupo(grupo, h["nombre"], np.mean(X[idx_s], axis=0), color=h.get("color", "#2563eb"), origen="tactiq")
+                guardar_sesion_disco(sesion)
+                return self._send_json(200, {
+                    **res_sync,
+                    "segmentos": sesion["segmentos"],
+                    "hablantes": sesion["hablantes"]
+                })
+            except Exception as e:
+                return self._send_text(400, f"Error al sincronizar con Tactiq: {e}")
 
         if p.path == "/api/iniciar":
             q = urllib.parse.parse_qs(p.query)
@@ -3957,10 +4709,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_text(404, "Sesión no encontrada")
 
             segmentos, hablantes = agrupar_hablantes(
-                sesion["segmentos"], sesion["X"], num_hablantes=num_hablantes
+                sesion["segmentos"], sesion.get("X"), num_hablantes=num_hablantes
             )
             sesion["segmentos"] = segmentos
             sesion["hablantes"] = hablantes
+            guardar_sesion_disco(sesion)
             return self._send_json(200, {"segmentos": segmentos, "hablantes": hablantes})
 
         if p.path == "/api/guardar_voz_registro":
@@ -3970,41 +4723,36 @@ class Handler(BaseHTTPRequestHandler):
             spk_id = body.get("spk_id", "")
             nombre = (body.get("nombre") or "").strip()
             color = body.get("color", "")
+            grupo = (body.get("grupo") or "General").strip()
 
             if not nombre:
-                return self._send_text(400, "El nombre de la persona es obligatorio")
+                return self._send_text(400, "El nombre del hablante es obligatorio")
 
             with JOBS_LOCK:
                 sesion = SESIONES.get(sid)
             if not sesion:
                 return self._send_text(404, "Sesión no encontrada")
 
-            # Buscar los segmentos asignados a este spk_id y extraer el centroide promedio
             X = sesion.get("X")
             segmentos = sesion.get("segmentos", [])
             indices_spk = [i for i, s in enumerate(segmentos) if s.get("hablante") == spk_id]
-
-            if not indices_spk or X is None or len(X) <= max(indices_spk):
-                return self._send_text(400, "No se encontraron intervenciones para este hablante")
-
-            # Promediar las características acústicas ponderando por confianza/duración
-            X_spk = X[indices_spk]
-            vector_voz = np.mean(X_spk, axis=0)
+            vector_voz = None
+            if indices_spk and X is not None and len(X) > max(indices_spk):
+                vector_voz = np.mean(X[indices_spk], axis=0)
 
             try:
-                perfil = registrar_voz_perfil(nombre, vector_voz, color=color)
+                registrar_voz_en_grupo(grupo, nombre, vector_voz, color=color or "#2563eb", origen="manual")
             except Exception as e:
                 return self._send_text(500, str(e))
 
-            # Actualizar el nombre en la sesión en memoria
             for h in sesion.get("hablantes", []):
                 if h["id"] == spk_id:
                     h["nombre"] = nombre
                     h["auto_etiquetado"] = True
                     if color:
                         h["color"] = color
-
-            return self._send_json(200, {"ok": True, "perfil": perfil})
+            guardar_sesion_disco(sesion)
+            return self._send_json(200, {"ok": True})
 
         if p.path == "/api/eliminar_voz_registro":
             largo = int(self.headers.get("Content-Length", 0) or 0)
@@ -4014,6 +4762,80 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_text(400, "Nombre requerido")
             ok = eliminar_voz_perfil(nombre)
             return self._send_json(200, {"ok": ok})
+
+        if p.path == "/api/unir_subtitulos_video":
+            q = urllib.parse.parse_qs(p.query)
+            nombre_vid = os.path.basename(q.get("nombre_video", ["video.mp4"])[0])
+            modo_sub = q.get("modo", ["soft"])[0]
+            sid = q.get("sesion_id", [""])[0]
+            offset_seg = float(q.get("offset", ["0"])[0] or 0.0)
+            inc_nom = q.get("inc_nom", ["1"])[0] == "1"
+            inc_sil = q.get("inc_sil", ["0"])[0] == "1"
+
+            with JOBS_LOCK:
+                sesion = SESIONES.get(sid)
+            if not sesion:
+                return self._send_text(404, "Sesión de transcripción no encontrada")
+
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            if largo <= 0:
+                return self._send_text(400, "Subí el archivo de video para unirle los subtítulos.")
+
+            ext_v = os.path.splitext(nombre_vid)[1].lower() or ".mp4"
+            with tempfile.NamedTemporaryFile(suffix=ext_v, delete=False, dir=TEMP_DIR) as tmp_v:
+                restante = largo
+                while restante > 0:
+                    trozo = self.rfile.read(min(1 << 20, restante))
+                    if not trozo:
+                        break
+                    tmp_v.write(trozo)
+                    restante -= len(trozo)
+                ruta_video_in = tmp_v.name
+
+            mapa_nom = {h["id"]: h["nombre"] for h in sesion.get("hablantes", [])}
+            mapa_sil = {h["id"]: bool(h.get("silenciado")) for h in sesion.get("hablantes", [])}
+            lineas_srt = []
+            contador_sub = 1
+            for s in sesion.get("segmentos", []):
+                sil = s.get("override_mute") if s.get("override_mute") is not None else mapa_sil.get(s.get("hablante"), False)
+                if sil and not inc_sil:
+                    continue
+                ini = max(0.0, float(s["inicio"]) + offset_seg)
+                fin = max(ini + 0.5, float(s["fin"]) + offset_seg)
+                ms_i = int(round(ini * 1000))
+                ms_f = int(round(fin * 1000))
+                ts_i = f"{ms_i//3600000:02d}:{(ms_i%3600000)//60000:02d}:{(ms_i%60000)//1000:02d},{ms_i%1000:03d}"
+                ts_f = f"{ms_f//3600000:02d}:{(ms_f%3600000)//60000:02d}:{(ms_f%60000)//1000:02d},{ms_f%1000:03d}"
+                pref = f"[{mapa_nom.get(s.get('hablante'), s.get('hablante'))}] " if inc_nom else ""
+                lineas_srt.append(f"{contador_sub}\n{ts_i} --> {ts_f}\n{pref}{s.get('texto', '')}\n")
+                contador_sub += 1
+
+            ruta_srt_tmp = os.path.join(TEMP_DIR, f"sub_{uuid.uuid4().hex[:8]}.srt")
+            with open(ruta_srt_tmp, "w", encoding="utf-8") as fsrt:
+                fsrt.write("\n".join(lineas_srt))
+
+            base_v = os.path.splitext(nombre_vid)[0]
+            nombre_out = nombre_unico(SALIDA, f"{base_v}_subtitulado", ".mp4")
+            ruta_out = os.path.join(SALIDA, nombre_out)
+
+            try:
+                if modo_sub == "burn":
+                    ruta_esc = ruta_srt_tmp.replace("\\", "/").replace(":", "\\:")
+                    cmd = ["ffmpeg", "-y", "-i", ruta_video_in, "-vf", f"subtitles='{ruta_esc}'", "-c:a", "copy", ruta_out]
+                else:
+                    cmd = ["ffmpeg", "-y", "-i", ruta_video_in, "-i", ruta_srt_tmp, "-c:v", "copy", "-c:a", "copy", "-c:s", "mov_text", ruta_out]
+                r_ff = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+                if r_ff.returncode != 0:
+                    return self._send_text(500, f"Error de ffmpeg: {r_ff.stderr[-300:]}")
+            finally:
+                for rp in (ruta_video_in, ruta_srt_tmp):
+                    if os.path.exists(rp):
+                        try:
+                            os.remove(rp)
+                        except OSError:
+                            pass
+
+            return self._send_json(200, {"ok": True, "nombre_archivo": nombre_out})
 
         if p.path == "/api/exportar_mp3":
             largo = int(self.headers.get("Content-Length", 0) or 0)
@@ -4088,9 +4910,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    cargar_sesiones_disco()
     print(f"Iniciando Estudio de Audio en http://localhost:{PORT}  (Ctrl+C para cerrar)")
-    
-    # Sincronización automática de GitHub en segundo plano al arrancar
+
     def _sinc_inicio():
         try:
             res = verificar_y_sincronizar_git(accion_automatica=True)
