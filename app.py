@@ -3913,6 +3913,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
             <div id="p5-rag-ejemplos" style="font-size:0.8rem;color:#475569;display:flex;flex-direction:column;gap:6px"></div>
           </div>
         </div>
+
+        <!-- Deseable a futuro registrado en la UI -->
+        <div style="margin-top:14px;background:#faf5ff;border:1px dashed #c084fc;border-radius:10px;padding:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+            <strong style="font-size:0.86rem;color:#6b21a8">🚀 Deseable a futuro (Próxima etapa): Clonar mi voz y pasar este guión a audio con mi voz</strong>
+            <span class="badge" style="background:#f3e8ff;color:#6b21a8">Roadmap</span>
+          </div>
+          <p style="font-size:0.79rem;color:#581c87;margin:4px 0 0">
+            Conectar el dataset de voz limpia del <strong>Paso 3</strong> con un motor de clonación vocal (XTTS / F5-TTS / RVC) para que el texto ya convertido a tu estilo acá arriba se pueda transformar con 1 clic en un audio <code>.MP3 / .WAV</code> hablado con tu propia voz clonada.
+          </p>
+        </div>
       </div>
     </div>
   </div>
