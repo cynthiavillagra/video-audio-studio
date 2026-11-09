@@ -3738,6 +3738,29 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   </div>
 
   <div id="p4-contenido" style="display:none">
+    <!-- BARRA DE VINCULACIÓN EXPLÍCITA: ¿QUÉ TRANSCRIPCIÓN VA CON QUÉ VIDEO? -->
+    <div class="card" style="background:#f0f7ff;border:1.5px solid #93c5fd;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+        <div style="flex:1;min-width:260px">
+          <label for="p4-sel-sesion-activa" style="font-size:0.82rem;font-weight:800;color:#1e3a8a;display:block;margin-bottom:4px">
+            📄 1. ¿Qué Transcripción estás usando?:
+          </label>
+          <select id="p4-sel-sesion-activa" style="font-weight:700;background:#fff"></select>
+        </div>
+        <div style="font-size:1.3rem;color:#2563eb;font-weight:900">⟷</div>
+        <div style="flex:1;min-width:260px">
+          <label style="font-size:0.82rem;font-weight:800;color:#1e3a8a;display:block;margin-bottom:4px">
+            🎬 2. ¿Con qué Video la estás uniendo?:
+          </label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span id="p4-badge-video-par" class="badge badge-ambar" style="font-size:0.83rem;padding:6px 10px">Ningún video elegido todavía (elegilo abajo a la izquierda)</span>
+            <button type="button" class="btn-primary btn-xs" onclick="document.getElementById('arch-p4-video').click()">🎬 Elegir Video</button>
+          </div>
+        </div>
+      </div>
+      <div id="p4-match-diagnostico" style="margin-top:8px;font-size:0.82rem;color:#334155"></div>
+    </div>
+
     <div class="card">
       <h2>Paso 4: Convertir Transcripción a Subtítulos y Sincronizar con Video ("Salva-videos sin audio")</h2>
       <p class="sub-desc">
@@ -5264,7 +5287,7 @@ document.getElementById('btn-p3-export-audio').onclick = async () => {
 // ==============================================================================
 // PASO 4: CONVERTIR A SUBTÍTULOS Y SINCRONIZAR CON VIDEO SIN AUDIO (DRIVE)
 // ==============================================================================
-function renderPaso4() {
+async function renderPaso4() {
   if (!sesionActiva) {
     document.getElementById('p4-vacio').style.display = 'block';
     document.getElementById('p4-contenido').style.display = 'none';
@@ -5273,10 +5296,60 @@ function renderPaso4() {
   document.getElementById('p4-vacio').style.display = 'none';
   document.getElementById('p4-contenido').style.display = 'block';
 
+  try {
+    const r = await fetch('/api/sesiones_guardadas');
+    const lista = await r.json();
+    const selSes = document.getElementById('p4-sel-sesion-activa');
+    if (selSes) {
+      selSes.innerHTML = lista.map(s =>
+        `<option value="${escHtml(s.sesion_id)}" ${s.sesion_id === sesionActiva.sesion_id ? 'selected' : ''}>📄 ${escHtml(s.nombre_original)} (${fmtHMS(s.duracion)} · ${s.cantidad_segmentos} frases)</option>`
+      ).join('');
+      selSes.onchange = async () => {
+        await abrirSesionGuardada(selSes.value, 4);
+      };
+    }
+  } catch (e) {}
+
   const selRef = document.getElementById('p4-sel-frase-ref');
   selRef.innerHTML = sesionActiva.segmentos.slice(0, 60).map((s, idx) =>
     `<option value="${s.inicio}">[${fmtHMS(s.inicio)}] ${escHtml(s.texto.slice(0, 75))}</option>`
   ).join('');
+  verificarCoincidenciaVideoTranscripcion();
+}
+
+function verificarCoincidenciaVideoTranscripcion() {
+  const badge = document.getElementById('p4-badge-video-par');
+  const diag = document.getElementById('p4-match-diagnostico');
+  const v = document.getElementById('p4-video');
+  if (!badge || !diag || !sesionActiva) return;
+
+  if (!archivoVideoP4) {
+    const baseOrig = sesionActiva.nombre_original.replace(/\.[^.]+$/, '');
+    badge.textContent = 'Falta elegir el archivo de video (.mp4 / .mkv)';
+    badge.className = 'badge badge-ambar';
+    diag.innerHTML = `💡 <strong>Sugerencia:</strong> Esta transcripción proviene de <code>${escHtml(sesionActiva.nombre_original)}</code> (duración: <strong>${fmtHMS(sesionActiva.duracion)}</strong>). Elegí el video correspondiente con el botón <strong>"🎬 Elegir Video"</strong>.`;
+    return;
+  }
+
+  badge.textContent = `🎬 ${archivoVideoP4.name} (${fmtMB(archivoVideoP4.size)})`;
+  badge.className = 'badge badge-verde';
+
+  const durV = v && v.duration && !isNaN(v.duration) ? v.duration : 0;
+  const durT = sesionActiva.duracion || 0;
+  const baseV = archivoVideoP4.name.replace(/\.[^.]+$/, '').toLowerCase();
+  const baseT = sesionActiva.nombre_original.replace(/\.[^.]+$/, '').toLowerCase();
+  const mismoNombre = baseV === baseT || baseV.includes(baseT) || baseT.includes(baseV);
+
+  if (durV > 0) {
+    const diff = Math.round(Math.abs(durV - durT));
+    if (diff <= 15) {
+      diag.innerHTML = `✅ <strong>¡Coincidencia exacta!</strong> El video dura <strong>${fmtHMS(durV)}</strong> y la transcripción abarca <strong>${fmtHMS(durT)}</strong>${mismoNombre ? ' (y tienen el mismo nombre base)' : ''}. Están listos para exportar o unir.`;
+    } else {
+      diag.innerHTML = `ℹ️ <strong>Duración del video: ${fmtHMS(durV)}</strong> vs <strong>Transcripción: ${fmtHMS(durT)}</strong> (diferencia de ${fmtHMS(diff)}). Si el video empezó a grabarse antes o después que la transcripción, usá el botón <strong>"📍 Sincronizar esta frase con el segundo actual del video"</strong> abajo a la derecha.`;
+    }
+  } else {
+    diag.innerHTML = `🎬 Video vinculado: <strong>${escHtml(archivoVideoP4.name)}</strong> con la transcripción <strong>${escHtml(sesionActiva.nombre_original)}</strong>.`;
+  }
 }
 
 document.getElementById('arch-p4-video').onchange = e => {
@@ -5285,7 +5358,9 @@ document.getElementById('arch-p4-video').onchange = e => {
   archivoVideoP4 = f;
   const v = document.getElementById('p4-video');
   v.src = URL.createObjectURL(f);
+  v.onloadedmetadata = () => verificarCoincidenciaVideoTranscripcion();
   document.getElementById('p4-video-nombre').textContent = `🎬 Video cargado para previsualización y sincronización: ${f.name} (${fmtMB(f.size)})`;
+  verificarCoincidenciaVideoTranscripcion();
 };
 
 // Actualizar subtítulo en vivo sobre el video mientras se reproduce
