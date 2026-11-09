@@ -3789,30 +3789,43 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         <div style="display:flex;flex-direction:column;gap:14px">
           <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px">
             <strong style="font-size:0.95rem;color:#1e3a8a;display:block;margin-bottom:6px">
-              ⏱️ 2. Sincronizar el Video con la Transcripción (Ajustar desfase)
+              ⏱️ 2. Sincronizar el Video con la Transcripción (Hacia atrás y hacia adelante)
             </strong>
-            <p style="font-size:0.82rem;color:#334155;margin:0 0 10px">
-              Si el video empezó a grabarse antes o después que la transcripción, elegí una frase de referencia abajo, buscá ese momento en el video y tocá <strong>"📍 Sincronizar con el segundo actual del video"</strong>.
+            <p style="font-size:0.82rem;color:#334155;margin:0 0 10px;line-height:1.45">
+              El minuto <code>00:00</code> del subtítulo es <strong>siempre el comienzo del video</strong>. Elegí una frase de la transcripción e indicá en qué <strong>minuto:segundo del video</strong> se dice esa frase: el sistema hará coincidir ese punto y recalculará todas las marcas <strong>de ahí para atrás y de ahí para adelante</strong>.
             </p>
 
             <div class="campo" style="margin-bottom:8px">
-              <label for="p4-sel-frase-ref">Frase de referencia de la transcripción:</label>
+              <label for="p4-sel-frase-ref" style="font-size:0.8rem;font-weight:700">A. Elegí una frase de referencia en la transcripción:</label>
               <select id="p4-sel-frase-ref"></select>
             </div>
 
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-              <button type="button" class="btn-primary btn-sm" id="btn-p4-sync-video">
-                📍 Sincronizar esta frase con el segundo actual del video
-              </button>
+            <div style="background:#fff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;margin-bottom:10px">
+              <label for="p4-t-video-ancla" style="font-size:0.8rem;font-weight:700;color:#1e3a8a;display:block;margin-bottom:6px">
+                B. ¿En qué minuto y segundo del VIDEO se dice esa frase?
+              </label>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                <input type="text" id="p4-t-video-ancla" placeholder="ej. 02:35" style="width:110px;font-family:monospace;font-weight:700;padding:6px 8px">
+                <button type="button" class="btn-outline btn-xs" id="btn-p4-tomar-ancla-video" title="Copia el minuto:segundo donde está pausado el reproductor de video">
+                  📍 Tomar min:seg actual del reproductor
+                </button>
+                <button type="button" class="btn-primary btn-sm" id="btn-p4-sync-video">
+                  ✅ Hacer coincidir punto (hacia atrás y adelante)
+                </button>
+              </div>
             </div>
 
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:8px;border-top:1px dashed #93c5fd">
-              <label style="font-size:0.83rem;font-weight:700">Desfase aplicado (segundos):</label>
-              <input type="number" id="p4-offset-seg" step="0.5" value="0" style="width:95px;font-family:monospace;font-weight:700">
-              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(-1)">-1 seg</button>
-              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(+1)">+1 seg</button>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-top:8px;border-top:1px dashed #93c5fd">
+              <label style="font-size:0.82rem;font-weight:700">Desfase al reloj del video (seg):</label>
+              <input type="number" id="p4-offset-seg" step="0.5" value="0" style="width:90px;font-family:monospace;font-weight:700">
+              <button type="button" class="btn-outline btn-xs" onclick="invertirSignoOffsetSub()" title="Si te quedó negativo pero el video empezó antes que la transcripción, tocá acá para invertir el signo">🔄 Invertir +/-</button>
+              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(-1)">-1s</button>
+              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(+1)">+1s</button>
               <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(0, true)">Reset (0s)</button>
             </div>
+
+            <!-- Explicación en vivo y vista previa de cómo quedan los subtítulos desde 00:00 -->
+            <div id="p4-preview-sincro" style="margin-top:10px;padding:10px;background:#ffffff;border:1px solid #93c5fd;border-radius:8px;font-size:0.8rem;line-height:1.45"></div>
           </div>
 
           <!-- Descargar archivos de subtítulos -->
@@ -3820,6 +3833,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
             <strong style="font-size:0.95rem;display:block;margin-bottom:8px">
               ⬇ 3. Descargar Subtítulos Sincronizados (Para Drive / YouTube / VLC)
             </strong>
+            <label style="display:flex;align-items:flex-start;gap:8px;font-size:0.84rem;margin-bottom:8px;cursor:pointer;background:#eff6ff;padding:8px;border-radius:6px;border:1px solid #bfdbfe">
+              <input type="checkbox" id="p4-chk-bloque-00" checked style="margin-top:2px">
+              <span><strong>Si el video empieza ANTES que la transcripción:</strong> agregar marca de tiempo inicial desde <code>00:00:00</code> hasta el minuto:segundo donde empieza la transcripción (y de ahí en adelante cada frase en su minuto del video).</span>
+            </label>
             <label style="display:flex;align-items:center;gap:8px;font-size:0.86rem;margin-bottom:6px;cursor:pointer">
               <input type="checkbox" id="p4-inc-nom" checked>
               <span>Incluir el <strong>nombre del hablante</strong> en cada subtítulo (ej. <code>[Nombre]: texto</code>)</span>
@@ -4672,11 +4689,16 @@ document.getElementById('arch-tactiq-sync').onchange = async e => {
   const d = await r.json();
   sesionActiva.segmentos = d.segmentos;
   sesionActiva.hablantes = d.hablantes;
+  const absOff = Math.round(Math.abs(Number(d.offset_segundos || 0)) * 10) / 10;
   resBox.innerHTML = `
-    <span style="color:var(--ok);font-weight:700">
-      ✔ Sincronizado (desfase detectado: ${d.offset_segundos >= 0 ? '+' : ''}${d.offset_segundos}s) ·
-      ${Object.keys(d.mapeo_hablantes || {}).length} hablantes etiquetados automáticamente desde Tactiq.
-    </span>
+    <div style="color:var(--ok);font-weight:700;margin-bottom:4px">
+      ✔ Sincronizado (${Object.keys(d.mapeo_hablantes || {}).length} hablantes etiquetados) · Diferencia detectada entre archivos: ${fmtHMS(absOff)} (${absOff}s).
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:0.78rem;color:#1e3a8a">
+      <span>¿Querés llevar esta diferencia al Paso 4 (Subtítulos del Video)?</span>
+      <button type="button" class="btn-outline btn-xs" onclick="aplicarDesfaseDesdePaso3(${absOff})">🎬 El Video empezó ${fmtHMS(absOff)} ANTES (+${absOff}s)</button>
+      <button type="button" class="btn-outline btn-xs" onclick="aplicarDesfaseDesdePaso3(${-absOff})">📄 La Transcripción empezó ${fmtHMS(absOff)} ANTES (-${absOff}s)</button>
+    </div>
   `;
   await cargarGruposYListado();
   renderPaso3();
@@ -5311,9 +5333,13 @@ async function renderPaso4() {
   } catch (e) {}
 
   const selRef = document.getElementById('p4-sel-frase-ref');
-  selRef.innerHTML = sesionActiva.segmentos.slice(0, 60).map((s, idx) =>
-    `<option value="${s.inicio}">[${fmtHMS(s.inicio)}] ${escHtml(s.texto.slice(0, 75))}</option>`
+  selRef.innerHTML = sesionActiva.segmentos.map((s, idx) =>
+    `<option value="${s.inicio}">[En transcripción: ${fmtHMS(s.inicio)}] ${escHtml(s.texto.slice(0, 80))}</option>`
   ).join('');
+  if (sesionActiva.offsetSub !== undefined && sesionActiva.offsetSub !== null) {
+    document.getElementById('p4-offset-seg').value = sesionActiva.offsetSub;
+  }
+  actualizarPreviewSincroPaso4();
   verificarCoincidenciaVideoTranscripcion();
 }
 
@@ -5391,14 +5417,62 @@ videoP4.ontimeupdate = () => {
   }
 };
 
+window.aplicarDesfaseDesdePaso3 = function(offsetSeg) {
+  if (!sesionActiva) return;
+  sesionActiva.offsetSub = offsetSeg;
+  const inp = document.getElementById('p4-offset-seg');
+  if (inp) inp.value = offsetSeg;
+  irAPaso(4);
+};
+
+document.getElementById('btn-p4-tomar-ancla-video').onclick = () => {
+  const tVid = videoP4.currentTime || 0;
+  document.getElementById('p4-t-video-ancla').value = fmtHMS(tVid);
+};
+
 document.getElementById('btn-p4-sync-video').onclick = () => {
   if (!sesionActiva) return;
   const tFraseOrig = Number(document.getElementById('p4-sel-frase-ref').value || 0);
-  const tVideoActual = videoP4.currentTime || 0;
-  const nuevoOffset = Math.round((tVideoActual - tFraseOrig) * 10) / 10;
+  const txtAncla = document.getElementById('p4-t-video-ancla').value.trim();
+  let tVideoAncla = null;
+
+  if (txtAncla) {
+    tVideoAncla = parseTiempoCliente(txtAncla);
+    if (tVideoAncla === null) {
+      alert('Formato de minuto:segundo inválido. Ejemplo válido: 02:35 o 01:05:20');
+      return;
+    }
+  } else {
+    tVideoAncla = videoP4.currentTime || 0;
+    if (tVideoAncla === 0 && tFraseOrig > 0) {
+      const resp = prompt(
+        `El reproductor de video está en 00:00.\n\nEscribí en qué minuto:segundo del VIDEO se escucha la frase seleccionada (ej. 02:30):`,
+        fmtHMS(tFraseOrig)
+      );
+      if (resp === null) return;
+      tVideoAncla = parseTiempoCliente(resp.trim());
+      if (tVideoAncla === null) {
+        alert('Formato inválido. Usá min:seg (ej. 02:30).');
+        return;
+      }
+    }
+    document.getElementById('p4-t-video-ancla').value = fmtHMS(tVideoAncla);
+  }
+
+  // Fórmula universal hacia atrás y hacia adelante:
+  // T_video(i) = T_transcripcion(i) + (T_video_ancla - T_transcripcion_ancla)
+  const nuevoOffset = Math.round((tVideoAncla - tFraseOrig) * 10) / 10;
   document.getElementById('p4-offset-seg').value = nuevoOffset;
   sesionActiva.offsetSub = nuevoOffset;
-  alert(`¡Sincronizado! Se aplicó un ajuste de ${nuevoOffset >= 0 ? '+' : ''}${nuevoOffset} segundos a todos los subtítulos para que calcen con este punto del video.`);
+  actualizarPreviewSincroPaso4();
+};
+
+window.invertirSignoOffsetSub = function() {
+  const inp = document.getElementById('p4-offset-seg');
+  const val = -Number(inp.value || 0);
+  inp.value = val;
+  if (sesionActiva) sesionActiva.offsetSub = val;
+  actualizarPreviewSincroPaso4();
 };
 
 window.ajustarOffsetSub = function(delta, reset = false) {
@@ -5406,7 +5480,16 @@ window.ajustarOffsetSub = function(delta, reset = false) {
   const val = reset ? 0 : Math.round((Number(inp.value || 0) + delta) * 10) / 10;
   inp.value = val;
   if (sesionActiva) sesionActiva.offsetSub = val;
+  actualizarPreviewSincroPaso4();
 };
+
+document.getElementById('p4-offset-seg').oninput = () => {
+  if (sesionActiva) sesionActiva.offsetSub = Number(document.getElementById('p4-offset-seg').value || 0);
+  actualizarPreviewSincroPaso4();
+};
+document.getElementById('p4-chk-bloque-00').onchange = () => actualizarPreviewSincroPaso4();
+document.getElementById('p4-inc-nom').onchange = () => actualizarPreviewSincroPaso4();
+document.getElementById('p4-inc-sil').onchange = () => actualizarPreviewSincroPaso4();
 
 function fmtSrt(seg, sepMs = ',') {
   const msTotal = Math.max(0, Math.round(seg * 1000));
@@ -5417,41 +5500,149 @@ function fmtSrt(seg, sepMs = ',') {
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}${sepMs}${String(ms).padStart(3,'0')}`;
 }
 
+function construirBloquesSubtitulosSincronizados(st, offset, incNom, incSil, agregarBloque00) {
+  const mapaNom = {};
+  for (const h of (st.hablantes || [])) mapaNom[h.id] = h.nombre;
+
+  const candidatos = (st.segmentos || []).filter(s => estaEnRango(st, s) && (incSil || !esSegSilenciado(st, s)));
+  const bloques = [];
+  let descartadosAntesDeCero = 0;
+
+  // Recalcular cada marca de tiempo hacia atrás y hacia adelante: T_video = T_trans + offset
+  const desplazados = [];
+  for (const s of candidatos) {
+    const iniReal = s.inicio + offset;
+    const finReal = s.fin + offset;
+    // Si la frase terminó antes del minuto 00:00 del video (porque la transcripción empezó antes que el video),
+    // NO se amontona en 00:00: se omite porque ocurrió antes de que existiera el video.
+    if (finReal <= 0.05) {
+      descartadosAntesDeCero++;
+      continue;
+    }
+    const ini = Math.max(0, iniReal);
+    const fin = Math.max(ini + 0.4, finReal);
+    desplazados.push({
+      ini,
+      fin,
+      iniOrig: s.inicio,
+      finOrig: s.fin,
+      hablante: mapaNom[s.hablante] || s.hablante,
+      texto: s.texto
+    });
+  }
+
+  // Si el VIDEO empezó ANTES que la transcripción, el primer subtítulo desplazado comienza en desplazados[0].ini > 0.
+  // Si agregarBloque00 está activo, agregamos la marca de tiempo inicial desde 00:00:00 hasta donde empieza la transcripción.
+  if (agregarBloque00 && desplazados.length > 0 && desplazados[0].ini >= 0.5) {
+    const tPrimerSub = desplazados[0].ini;
+    bloques.push({
+      ini: 0,
+      fin: tPrimerSub,
+      iniOrig: null,
+      finOrig: null,
+      hablante: '',
+      esBloqueCero: true,
+      texto: `[Inicio del video 00:00 — La transcripción comienza en ${fmtHMS(tPrimerSub)}]`
+    });
+  }
+
+  for (const d of desplazados) {
+    bloques.push(d);
+  }
+
+  return {
+    bloques,
+    descartadosAntesDeCero,
+    primerInicioVideo: desplazados.length ? desplazados[0].ini : 0
+  };
+}
+
+function actualizarPreviewSincroPaso4() {
+  const box = document.getElementById('p4-preview-sincro');
+  if (!box || !sesionActiva) return;
+  const offset = Number(document.getElementById('p4-offset-seg').value || 0);
+  const incNom = document.getElementById('p4-inc-nom') ? document.getElementById('p4-inc-nom').checked : true;
+  const incSil = document.getElementById('p4-inc-sil') ? document.getElementById('p4-inc-sil').checked : false;
+  const agregarBloque00 = document.getElementById('p4-chk-bloque-00') ? document.getElementById('p4-chk-bloque-00').checked : true;
+
+  const res = construirBloquesSubtitulosSincronizados(sesionActiva, offset, incNom, incSil, agregarBloque00);
+  let explicacionCaso = '';
+
+  if (offset > 0) {
+    explicacionCaso = `
+      <div style="color:#166534;font-weight:700;margin-bottom:4px">
+        🎬 Caso actual: El VIDEO empezó <strong>${fmtHMS(offset)} (${offset}s) ANTES</strong> que la transcripción.
+      </div>
+      <div style="color:#334155;margin-bottom:6px">
+        • El minuto <code>00:00</code> es el inicio del video.<br>
+        • De <code>00:00</code> hasta <code>${fmtHMS(res.primerInicioVideo)}</code> corre el video antes de que empiece la transcripción ${agregarBloque00 ? '(se agrega la marca inicial <code>00:00 --> ' + fmtHMS(res.primerInicioVideo) + '</code>)' : '(sin subtítulos hasta ese minuto)'}.<br>
+        • La 1.ª frase de la transcripción arranca exactamente en <strong><code>${fmtHMS(res.primerInicioVideo)}</code> del video</strong> y todas las demás avanzan sincronizadas.
+      </div>
+    `;
+  } else if (offset < 0) {
+    const absO = Math.abs(offset);
+    explicacionCaso = `
+      <div style="color:#9a3412;font-weight:700;margin-bottom:4px">
+        📄 Caso actual: La TRANSCRIPCIÓN empezó <strong>${fmtHMS(absO)} (${absO}s) ANTES</strong> que el video (desfase negativo <code>${offset}s</code>).
+      </div>
+      <div style="color:#334155;margin-bottom:6px">
+        • ⚠️ <strong>¿En tu caso el VIDEO empezó antes que la transcripción?</strong> Entonces el desfase debe ser <strong>positivo (+${absO}s)</strong>, no negativo: tocá <button type="button" class="btn-primary btn-xs" onclick="invertirSignoOffsetSub()">🔄 Cambiar a +${absO}s (El video empezó antes)</button>.<br>
+        • Si realmente la transcripción empezó antes que el video: se omiten las <strong>${res.descartadosAntesDeCero} frases</strong> previas al inicio del video y el minuto <code>${fmtHMS(absO)}</code> de la transcripción pasa a ser el <code>00:00</code> del video.
+      </div>
+    `;
+  } else {
+    explicacionCaso = `
+      <div style="color:#1e3a8a;font-weight:700;margin-bottom:4px">
+        ⚡ Sin desfase (<code>0s</code>): El minuto <code>00:00</code> del video coincide con el <code>00:00</code> de la transcripción.
+      </div>
+    `;
+  }
+
+  const muestra = res.bloques.slice(0, 3).map((b, i) => {
+    const pref = (!b.esBloqueCero && incNom && b.hablante) ? `[${escHtml(b.hablante)}] ` : '';
+    const origInfo = b.iniOrig !== null ? ` <span style="color:#64748b">(antes en transcripción: ${fmtHMS(b.iniOrig)})</span>` : '';
+    return `<div style="font-family:monospace;font-size:0.76rem;background:#f8fafc;padding:4px 6px;border-radius:4px;border:1px solid #e2e8f0;margin-top:4px">
+      <strong>#${i + 1}</strong> <code>${fmtSrt(b.ini, ',')} --> ${fmtSrt(b.fin, ',')}</code>${origInfo}<br>
+      <span>${pref}${escHtml(b.texto.slice(0, 75))}</span>
+    </div>`;
+  }).join('');
+
+  box.innerHTML = explicacionCaso + (muestra ? `<div style="margin-top:4px"><strong>Vista previa de cómo empezará tu archivo .SRT:</strong>${muestra}</div>` : '<div style="color:#dc2626">No quedan fragmentos visibles con este desfase.</div>');
+}
+
 window.descargarSubtitulosPaso4 = function(formato) {
   if (!sesionActiva) return;
   const st = sesionActiva;
   const offset = Number(document.getElementById('p4-offset-seg').value || 0);
   const incNom = document.getElementById('p4-inc-nom').checked;
   const incSil = document.getElementById('p4-inc-sil').checked;
-  const mapaNom = {};
-  for (const h of st.hablantes) mapaNom[h.id] = h.nombre;
+  const agregarBloque00 = document.getElementById('p4-chk-bloque-00') ? document.getElementById('p4-chk-bloque-00').checked : true;
 
-  const segs = st.segmentos.filter(s => estaEnRango(st, s) && (incSil || !esSegSilenciado(st, s)));
+  const { bloques } = construirBloquesSubtitulosSincronizados(st, offset, incNom, incSil, agregarBloque00);
+  if (!bloques.length) {
+    alert('No quedan subtítulos dentro del tiempo del video con el desfase actual. Revisá si el signo (+/-) del desfase está invertido.');
+    return;
+  }
+
   let contenido = '';
   let ext = '.srt';
 
   if (formato === 'srt') {
-    contenido = segs.map((s, i) => {
-      const ini = Math.max(0, s.inicio + offset);
-      const fin = Math.max(ini + 0.5, s.fin + offset);
-      const pref = incNom ? `[${mapaNom[s.hablante] || s.hablante}] ` : '';
-      return `${i + 1}\n${fmtSrt(ini, ',')} --> ${fmtSrt(fin, ',')}\n${pref}${s.texto}\n`;
+    contenido = bloques.map((b, i) => {
+      const pref = (!b.esBloqueCero && incNom && b.hablante) ? `[${b.hablante}] ` : '';
+      return `${i + 1}\n${fmtSrt(b.ini, ',')} --> ${fmtSrt(b.fin, ',')}\n${pref}${b.texto}\n`;
     }).join('\n');
     ext = '_sincronizado.srt';
   } else if (formato === 'vtt') {
-    contenido = 'WEBVTT\n\n' + segs.map((s) => {
-      const ini = Math.max(0, s.inicio + offset);
-      const fin = Math.max(ini + 0.5, s.fin + offset);
-      const pref = incNom ? `[${mapaNom[s.hablante] || s.hablante}] ` : '';
-      return `${fmtSrt(ini, '.')} --> ${fmtSrt(fin, '.')}\n${pref}${s.texto}\n`;
+    contenido = 'WEBVTT\n\n' + bloques.map((b) => {
+      const pref = (!b.esBloqueCero && incNom && b.hablante) ? `[${b.hablante}] ` : '';
+      return `${fmtSrt(b.ini, '.')} --> ${fmtSrt(b.fin, '.')}\n${pref}${b.texto}\n`;
     }).join('\n');
     ext = '_sincronizado.vtt';
   } else {
-    contenido = segs.map(s => {
-      const ini = Math.max(0, s.inicio + offset);
-      const fin = Math.max(ini + 0.5, s.fin + offset);
-      const pref = incNom ? `${mapaNom[s.hablante] || s.hablante}: ` : '';
-      return `[${fmtHMS(ini)} - ${fmtHMS(fin)}] ${pref}${s.texto}`;
+    contenido = bloques.map(b => {
+      const pref = (!b.esBloqueCero && incNom && b.hablante) ? `${b.hablante}: ` : '';
+      return `[${fmtHMS(b.ini)} - ${fmtHMS(b.fin)}] ${pref}${b.texto}`;
     }).join('\n');
     ext = '_marcas_sincronizadas.txt';
   }
@@ -5483,6 +5674,7 @@ document.getElementById('btn-p4-unir-video').onclick = async () => {
       offset: document.getElementById('p4-offset-seg').value || '0',
       inc_nom: document.getElementById('p4-inc-nom').checked ? '1' : '0',
       inc_sil: document.getElementById('p4-inc-sil').checked ? '1' : '0',
+      bloque_00: (document.getElementById('p4-chk-bloque-00') && document.getElementById('p4-chk-bloque-00').checked) ? '1' : '0',
       desde: document.getElementById('p4-t-ini').value.trim(),
       hasta: document.getElementById('p4-t-fin').value.trim()
     });
@@ -6384,23 +6576,36 @@ class Handler(BaseHTTPRequestHandler):
                             pass
                 return self._send_json(200, {"ok": True, "nombre_archivo": nombre_out})
 
+            bloque_00 = q.get("bloque_00", ["1"])[0] == "1"
             mapa_nom = {h["id"]: h["nombre"] for h in sesion.get("hablantes", [])}
             mapa_sil = {h["id"]: bool(h.get("silenciado")) for h in sesion.get("hablantes", [])}
             lineas_srt = []
             contador_sub = 1
             t0_shift = float(t_desde_v) if t_desde_v is not None and t_desde_v > 0 else 0.0
+            primer_ini_insertado = False
             for s in sesion.get("segmentos", []):
                 sil = s.get("override_mute") if s.get("override_mute") is not None else mapa_sil.get(s.get("hablante"), False)
                 if sil and not inc_sil:
                     continue
-                ini_abs = max(0.0, float(s["inicio"]) + offset_seg)
-                fin_abs = max(ini_abs + 0.5, float(s["fin"]) + offset_seg)
+                ini_real = float(s["inicio"]) + offset_seg
+                fin_real = float(s["fin"]) + offset_seg
+                if fin_real <= 0.05:
+                    continue
+                ini_abs = max(0.0, ini_real)
+                fin_abs = max(ini_abs + 0.4, fin_real)
                 if t_desde_v is not None and fin_abs <= t_desde_v:
                     continue
                 if t_hasta_v is not None and ini_abs >= t_hasta_v:
                     continue
                 ini = max(0.0, ini_abs - t0_shift)
-                fin = max(ini + 0.5, (min(t_hasta_v, fin_abs) if t_hasta_v is not None else fin_abs) - t0_shift)
+                fin = max(ini + 0.4, (min(t_hasta_v, fin_abs) if t_hasta_v is not None else fin_abs) - t0_shift)
+                if not primer_ini_insertado:
+                    primer_ini_insertado = True
+                    if bloque_00 and ini >= 0.5:
+                        ms_f0 = int(round(ini * 1000))
+                        ts_f0 = f"{ms_f0//3600000:02d}:{(ms_f0%3600000)//60000:02d}:{(ms_f0%60000)//1000:02d},{ms_f0%1000:03d}"
+                        lineas_srt.append(f"{contador_sub}\n00:00:00,000 --> {ts_f0}\n[Inicio del video 00:00 - La transcripcion comienza en {fmt_hms(ini)}]\n")
+                        contador_sub += 1
                 ms_i = int(round(ini * 1000))
                 ms_f = int(round(fin * 1000))
                 ts_i = f"{ms_i//3600000:02d}:{(ms_i%3600000)//60000:02d}:{(ms_i%60000)//1000:02d},{ms_i%1000:03d}"
