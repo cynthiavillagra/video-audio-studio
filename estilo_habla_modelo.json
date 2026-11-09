@@ -1,0 +1,4256 @@
+{
+  "entrenado": true,
+  "fecha_entrenamiento": "2026-11-09 14:57:34",
+  "fuentes": [
+    "2026-09-04 20-14-28.mp4"
+  ],
+  "metricas": {
+    "total_intervenciones": 768,
+    "total_palabras": 7460,
+    "palabras_por_oracion_media": 9.7,
+    "palabras_por_oracion_mediana": 8.0,
+    "palabras_por_minuto": 121.4,
+    "total_bloques_rag": 199
+  },
+  "top_marcadores": [
+    {
+      "frase": "acá",
+      "frecuencia": 63
+    },
+    {
+      "frase": "entonces",
+      "frecuencia": 37
+    },
+    {
+      "frase": "bueno",
+      "frecuencia": 35
+    },
+    {
+      "frase": "o sea",
+      "frecuencia": 24
+    },
+    {
+      "frase": "por ejemplo",
+      "frecuencia": 22
+    },
+    {
+      "frase": "vamos a ver",
+      "frecuencia": 18
+    },
+    {
+      "frase": "vamos a hacer",
+      "frecuencia": 15
+    },
+    {
+      "frase": "les voy a",
+      "frecuencia": 10
+    },
+    {
+      "frase": "un montón de",
+      "frecuencia": 10
+    },
+    {
+      "frase": "no sé si",
+      "frecuencia": 7
+    },
+    {
+      "frase": "claro",
+      "frecuencia": 7
+    },
+    {
+      "frase": "dentro de la",
+      "frecuencia": 6
+    },
+    {
+      "frase": "vamos a poner",
+      "frecuencia": 5
+    },
+    {
+      "frase": "lo voy a",
+      "frecuencia": 5
+    },
+    {
+      "frase": "voy a crear",
+      "frecuencia": 5
+    },
+    {
+      "frase": "van a tener",
+      "frecuencia": 5
+    },
+    {
+      "frase": "vamos a usar",
+      "frecuencia": 4
+    },
+    {
+      "frase": "lo que vamos a",
+      "frecuencia": 4
+    },
+    {
+      "frase": "yo les voy a",
+      "frecuencia": 4
+    },
+    {
+      "frase": "es lo mismo",
+      "frecuencia": 4
+    },
+    {
+      "frase": "a través de",
+      "frecuencia": 4
+    },
+    {
+      "frase": "vamos a crear",
+      "frecuencia": 3
+    },
+    {
+      "frase": "entonces vamos a",
+      "frecuencia": 3
+    },
+    {
+      "frase": "voy a poner",
+      "frecuencia": 3
+    },
+    {
+      "frase": "van a ver",
+      "frecuencia": 3
+    }
+  ],
+  "frases_frecuentes": [
+    {
+      "frase": "en el aula virtual",
+      "frecuencia": 7
+    },
+    {
+      "frase": "lo vamos a hacer",
+      "frecuencia": 5
+    },
+    {
+      "frase": "lo vamos a ver",
+      "frecuencia": 5
+    },
+    {
+      "frase": "les voy a pedir",
+      "frecuencia": 4
+    },
+    {
+      "frase": "en la parte de",
+      "frecuencia": 4
+    },
+    {
+      "frase": "lo que vamos a",
+      "frecuencia": 4
+    },
+    {
+      "frase": "yo les voy a",
+      "frecuencia": 4
+    },
+    {
+      "frase": "hay un montón de",
+      "frecuencia": 4
+    },
+    {
+      "frase": "que les voy a",
+      "frecuencia": 3
+    },
+    {
+      "frase": "la parte de actividad",
+      "frecuencia": 3
+    },
+    {
+      "frase": "que vamos a hacer",
+      "frecuencia": 3
+    },
+    {
+      "frase": "vamos a hacer hoy",
+      "frecuencia": 3
+    },
+    {
+      "frase": "que tener en cuenta",
+      "frecuencia": 3
+    },
+    {
+      "frase": "la versión de python",
+      "frecuencia": 3
+    },
+    {
+      "frase": "esto es lo que",
+      "frecuencia": 3
+    },
+    {
+      "frase": "dentro de la librería",
+      "frecuencia": 3
+    },
+    {
+      "frase": "va a dar error",
+      "frecuencia": 3
+    },
+    {
+      "frase": "dentro de la función",
+      "frecuencia": 3
+    },
+    {
+      "frase": "está creando un objeto",
+      "frecuencia": 3
+    },
+    {
+      "frase": "qué tengo que hacer",
+      "frecuencia": 3
+    },
+    {
+      "frase": "vamos a ver",
+      "frecuencia": 18
+    },
+    {
+      "frase": "vamos a hacer",
+      "frecuencia": 15
+    },
+    {
+      "frase": "lo vamos a",
+      "frecuencia": 15
+    },
+    {
+      "frase": "les voy a",
+      "frecuencia": 10
+    },
+    {
+      "frase": "un montón de",
+      "frecuencia": 10
+    }
+  ],
+  "aperturas_tipicas": [
+    "O sea",
+    "Por ejemplo",
+    "Vamos a ver",
+    "Lo que vamos",
+    "Entonces vamos a",
+    "Vamos a hacer",
+    "Acá lo que"
+  ],
+  "cierres_tipicos": [
+    "o no",
+    "por ejemplo"
+  ],
+  "vocabulario_frecuente": [
+    {
+      "palabra": "vamos",
+      "frecuencia": 78
+    },
+    {
+      "palabra": "esto",
+      "frecuencia": 73
+    },
+    {
+      "palabra": "está",
+      "frecuencia": 53
+    },
+    {
+      "palabra": "nosotros",
+      "frecuencia": 40
+    },
+    {
+      "palabra": "ustedes",
+      "frecuencia": 38
+    },
+    {
+      "palabra": "después",
+      "frecuencia": 37
+    },
+    {
+      "palabra": "entonces",
+      "frecuencia": 37
+    },
+    {
+      "palabra": "bueno",
+      "frecuencia": 35
+    },
+    {
+      "palabra": "tener",
+      "frecuencia": 35
+    },
+    {
+      "palabra": "función",
+      "frecuencia": 33
+    },
+    {
+      "palabra": "tenemos",
+      "frecuencia": 31
+    },
+    {
+      "palabra": "github",
+      "frecuencia": 29
+    },
+    {
+      "palabra": "crear",
+      "frecuencia": 27
+    },
+    {
+      "palabra": "poner",
+      "frecuencia": 26
+    },
+    {
+      "palabra": "cómo",
+      "frecuencia": 25
+    },
+    {
+      "palabra": "ejemplo",
+      "frecuencia": 23
+    },
+    {
+      "palabra": "parte",
+      "frecuencia": 22
+    },
+    {
+      "palabra": "repositorio",
+      "frecuencia": 22
+    },
+    {
+      "palabra": "tengo",
+      "frecuencia": 22
+    },
+    {
+      "palabra": "virtual",
+      "frecuencia": 21
+    },
+    {
+      "palabra": "ahora",
+      "frecuencia": 21
+    },
+    {
+      "palabra": "puedo",
+      "frecuencia": 19
+    },
+    {
+      "palabra": "clase",
+      "frecuencia": 18
+    },
+    {
+      "palabra": "local",
+      "frecuencia": 18
+    },
+    {
+      "palabra": "estamos",
+      "frecuencia": 18
+    },
+    {
+      "palabra": "otro",
+      "frecuencia": 17
+    },
+    {
+      "palabra": "dentro",
+      "frecuencia": 17
+    },
+    {
+      "palabra": "cuenta",
+      "frecuencia": 16
+    },
+    {
+      "palabra": "python",
+      "frecuencia": 15
+    },
+    {
+      "palabra": "otra",
+      "frecuencia": 15
+    },
+    {
+      "palabra": "también",
+      "frecuencia": 15
+    },
+    {
+      "palabra": "objeto",
+      "frecuencia": 15
+    },
+    {
+      "palabra": "push",
+      "frecuencia": 15
+    },
+    {
+      "palabra": "link",
+      "frecuencia": 14
+    },
+    {
+      "palabra": "quiero",
+      "frecuencia": 13
+    },
+    {
+      "palabra": "aplicación",
+      "frecuencia": 13
+    },
+    {
+      "palabra": "montón",
+      "frecuencia": 13
+    },
+    {
+      "palabra": "chicos",
+      "frecuencia": 12
+    },
+    {
+      "palabra": "aula",
+      "frecuencia": 12
+    },
+    {
+      "palabra": "creo",
+      "frecuencia": 12
+    }
+  ],
+  "muletillas_personalizadas": [
+    "acá",
+    "entonces",
+    "bueno",
+    "por ejemplo",
+    "vamos a ver",
+    "vamos a hacer",
+    "les voy a",
+    "un montón de",
+    "no sé si"
+  ],
+  "bloques_rag": [
+    {
+      "texto": "Bueno chicos, hoy tenemos una clase bastante larga con mucha info. Después el ejercicio es corto, lo que vengo que hay que hacer es practicar como siempre pero hay bastante repaso y bastante información así que ya voy a ir empezando con el repaso",
+      "keywords": [
+        "larga",
+        "vengo",
+        "siempre",
+        "clase",
+        "mucha",
+        "bueno",
+        "chicos",
+        "tenemos",
+        "practicar",
+        "información",
+        "empezando",
+        "info",
+        "corto",
+        "ejercicio",
+        "bastante",
+        "repaso",
+        "después"
+      ]
+    },
+    {
+      "texto": "que es más de Python para que refresquemos algunos conceptos nada más y después ya nos metemos a Voy a compartir pantalla. Se ve mi pantalla chicos. Sí se ve. Bueno, hoy entonces vamos a ver, estuvimos trabajando mucho en local y en GitHub habíamos subido nuestro",
+      "keywords": [
+        "estuvimos",
+        "habíamos",
+        "subido",
+        "github",
+        "chicos",
+        "entonces",
+        "conceptos",
+        "algunos",
+        "compartir",
+        "mucho",
+        "vamos",
+        "python",
+        "trabajando",
+        "metemos",
+        "pantalla",
+        "después",
+        "bueno",
+        "local",
+        "nada",
+        "nuestro",
+        "refresquemos"
+      ]
+    },
+    {
+      "texto": "proyecto a GitHub y hoy vamos a agregar HiInFace, ¿Qué sería HiInFace Space? Bueno, es otra plataforma parecida a GitHub que es la que vamos a trabajar. Vamos a ver cómo conectarlos y las similitudes que tiene con GitHub, las diferencias que tiene.",
+      "keywords": [
+        "space",
+        "proyecto",
+        "bueno",
+        "similitudes",
+        "vamos",
+        "sería",
+        "plataforma",
+        "cómo",
+        "diferencias",
+        "hiinface",
+        "parecida",
+        "trabajar",
+        "conectarlos",
+        "agregar",
+        "otra",
+        "github"
+      ]
+    },
+    {
+      "texto": "Y bueno, antes de eso vamos a hacer un repasito de algunos conceptos de Python que nos van a hacer falta para seguir haciendo todo lo que tenemos que hacer. Lo primero que les voy a pedir es si se pueden meter a la aula virtual, yo dejé un link en la parte de",
+      "keywords": [
+        "aula",
+        "seguir",
+        "primero",
+        "meter",
+        "pedir",
+        "conceptos",
+        "algunos",
+        "haciendo",
+        "antes",
+        "vamos",
+        "python",
+        "falta",
+        "parte",
+        "link",
+        "repasito",
+        "bueno",
+        "tenemos",
+        "virtual",
+        "dejé"
+      ]
+    },
+    {
+      "texto": "Hola, ¿qué tal Cynthia? Sí, porque te explico lo que pasó. O sea, había un enlace en el Meet, en el aula virtual, yo mandé otro por el correo y después el que",
+      "keywords": [
+        "enlace",
+        "aula",
+        "meet",
+        "pasó",
+        "mandé",
+        "hola",
+        "explico",
+        "correo",
+        "cynthia",
+        "había",
+        "virtual",
+        "otro",
+        "después"
+      ]
+    },
+    {
+      "texto": "quedó definitivo es el que yo mandé por correo. Entonces como ya quedó definitivo, lo cambié en el aula virtual también. Entraste con el enlace en el aula virtual, bien. Cualquier cosa, si le quieren pasar el link de la clase de los chicos, pero cuando todos estuvieron",
+      "keywords": [
+        "aula",
+        "quedó",
+        "clase",
+        "pasar",
+        "bien",
+        "estuvieron",
+        "cambié",
+        "enlace",
+        "chicos",
+        "correo",
+        "también",
+        "entonces",
+        "mandé",
+        "entraste",
+        "link",
+        "cualquier",
+        "cosa",
+        "quieren",
+        "virtual",
+        "definitivo"
+      ]
+    },
+    {
+      "texto": "conectando así que creo, no tuvieron problema. El estaba diciendo que en el aula virtual, si en la parte de clase 4 actividad, dejé una planilla, un link a una planilla de Google Sheets.",
+      "keywords": [
+        "sheets",
+        "conectando",
+        "aula",
+        "creo",
+        "estaba",
+        "clase",
+        "actividad",
+        "planilla",
+        "link",
+        "diciendo",
+        "dejé",
+        "google",
+        "parte",
+        "virtual",
+        "problema",
+        "tuvieron"
+      ]
+    },
+    {
+      "texto": "Si lo que les voy a pedir es que vayan registrando ahí sus repositorios de GitHub donde estuvieran haciendo los ejercicios. Vamos a ver. Se ve mi pantalla, ¿no? Sí, no se ve igual que la de ustedes el aula, porque...",
+      "keywords": [
+        "estuvieran",
+        "aula",
+        "ustedes",
+        "pedir",
+        "ejercicios",
+        "vamos",
+        "repositorios",
+        "haciendo",
+        "pantalla",
+        "registrando",
+        "igual",
+        "vayan",
+        "github"
+      ]
+    },
+    {
+      "texto": "Pero bueno, en este mosaico que es el 4, sí, que es la clase 4, ustedes entran si van a tener la parte de introducción, el material. Este le pido disculpas, me olvidé de pasarlo a PDF, pero después lo voy a corregir,",
+      "keywords": [
+        "ustedes",
+        "clase",
+        "material",
+        "bueno",
+        "disculpas",
+        "olvidé",
+        "pasarlo",
+        "entran",
+        "tener",
+        "parte",
+        "introducción",
+        "corregir",
+        "pido",
+        "después",
+        "mosaico"
+      ]
+    },
+    {
+      "texto": "porque están en doco. Después, acá en la parte de actividad, sí, acá dejé la planilla. Entran acá la planilla. Hacen clic y tienen, les tiene que aparecer esta planilla. Bueno, ya algunos ya entrar.",
+      "keywords": [
+        "actividad",
+        "doco",
+        "planilla",
+        "entrar",
+        "bueno",
+        "están",
+        "clic",
+        "entran",
+        "algunos",
+        "parte",
+        "aparecer",
+        "hacen",
+        "después",
+        "dejé"
+      ]
+    },
+    {
+      "texto": "Y ahí les pido porfa que en esta columna, sí, en esta, vayan poniendo sus GitHub. Vayan anotando esto. Chicos, algunos se conectó recién y no escucha la consina. Hola Matías, ¿cómo estás? Sí.",
+      "keywords": [
+        "conectó",
+        "escucha",
+        "chicos",
+        "porfa",
+        "hola",
+        "matías",
+        "cómo",
+        "poniendo",
+        "anotando",
+        "estás",
+        "esto",
+        "algunos",
+        "columna",
+        "consina",
+        "pido",
+        "vayan",
+        "recién",
+        "github"
+      ]
+    },
+    {
+      "texto": "Tienen que entrar acá al aula virtual, a la parte de actividad, planilla, y entrar a este Wallsheets y anotar su dirección de GitHub. No su usuario de GitHub, sino el repositorio donde ustedes estuvieron trabajando,",
+      "keywords": [
+        "aula",
+        "ustedes",
+        "actividad",
+        "planilla",
+        "usuario",
+        "dirección",
+        "estuvieron",
+        "trabajando",
+        "parte",
+        "anotar",
+        "virtual",
+        "repositorio",
+        "wallsheets",
+        "entrar",
+        "github"
+      ]
+    },
+    {
+      "texto": "lo de Hagenface, esto, perdón, lo de GitHub, estas últimas clases. ¿Dale? Entonces, lo que les voy a pedir en ese caso, si lo borraron como Fernando, ¿no? ¿Qué habló? Sí, sí, sí.",
+      "keywords": [
+        "habló",
+        "perdón",
+        "pedir",
+        "dale",
+        "fernando",
+        "hagenface",
+        "últimas",
+        "clases",
+        "borraron",
+        "entonces",
+        "esto",
+        "caso",
+        "github"
+      ]
+    },
+    {
+      "texto": "No estoy viendo. Créa un repo nuevo, este vacío, no importa, y pone la dirección acá, yo trabajamos con eso. Sí, un repo nuevo que después le vas a poner los mismos archivos",
+      "keywords": [
+        "viendo",
+        "créa",
+        "vacío",
+        "importa",
+        "poner",
+        "estoy",
+        "dirección",
+        "trabajamos",
+        "nuevo",
+        "pone",
+        "archivos",
+        "repo",
+        "después",
+        "mismos"
+      ]
+    },
+    {
+      "texto": "con los que estuvimos practicando. Sí, sí, o sea, a partir de esta clase, si vamos a tener un repo donde vamos a ir trabajando, vamos a ir viendo algunas cosas y que quede el registro, así puedo entrar y verlo, etcétera.",
+      "keywords": [
+        "viendo",
+        "algunas",
+        "entrar",
+        "clase",
+        "cosas",
+        "puedo",
+        "practicando",
+        "estuvimos",
+        "vamos",
+        "verlo",
+        "trabajando",
+        "quede",
+        "etcétera",
+        "tener",
+        "repo",
+        "registro",
+        "partir"
+      ]
+    },
+    {
+      "texto": "Está en el aula virtual, en la clase 4, en la parte de actividad de la clase 4. Vas a ver un mosaico que se llama clase 4, sí, y en la última parte que dice actividad, está, está que dice planilla lunes.",
+      "keywords": [
+        "última",
+        "aula",
+        "actividad",
+        "clase",
+        "planilla",
+        "llama",
+        "está",
+        "parte",
+        "virtual",
+        "lunes",
+        "dice",
+        "mosaico"
+      ]
+    },
+    {
+      "texto": "Ahí entras, haces clic en la planilla y te abre esto. Los que, los que no lo hicieron todavía, o lo borraron, o algo, por favor creen un repo y lo ponen acá.",
+      "keywords": [
+        "algo",
+        "todavía",
+        "planilla",
+        "ponen",
+        "favor",
+        "clic",
+        "borraron",
+        "haces",
+        "esto",
+        "creen",
+        "repo",
+        "entras",
+        "abre",
+        "hicieron"
+      ]
+    },
+    {
+      "texto": "Ese que vamos a trabajar. ¿Vos tenés que poner uno y lo usamos de punto de partida? Si, si quieren hacer uno nuevo, hacer uno nuevo. Si algunos chicos, por alguna razón, no lo pueden crear ahora en este momento, porque no sé, están en el colectivo o algo, o están en el trabajo, no sé.",
+      "keywords": [
+        "alguna",
+        "están",
+        "tenés",
+        "usamos",
+        "chicos",
+        "algunos",
+        "colectivo",
+        "razón",
+        "algo",
+        "vamos",
+        "trabajar",
+        "punto",
+        "nuevo",
+        "ahora",
+        "trabajo",
+        "poner",
+        "crear",
+        "partida",
+        "quieren",
+        "momento"
+      ]
+    },
+    {
+      "texto": "Sí, porfa, pongan acá en la casillita algo que lo hacen después o algo, así yo voy sabiendo, sí. Porque si no, yo me quedo esperando y por ahí... ¿Cuál son poquito?",
+      "keywords": [
+        "algo",
+        "poquito",
+        "pongan",
+        "cuál",
+        "quedo",
+        "porfa",
+        "esperando",
+        "sabiendo",
+        "casillita",
+        "hacen",
+        "después"
+      ]
+    },
+    {
+      "texto": "Sí, eso la vamos a usar después. Lo que vamos a hacer hoy es ver lo que tenemos en GitHub. Tampoco es que lo vamos a usar mucho el GitHub, pero es importante que lo veamos para poder comparar como punto de partida.",
+      "keywords": [
+        "mucho",
+        "comparar",
+        "importante",
+        "usar",
+        "veamos",
+        "poder",
+        "tenemos",
+        "vamos",
+        "partida",
+        "github",
+        "punto",
+        "tampoco",
+        "después"
+      ]
+    },
+    {
+      "texto": "Pero lo que sí vamos a hacer hoy es crear un repo en High-Pace-Spaces. Sí, y después que creemos el repo acá, que subamos nuestra app que tenemos en GitHub, que la subamos acá,",
+      "keywords": [
+        "pace",
+        "high",
+        "creemos",
+        "tenemos",
+        "crear",
+        "vamos",
+        "nuestra",
+        "github",
+        "spaces",
+        "subamos",
+        "repo",
+        "después"
+      ]
+    },
+    {
+      "texto": "vamos a hacer una tarea y la vamos a... Yo les voy a pedir que desplieguen el lab, sí, en qué funcione, porque tiene bastantes pasos que pueden salir mal. Entonces, yo les voy a explicar qué partes tienen que tener en cuenta y ahí ustedes resuelven,",
+      "keywords": [
+        "partes",
+        "salir",
+        "desplieguen",
+        "pedir",
+        "ustedes",
+        "vamos",
+        "resuelven",
+        "bastantes",
+        "entonces",
+        "tener",
+        "tarea",
+        "explicar",
+        "funcione",
+        "pasos",
+        "cuenta"
+      ]
+    },
+    {
+      "texto": "le sacan unas capturitas, sobraban un video, lo suben al Drive y mandan el link por acá. Ese es lo que vamos a hacer hoy durante la clase. Después está el ticket de salida y la actividad de siempre, sí.",
+      "keywords": [
+        "ticket",
+        "siempre",
+        "actividad",
+        "clase",
+        "video",
+        "salida",
+        "suben",
+        "vamos",
+        "capturitas",
+        "drive",
+        "mandan",
+        "está",
+        "durante",
+        "sobraban",
+        "sacan",
+        "después",
+        "link"
+      ]
+    },
+    {
+      "texto": "No hay problema, como te digo, no son con nota ni tienen un control. Lo que sí es importante que lo sacan. Sí, sí, sí. Son parte de la clase y los tienen que hacer, pero no hay un control, no pasa nada si no los haces.",
+      "keywords": [
+        "digo",
+        "pasa",
+        "importante",
+        "clase",
+        "nada",
+        "haces",
+        "parte",
+        "nota",
+        "sacan",
+        "control",
+        "problema"
+      ]
+    },
+    {
+      "texto": "O sea, si me explico. Es parte de la clase. Tienen que hacerlo para estar en el... para estar seguros de que entendieron, si de que hicieron la práctica, si no. Lo llevo a tener.",
+      "keywords": [
+        "práctica",
+        "clase",
+        "seguros",
+        "estar",
+        "explico",
+        "entendieron",
+        "hacerlo",
+        "parte",
+        "tener",
+        "hicieron",
+        "llevo"
+      ]
+    },
+    {
+      "texto": "A ver, lo mando por el chat. Está en el aula virtual. ¿Estás te sí con este que te mandé? ¿Puedes entrar? No tendrías que haberlo copiado a través de... Las ocho y medio.",
+      "keywords": [
+        "aula",
+        "tendrías",
+        "mando",
+        "mandé",
+        "haberlo",
+        "chat",
+        "través",
+        "puedes",
+        "copiado",
+        "está",
+        "medio",
+        "virtual",
+        "ocho",
+        "entrar",
+        "estás"
+      ]
+    },
+    {
+      "texto": "voy tomando lista, ya que estoy, le voy poniendo el ausente por aquí. Me falta. Ah, no, no voy a poder hacer así. Chicos, le voy tomando lista. Amber, Aracely. La abriela, Coronel.",
+      "keywords": [
+        "tomando",
+        "aquí",
+        "chicos",
+        "coronel",
+        "estoy",
+        "poniendo",
+        "aracely",
+        "lista",
+        "ausente",
+        "falta",
+        "abriela",
+        "poder",
+        "amber"
+      ]
+    },
+    {
+      "texto": "Avigail, pero que te vi. Ahora si me bogece. ¿Gastón Ramírez está presente? Alguien está prendiendo el micrófono, pero no sé si es Gastón. estaría faltando lúrdez gallardo ¿lo podés hacer ahora o lo vas a hacer después?",
+      "keywords": [
+        "estaría",
+        "avigail",
+        "podés",
+        "faltando",
+        "lúrdez",
+        "alguien",
+        "ramírez",
+        "prendiendo",
+        "está",
+        "gastón",
+        "presente",
+        "gallardo",
+        "ahora",
+        "micrófono",
+        "después",
+        "bogece"
+      ]
+    },
+    {
+      "texto": "bueno, entonces continuamos si, la primera consigna es pensar en esto, si nosotros tenemos el link de github y se lo mandamos a alguien ¿qué hace esa persona con ese link? ¿cómo ejecuta ese programa que nosotros le estamos andando? o que hace?",
+      "keywords": [
+        "esto",
+        "andando",
+        "github",
+        "mandamos",
+        "cómo",
+        "entonces",
+        "continuamos",
+        "persona",
+        "ejecuta",
+        "alguien",
+        "consigna",
+        "programa",
+        "nosotros",
+        "estamos",
+        "link",
+        "bueno",
+        "pensar",
+        "tenemos",
+        "primera"
+      ]
+    },
+    {
+      "texto": "nosotros le mandamos el link y ¿qué pasa? si ustedes me mandan el link acá exactamente, por ejemplo, yo no sé nada, me mandan este link y yo dentro ahí este estaba selectro",
+      "keywords": [
+        "pasa",
+        "ustedes",
+        "mandamos",
+        "estaba",
+        "selectro",
+        "dentro",
+        "nada",
+        "ejemplo",
+        "mandan",
+        "exactamente",
+        "nosotros",
+        "link"
+      ]
+    },
+    {
+      "texto": "¿qué hago acá? así como está, lo copio en mi computador, lo clonan yo toco acá, se los muestro con la ría porque lo que les quiero explicar es otra cosa y a partir de ahí la persona le va a aparecer esto en su computadora",
+      "keywords": [
+        "quiero",
+        "muestro",
+        "computadora",
+        "clonan",
+        "hago",
+        "cosa",
+        "toco",
+        "está",
+        "computador",
+        "persona",
+        "aparecer",
+        "esto",
+        "explicar",
+        "partir",
+        "copio",
+        "otra"
+      ]
+    },
+    {
+      "texto": "si, esto le va a aparecer una carpetita en su computadora y ahí ¿qué piensan que estaría faltando? para que la otra persona pueda hacer algo con esto y si no sabe qué es un IDE",
+      "keywords": [
+        "computadora",
+        "piensan",
+        "estaría",
+        "algo",
+        "pueda",
+        "faltando",
+        "esto",
+        "persona",
+        "sabe",
+        "aparecer",
+        "carpetita",
+        "otra"
+      ]
+    },
+    {
+      "texto": "¿qué podemos hacer con este código? o sea, ¿qué le faltaría esto? ¿qué le agregaría? cuando nosotros hacemos una app, si hacemos toda la logística vamos a tener una parte que es la lógica del, que se dice la lógica del negocio",
+      "keywords": [
+        "agregaría",
+        "faltaría",
+        "lógica",
+        "vamos",
+        "negocio",
+        "hacemos",
+        "esto",
+        "podemos",
+        "tener",
+        "nosotros",
+        "código",
+        "parte",
+        "logística",
+        "dice"
+      ]
+    },
+    {
+      "texto": "que es la parte de programación dura y siempre le vamos a querer crear una interfaz, si preferentemente gráfica y sino por terminal unas instrucciones donde alguien lo pueda manejar este programa",
+      "keywords": [
+        "siempre",
+        "manejar",
+        "dura",
+        "gráfica",
+        "pueda",
+        "crear",
+        "vamos",
+        "preferentemente",
+        "alguien",
+        "querer",
+        "programa",
+        "parte",
+        "interfaz",
+        "programación",
+        "instrucciones",
+        "terminal"
+      ]
+    },
+    {
+      "texto": "como dijo la compañera que no vi el nombre esto, si ustedes si lo comparten con alguien, o por ejemplo, si yo entro a este repositorio que no sé, no sé qué es, si yo vi el link, que era algo que a mí me servían, entonces yo entré",
+      "keywords": [
+        "entro",
+        "algo",
+        "nombre",
+        "servían",
+        "ustedes",
+        "entré",
+        "dijo",
+        "link",
+        "alguien",
+        "ejemplo",
+        "entonces",
+        "esto",
+        "repositorio",
+        "compañera",
+        "comparten"
+      ]
+    },
+    {
+      "texto": "y lo primero que voy a hacer es ir al ritmi, ver si hay alguna instrucción si preferentemente acá en el ritmi tendría que figurar qué versión de Python usaron puede haber o no un listado de librerías",
+      "keywords": [
+        "tendría",
+        "alguna",
+        "versión",
+        "usaron",
+        "librerías",
+        "preferentemente",
+        "instrucción",
+        "python",
+        "haber",
+        "primero",
+        "ritmi",
+        "listado",
+        "figurar"
+      ]
+    },
+    {
+      "texto": "y después voy a, acá no hay nada por ejemplo, entonces digo bueno, ¿dónde poder buscar las librerías? acá yo puedo, ya con esto puedo replicar las librerías este ejemplo está bueno porque yo quiero instalar esto en mi computadora",
+      "keywords": [
+        "buscar",
+        "digo",
+        "quiero",
+        "computadora",
+        "instalar",
+        "puedo",
+        "replicar",
+        "bueno",
+        "librerías",
+        "nada",
+        "ejemplo",
+        "entonces",
+        "esto",
+        "dónde",
+        "está",
+        "poder",
+        "después"
+      ]
+    },
+    {
+      "texto": "no tengo el entorno virtual, no tengo más información como sé yo, ¿qué versión de Python está usando la persona que creó esto? esa versión de Python siempre tiene que estar registrada en algún lado, generalmente en el ritmi",
+      "keywords": [
+        "siempre",
+        "tengo",
+        "algún",
+        "registrada",
+        "versión",
+        "información",
+        "estar",
+        "entorno",
+        "usando",
+        "python",
+        "generalmente",
+        "creó",
+        "ritmi",
+        "está",
+        "persona",
+        "esto",
+        "virtual",
+        "lado"
+      ]
+    },
+    {
+      "texto": "yo por ahí lo pongo como un comentario acá en el Recurvency, donde que todo junto presionan el ritmi o te ponen para las personas que nos quieran replicar estoy usando la versión de Python, no hay que usar la versión de Python de 3.12 para arriba",
+      "keywords": [
+        "usar",
+        "ponen",
+        "personas",
+        "replicar",
+        "versión",
+        "usando",
+        "arriba",
+        "quieran",
+        "estoy",
+        "python",
+        "ritmi",
+        "junto",
+        "pongo",
+        "recurvency",
+        "presionan",
+        "comentario"
+      ]
+    },
+    {
+      "texto": "y después otra cosa que va a tener el ritmi va a ser las instrucciones de cómo funciona por ejemplo, ustedes pueden poner acá que hay que crear un entorno virtual si quieren poner las instrucciones o no",
+      "keywords": [
+        "funciona",
+        "ustedes",
+        "poner",
+        "instrucciones",
+        "crear",
+        "entorno",
+        "cosa",
+        "cómo",
+        "ejemplo",
+        "quieren",
+        "ritmi",
+        "tener",
+        "virtual",
+        "otra",
+        "después"
+      ]
+    },
+    {
+      "texto": "hay que entrar en Visual Studio Code y ejecutar esto y cuando ustedes ejecuten esto les va a aparecer en la terminal tal cosa, tal otra, todo eso lo ponen en el ritmi o pueden poner un archivo adicional que se llama instrucciones",
+      "keywords": [
+        "llama",
+        "adicional",
+        "esto",
+        "instrucciones",
+        "terminal",
+        "archivo",
+        "ponen",
+        "ejecutar",
+        "ritmi",
+        "visual",
+        "ustedes",
+        "studio",
+        "ejecuten",
+        "aparecer",
+        "code",
+        "poner",
+        "entrar",
+        "cosa",
+        "otra"
+      ]
+    },
+    {
+      "texto": "si personalmente todo se pone en el ritmi esa parte se entendió porque es importante especificar cuál es la versión de Python que nosotros usamos originalmente eso le vamos a llamar lógica, si las tenemos guardadas, la tenemos versionada, versionada",
+      "keywords": [
+        "lógica",
+        "pone",
+        "entendió",
+        "versionada",
+        "importante",
+        "llamar",
+        "usamos",
+        "especificar",
+        "ritmi",
+        "guardadas",
+        "cuál",
+        "vamos",
+        "python",
+        "parte",
+        "nosotros",
+        "versión",
+        "tenemos",
+        "personalmente",
+        "originalmente"
+      ]
+    },
+    {
+      "texto": "es que estamos usando Git para las versiones y no tenemos nada que una persona pueda abrir o usar entonces tenemos que pensar que una aplicación, en nuestro caso, nosotros estamos creando una aplicación web",
+      "keywords": [
+        "versiones",
+        "usar",
+        "pueda",
+        "tenemos",
+        "pensar",
+        "usando",
+        "nada",
+        "aplicación",
+        "nuestro",
+        "entonces",
+        "persona",
+        "caso",
+        "abrir",
+        "estamos",
+        "nosotros",
+        "creando"
+      ]
+    },
+    {
+      "texto": "puede ser una aplicación de escritorio, bueno, no es nuestro caso, nosotros vamos a crear con estas herramientas que estamos explorando una aplicación web y generalmente la aplicación web va a tener tres partes o cuatro partes, sí, según",
+      "keywords": [
+        "escritorio",
+        "partes",
+        "bueno",
+        "herramientas",
+        "crear",
+        "vamos",
+        "tres",
+        "aplicación",
+        "nuestro",
+        "generalmente",
+        "cuatro",
+        "según",
+        "caso",
+        "tener",
+        "nosotros",
+        "explorando",
+        "estamos"
+      ]
+    },
+    {
+      "texto": "hay una, que esto debe de saber Fernando, que hay varias maneras de pensar la arquitectura de una aplicación si eso se piensa antes de crear la aplicación no sé si hay algún otro programador en la sala",
+      "keywords": [
+        "algún",
+        "antes",
+        "fernando",
+        "pensar",
+        "piensa",
+        "debe",
+        "crear",
+        "sala",
+        "aplicación",
+        "varias",
+        "esto",
+        "maneras",
+        "programador",
+        "saber",
+        "otro",
+        "arquitectura"
+      ]
+    },
+    {
+      "texto": "pero generalmente va a tener las partes bien diferenciadas que van a ser el frontend, que es lo que se ve que en el caso de la aplicación web va a ser el HTML, el CSS, sí",
+      "keywords": [
+        "partes",
+        "bien",
+        "aplicación",
+        "generalmente",
+        "diferenciadas",
+        "caso",
+        "tener",
+        "html",
+        "frontend"
+      ]
+    },
+    {
+      "texto": "va a ser solamente la interfaz gráfica, sí, sin lógica, sí, quién iba a decir algo Bueno, después vamos a tener el backend, que sería, si el código que nosotros ya tenemos hecho",
+      "keywords": [
+        "algo",
+        "backend",
+        "decir",
+        "lógica",
+        "solamente",
+        "gráfica",
+        "bueno",
+        "tenemos",
+        "vamos",
+        "sería",
+        "quién",
+        "tener",
+        "nosotros",
+        "código",
+        "hecho",
+        "interfaz",
+        "después"
+      ]
+    },
+    {
+      "texto": "si es parte de backend, es solamente código y esto es agroso modo, si esto puede tener un montón de partes más pero estamos viendo solamente lo básico para entender cómo funciona",
+      "keywords": [
+        "funciona",
+        "partes",
+        "backend",
+        "viendo",
+        "básico",
+        "montón",
+        "solamente",
+        "cómo",
+        "esto",
+        "parte",
+        "modo",
+        "código",
+        "tener",
+        "estamos",
+        "entender",
+        "agroso"
+      ]
+    },
+    {
+      "texto": "si nosotros tenemos, entonces el backend va a tener el código, el frontend que va a ser la parte visible de nuestra app que puede ser un archivo, que va a ser la API, ¿sí?",
+      "keywords": [
+        "backend",
+        "tenemos",
+        "visible",
+        "nuestra",
+        "entonces",
+        "tener",
+        "nosotros",
+        "código",
+        "frontend",
+        "parte",
+        "archivo"
+      ]
+    },
+    {
+      "texto": "y que hace la API, en palabras sencillas lo que va a ser la API va a ser conectar el frontend con el backend generalmente lo vamos a hacer a través de una API",
+      "keywords": [
+        "backend",
+        "sencillas",
+        "palabras",
+        "vamos",
+        "generalmente",
+        "conectar",
+        "frontend",
+        "través"
+      ]
+    },
+    {
+      "texto": "¿Por qué? Porque tenemos deseguridad, porque si lo hacemos directo, no es una buena práctica es demasiado inseguro, lo podemos hacer en local para hacer pruebas, sí pero finalmente vamos a separar el frontend por un lado del backend por el otro y lo vamos a conectar con una",
+      "keywords": [
+        "práctica",
+        "hacemos",
+        "podemos",
+        "frontend",
+        "pruebas",
+        "buena",
+        "directo",
+        "lado",
+        "vamos",
+        "inseguro",
+        "demasiado",
+        "separar",
+        "otro",
+        "backend",
+        "deseguridad",
+        "tenemos",
+        "local",
+        "conectar",
+        "finalmente"
+      ]
+    },
+    {
+      "texto": "después, por otro lado, que eso nos lo vamos a ver, podemos tener una base de datos, ¿sí? que también la base de datos puede estar conectada con una API o podemos tener, por ejemplo",
+      "keywords": [
+        "conectada",
+        "estar",
+        "vamos",
+        "ejemplo",
+        "también",
+        "podemos",
+        "tener",
+        "lado",
+        "datos",
+        "base",
+        "otro",
+        "después"
+      ]
+    },
+    {
+      "texto": "si hicieron cursos de HTML, esto lo deben haber visto, que podemos tener solamente el frontend, ¿sí? y podemos tener una API que consuma de algún otro lado y no tener, o sea, por ejemplo, no sé, tenemos una página web",
+      "keywords": [
+        "algún",
+        "solamente",
+        "lado",
+        "tenemos",
+        "deben",
+        "ejemplo",
+        "haber",
+        "esto",
+        "podemos",
+        "hicieron",
+        "tener",
+        "html",
+        "frontend",
+        "visto",
+        "consuma",
+        "cursos",
+        "otro",
+        "página"
+      ]
+    },
+    {
+      "texto": "que queremos poner ahí el clima, si de Buenos Aires, minuto a minuto, entonces nosotros no vamos a crear una aplicación que vea todo eso, allá hay un montón de servicios que uno puede consumir a través de antes",
+      "keywords": [
+        "poner",
+        "antes",
+        "montón",
+        "minuto",
+        "servicios",
+        "clima",
+        "crear",
+        "vamos",
+        "aplicación",
+        "buenos",
+        "queremos",
+        "aires",
+        "entonces",
+        "consumir",
+        "nosotros",
+        "allá",
+        "través"
+      ]
+    },
+    {
+      "texto": "nosotros tenemos el frontend, la API y la API va a conectar con esos servicios ¿Esto se entiende, no? ¿Esto ya más o menos lo saben? ¿Hay alguno que no tenga idea?",
+      "keywords": [
+        "entiende",
+        "alguno",
+        "idea",
+        "servicios",
+        "tenemos",
+        "tenga",
+        "conectar",
+        "esto",
+        "nosotros",
+        "frontend",
+        "saben"
+      ]
+    },
+    {
+      "texto": "Sí, seguimos, entonces, seguimos, esto repaso, sí, sí, voy muy rápido y también nos va a faltar una máquina que el ejecute no sea pari, ¿y esto qué significa? Nosotros cuando hacemos en local probamos, funciona todo el límite",
+      "keywords": [
+        "funciona",
+        "pari",
+        "límite",
+        "rápido",
+        "significa",
+        "local",
+        "máquina",
+        "probamos",
+        "también",
+        "entonces",
+        "esto",
+        "hacemos",
+        "ejecute",
+        "seguimos",
+        "repaso",
+        "nosotros",
+        "faltar"
+      ]
+    },
+    {
+      "texto": "Ahora, nosotros queremos que lo vea otra persona, sí Normalmente no vamos a usar nuestra computadora de servidor para que la persona se conecte a nuestro computador Vamos a subir algún tipo de plataforma, algún hosting, algún lado nuestro código",
+      "keywords": [
+        "subir",
+        "normalmente",
+        "computadora",
+        "tipo",
+        "servidor",
+        "persona",
+        "lado",
+        "algún",
+        "vamos",
+        "nuestra",
+        "queremos",
+        "computador",
+        "nosotros",
+        "ahora",
+        "plataforma",
+        "usar",
+        "nuestro",
+        "hosting",
+        "conecte",
+        "código",
+        "otra"
+      ]
+    },
+    {
+      "texto": "y la persona lo va a poder acceder a través de internet, generalmente Sin embargo, cuando nosotros ejecutamos nos aparece una página web, sí, un DHTML y una API que conecta todo, sí",
+      "keywords": [
+        "acceder",
+        "embargo",
+        "internet",
+        "dhtml",
+        "ejecutamos",
+        "generalmente",
+        "persona",
+        "página",
+        "nosotros",
+        "conecta",
+        "aparece",
+        "poder",
+        "través"
+      ]
+    },
+    {
+      "texto": "Entonces, que nosotros tengamos solamente el archivo de Python Está bien, aunque sea temporal, aunque sea Para que esto se vea, lo que estamos viendo es algo que creó la librería de Gradio",
+      "keywords": [
+        "viendo",
+        "algo",
+        "tengamos",
+        "aunque",
+        "solamente",
+        "librería",
+        "gradio",
+        "bien",
+        "python",
+        "creó",
+        "entonces",
+        "está",
+        "temporal",
+        "esto",
+        "nosotros",
+        "estamos",
+        "archivo"
+      ]
+    },
+    {
+      "texto": "que tenga estos blogs, este título, este input, este output y automáticamente con eso que yo puse en el archivito app.py A ver, vamos a verlo acá No lo vemos, pero está, sí",
+      "keywords": [
+        "automáticamente",
+        "vemos",
+        "archivito",
+        "input",
+        "verlo",
+        "vamos",
+        "tenga",
+        "título",
+        "está",
+        "blogs",
+        "output",
+        "puse"
+      ]
+    },
+    {
+      "texto": "Bueno, y esto es lo que decíamos, que tenemos que subirlo a algún lado, sí Porque, por ejemplo, si nosotros podemos poner una máquina y que esté de servidor si la tenemos que tener prendida todo el día, no es práctica",
+      "keywords": [
+        "práctica",
+        "algún",
+        "poner",
+        "esté",
+        "prendida",
+        "bueno",
+        "tenemos",
+        "servidor",
+        "decíamos",
+        "ejemplo",
+        "subirlo",
+        "máquina",
+        "esto",
+        "podemos",
+        "tener",
+        "nosotros",
+        "lado"
+      ]
+    },
+    {
+      "texto": "Y después también hay algunos servicios que también lo vamos a ver que no son Pero hay algunos servicios que no sirven para eso O sea, no todos los lugares donde, en la nube, donde nosotros subamos",
+      "keywords": [
+        "servicios",
+        "vamos",
+        "nube",
+        "también",
+        "algunos",
+        "nosotros",
+        "sirven",
+        "lugares",
+        "después",
+        "subamos"
+      ]
+    },
+    {
+      "texto": "nuestra aplicación nos van a servir para que la aplicación esté siempre activa Por ejemplo, cuando nosotros usamos, no sé si alguno de ustedes probó Python anywhere, replete, render Si hay un montón de lugares donde nosotros podemos subir y deployar código Python",
+      "keywords": [
+        "siempre",
+        "subir",
+        "activa",
+        "servir",
+        "anywhere",
+        "podemos",
+        "esté",
+        "montón",
+        "usamos",
+        "aplicación",
+        "ejemplo",
+        "replete",
+        "alguno",
+        "ustedes",
+        "probó",
+        "nuestra",
+        "python",
+        "nosotros",
+        "render",
+        "deployar",
+        "código",
+        "lugares"
+      ]
+    },
+    {
+      "texto": "Pero al ser planes gratuitos En vez de tenerlo todo el tiempo funcionando, es como que se apaga y yo después tengo que entrar y activarlo cada vez que lo quiero usar",
+      "keywords": [
+        "quiero",
+        "tengo",
+        "entrar",
+        "usar",
+        "funcionando",
+        "activarlo",
+        "tenerlo",
+        "planes",
+        "cada",
+        "después",
+        "apaga",
+        "tiempo",
+        "gratuitos"
+      ]
+    },
+    {
+      "texto": "Eso no me va a servir si yo quiero que otra persona entre en cualquier momento Y profe también tiene un límite de espacio La mayoría tiene un límite rechiquito, o sea, son para hacer créos, nada más",
+      "keywords": [
+        "quiero",
+        "límite",
+        "cualquier",
+        "rechiquito",
+        "servir",
+        "profe",
+        "espacio",
+        "nada",
+        "momento",
+        "también",
+        "persona",
+        "créos",
+        "otra",
+        "mayoría"
+      ]
+    },
+    {
+      "texto": "Enseguida te quedas sin espacio Por ejemplo, tienen otras limitaciones como... Pero porque son gratis, o sea, cuando uno paga obviamente accede a todos los demás Pero, por ejemplo, cuando a mí me pasó de probar Python anywhere y otro más",
+      "keywords": [
+        "accede",
+        "pasó",
+        "espacio",
+        "python",
+        "ejemplo",
+        "enseguida",
+        "otras",
+        "limitaciones",
+        "gratis",
+        "quedas",
+        "demás",
+        "probar",
+        "anywhere",
+        "obviamente",
+        "otro",
+        "paga"
+      ]
+    },
+    {
+      "texto": "Que no me dejaban conectarme, yo tenía una base de datos externe, no me dejaba conectarme Por qué era un plan gratis, bueno, esas cosas Por eso tienen que saber cuáles son los límites de donde ustedes sugan su aplicación",
+      "keywords": [
+        "dejaba",
+        "ustedes",
+        "cosas",
+        "tenía",
+        "sugan",
+        "bueno",
+        "dejaban",
+        "externe",
+        "cuáles",
+        "aplicación",
+        "límites",
+        "gratis",
+        "saber",
+        "plan",
+        "datos",
+        "base",
+        "conectarme"
+      ]
+    },
+    {
+      "texto": "Y lo que vamos a ver es que es cada una, sí Todo esto es el repaso de Python, chicos O sea, no se dorman por favor Vamos a ver qué es esta línea, qué es esta, qué es esta, qué es esta, sí",
+      "keywords": [
+        "dorman",
+        "chicos",
+        "favor",
+        "vamos",
+        "línea",
+        "python",
+        "esto",
+        "cada",
+        "repaso"
+      ]
+    },
+    {
+      "texto": "Si alguna no entiende, me para, pero lo voy a hacer rápido así pasamos al otro tema Se acuerdan, no? Se va a poner en másúscula, sí, se debe, no Lo tienen que poner en la convención es ponerlo en camel, que es la primera letra es minúscula",
+      "keywords": [
+        "entiende",
+        "alguna",
+        "poner",
+        "másúscula",
+        "ponerlo",
+        "tema",
+        "debe",
+        "rápido",
+        "pasamos",
+        "acuerdan",
+        "camel",
+        "convención",
+        "letra",
+        "primera",
+        "otro",
+        "minúscula"
+      ]
+    },
+    {
+      "texto": "Después puede tener un parámetro y puede o no tener un retón, sí, un retón Entonces vamos a tener por ejemplo esta línea que nos va a servir para hacer los import, para traer las dependencias",
+      "keywords": [
+        "retón",
+        "servir",
+        "línea",
+        "traer",
+        "vamos",
+        "ejemplo",
+        "entonces",
+        "tener",
+        "dependencias",
+        "import",
+        "después",
+        "parámetro"
+      ]
+    },
+    {
+      "texto": "Después tenemos esta otra línea que... Bueno, esto lo vamos a ver más adelante, sí Pero tiene algunos parámetros, sí Y tenemos esta que está llamando a una función que se llama launch",
+      "keywords": [
+        "adelante",
+        "parámetros",
+        "llamando",
+        "tenemos",
+        "línea",
+        "bueno",
+        "vamos",
+        "launch",
+        "llama",
+        "esto",
+        "algunos",
+        "está",
+        "función",
+        "otra",
+        "después"
+      ]
+    },
+    {
+      "texto": "Lo que hace es ejecutar y no la vemos, sí, acá la función, pero la función está dentro de la librería O sea, no es que no existe, sino que está dentro de la librería",
+      "keywords": [
+        "vemos",
+        "ejecutar",
+        "dentro",
+        "librería",
+        "está",
+        "existe",
+        "función"
+      ]
+    },
+    {
+      "texto": "O sea, dentro de la librería hay un montón de funciones Que nosotros cuando importamos la librería podemos llamar a cualquier de las funciones que están acá dentro Eso está claro, ¿no?",
+      "keywords": [
+        "llamar",
+        "claro",
+        "montón",
+        "cualquier",
+        "librería",
+        "dentro",
+        "están",
+        "importamos",
+        "podemos",
+        "está",
+        "funciones",
+        "nosotros"
+      ]
+    },
+    {
+      "texto": "Pero ¿por qué? ¿Qué piensan ustedes? ¿Es lo mismo, no es lo mismo? ¿Qué pasa si yo hago esto? Si en vez de como está ahí en el código le pongo paréntesis",
+      "keywords": [
+        "mismo",
+        "piensan",
+        "pasa",
+        "ustedes",
+        "hago",
+        "paréntesis",
+        "esto",
+        "está",
+        "código",
+        "pongo"
+      ]
+    },
+    {
+      "texto": "Cuando nosotros, esto se llama llamar una función, ¿no? Ustedes quieren usar una función, entonces ponen el nombre de la función, le pasan uno parámetro Y yo no quiero que se ejecute",
+      "keywords": [
+        "quiero",
+        "nombre",
+        "llamar",
+        "ustedes",
+        "usar",
+        "ponen",
+        "llama",
+        "quieren",
+        "entonces",
+        "esto",
+        "pasan",
+        "ejecute",
+        "nosotros",
+        "función",
+        "parámetro"
+      ]
+    },
+    {
+      "texto": "Yo lo único que quiero es nombrarla Decirle que guardame esta función en esta variable Por eso no le pongo paréntesis acá No le estoy llamando para que se ejecute Acá lo pueden ver un poquito más claro, sí",
+      "keywords": [
+        "quiero",
+        "poquito",
+        "único",
+        "claro",
+        "variable",
+        "paréntesis",
+        "llamando",
+        "guardame",
+        "estoy",
+        "decirle",
+        "nombrarla",
+        "ejecute",
+        "pongo",
+        "función"
+      ]
+    },
+    {
+      "texto": "Y ahí te va a dar un error porque no es lo que está esperando grado O sea, vos ahí detrás de grado, o sea, todo lo que no vemos pasa en un montón de cosas complejas",
+      "keywords": [
+        "error",
+        "pasa",
+        "vemos",
+        "montón",
+        "cosas",
+        "detrás",
+        "complejas",
+        "está",
+        "esperando",
+        "grado"
+      ]
+    },
+    {
+      "texto": "Lo único que te está preguntando es qué función tengo que usar cuando yo quiera usar la función que tengo que usar O sea, la función saludar Pero si vos le pusiste dos paréntesis, ya está diciendo que le ejecute, ¿no?",
+      "keywords": [
+        "único",
+        "tengo",
+        "usar",
+        "paréntesis",
+        "diciendo",
+        "preguntando",
+        "pusiste",
+        "está",
+        "ejecute",
+        "función",
+        "quiera",
+        "saludar"
+      ]
+    },
+    {
+      "texto": "Por eso te va a dar error En esta línea es importante que vos te des cuenta que la función la tenés que poner sin paréntesis Guarda ese nombre y después lo usa cuando quiere",
+      "keywords": [
+        "error",
+        "guarda",
+        "nombre",
+        "importante",
+        "poner",
+        "paréntesis",
+        "línea",
+        "tenés",
+        "función",
+        "quiere",
+        "después",
+        "cuenta"
+      ]
+    },
+    {
+      "texto": "No lo ejecuta No te sabría decir que hay dentro de las funciones de gradio O sea, nosotros nos va a aparecer una interfaz donde nosotros vamos a poner submit Y ahí gradio va a ser lo que tiene que hacer que llamara la función",
+      "keywords": [
+        "poner",
+        "decir",
+        "llamara",
+        "gradio",
+        "dentro",
+        "sabría",
+        "vamos",
+        "ejecuta",
+        "función",
+        "aparecer",
+        "funciones",
+        "interfaz",
+        "nosotros",
+        "submit"
+      ]
+    },
+    {
+      "texto": "Después acá el parámetro, bueno, otra vez el parámetro y el retón, alguien habló Esto también es importante, que también lo dijimos en la clase pasada Sí, con el tema de las funciones, si yo creo una variable dentro de una función, solamente vive dentro de la función",
+      "keywords": [
+        "retón",
+        "clase",
+        "solamente",
+        "esto",
+        "funciones",
+        "función",
+        "importante",
+        "variable",
+        "también",
+        "parámetro",
+        "dijimos",
+        "alguien",
+        "después",
+        "habló",
+        "creo",
+        "bueno",
+        "tema",
+        "dentro",
+        "pasada",
+        "vive",
+        "otra"
+      ]
+    },
+    {
+      "texto": "No la puedo llamar es de afuera ¿Se acuerdan? Variables globales Acá, esto depende del lenguaje que estén usando En Java sí, pasa lo mismo Por ejemplo, en Java la variable muere dentro del bucle",
+      "keywords": [
+        "pasa",
+        "globales",
+        "esto",
+        "muere",
+        "afuera",
+        "llamar",
+        "variable",
+        "bucle",
+        "ejemplo",
+        "depende",
+        "lenguaje",
+        "mismo",
+        "puedo",
+        "variables",
+        "usando",
+        "dentro",
+        "acuerdan",
+        "java",
+        "estén"
+      ]
+    },
+    {
+      "texto": "Pero en Python no, en Python vive afuera O sea, yo creo una variable dentro de un for o un why Pero si la creo dentro de una función, una vez que se ejecutó la función, la función muere y muere en todas las variables",
+      "keywords": [
+        "afuera",
+        "creo",
+        "variable",
+        "ejecutó",
+        "variables",
+        "dentro",
+        "python",
+        "muere",
+        "vive",
+        "función"
+      ]
+    },
+    {
+      "texto": "Bueno, esto es un poco más de lo mismo Variable local, variable global Si yo quiero tener una variable que esté viva y que entre y salga de la función Lo voy a crear afuera, al principio, si creo una variable global",
+      "keywords": [
+        "mismo",
+        "quiero",
+        "salga",
+        "esté",
+        "variable",
+        "viva",
+        "afuera",
+        "creo",
+        "bueno",
+        "poco",
+        "crear",
+        "local",
+        "principio",
+        "esto",
+        "tener",
+        "global",
+        "función"
+      ]
+    },
+    {
+      "texto": "Después la llamo desde dentro de la función Y como es global, como yo la creé fuera de la función Cuando yo la llame de fuera de la función va a existir",
+      "keywords": [
+        "dentro",
+        "creé",
+        "fuera",
+        "llame",
+        "existir",
+        "global",
+        "función",
+        "llamo",
+        "después"
+      ]
+    },
+    {
+      "texto": "Si, dentro de la función le puedo cambiar el valor Y cuando yo la llame después va a existir con el valor cambiado ¿Se entiende eso? Pero tienen que saber que existe",
+      "keywords": [
+        "entiende",
+        "cambiado",
+        "puedo",
+        "valor",
+        "dentro",
+        "cambiar",
+        "existir",
+        "saber",
+        "existe",
+        "función",
+        "llame",
+        "después"
+      ]
+    },
+    {
+      "texto": "Hay algo que se llama programas enrientados objetos Sí, que usa objetos Porque tiene acá el puntito, sí el nombre Y los paréntesis con parámetros Una función es un pedacito de código que ustedes ejecutan, le pasan parámetros, tienen retunto, eso lo que vimos recién",
+      "keywords": [
+        "algo",
+        "nombre",
+        "pedacito",
+        "ustedes",
+        "programas",
+        "parámetros",
+        "paréntesis",
+        "enrientados",
+        "puntito",
+        "objetos",
+        "ejecutan",
+        "vimos",
+        "llama",
+        "retunto",
+        "pasan",
+        "código",
+        "función",
+        "recién"
+      ]
+    },
+    {
+      "texto": "Cuando nosotros estamos trabajando con programas enrientados objetos Vamos a tener la posibilidad de crear una clase Que sería como un molde donde tiene atributos, tiene funciones adentro, que les vamos a llamar métodos",
+      "keywords": [
+        "adentro",
+        "molde",
+        "programas",
+        "llamar",
+        "clase",
+        "enrientados",
+        "objetos",
+        "posibilidad",
+        "crear",
+        "vamos",
+        "sería",
+        "atributos",
+        "métodos",
+        "trabajando",
+        "tener",
+        "nosotros",
+        "estamos",
+        "funciones"
+      ]
+    },
+    {
+      "texto": "Entonces, cuando nosotros ponemos, por ejemplo, a ver si está por acá Sí, cuando nosotros hacemos esto, por ejemplo, sumar 2, 3, se dice que estamos llamando a la función Sí, así se dice en programación",
+      "keywords": [
+        "llamando",
+        "ponemos",
+        "ejemplo",
+        "hacemos",
+        "entonces",
+        "está",
+        "esto",
+        "nosotros",
+        "estamos",
+        "función",
+        "sumar",
+        "programación",
+        "dice"
+      ]
+    },
+    {
+      "texto": "Pero cuando nosotros hacemos, o sea, llamamos a una clase Se dice que estamos instanciando un objeto No es lo mismo ¿Cómo nos vamos a dar cuenta si a simple vista, por ejemplo, viendo esto, si está creando un objeto",
+      "keywords": [
+        "clase",
+        "simple",
+        "hacemos",
+        "esto",
+        "creando",
+        "cuenta",
+        "instanciando",
+        "cómo",
+        "objeto",
+        "ejemplo",
+        "mismo",
+        "vista",
+        "vamos",
+        "está",
+        "nosotros",
+        "llamamos",
+        "estamos",
+        "dice",
+        "viendo"
+      ]
+    },
+    {
+      "texto": "O sea, si estoy instanciando un objeto o si estoy llamando una función? Sí, exactamente, ¿Qué parte del nombre? Pues es importante que sigan las convenciones, porque no les va a dar error",
+      "keywords": [
+        "error",
+        "nombre",
+        "importante",
+        "instanciando",
+        "sigan",
+        "llamando",
+        "convenciones",
+        "estoy",
+        "objeto",
+        "exactamente",
+        "parte",
+        "función"
+      ]
+    },
+    {
+      "texto": "Si ustedes ponen una función con mayúsculas, por ahí no les da error Pero siempre tienen que poner las funciones con minúsculas ¿Eso está claro? O si están instanciando un objeto o están llamando una función",
+      "keywords": [
+        "error",
+        "siempre",
+        "ustedes",
+        "poner",
+        "claro",
+        "ponen",
+        "instanciando",
+        "mayúsculas",
+        "llamando",
+        "están",
+        "objeto",
+        "está",
+        "minúsculas",
+        "funciones",
+        "función"
+      ]
+    },
+    {
+      "texto": "Está mayúscula, no debe ser que están instanciando una clase Esa es un detalle Bueno, hasta lo que puedo decir Y las dos devuelven dos cosas diferentes Dijimos que esto puede ser un returno de un dato y este retorna un objeto",
+      "keywords": [
+        "returno",
+        "clase",
+        "cosas",
+        "están",
+        "dato",
+        "esto",
+        "instanciando",
+        "mayúscula",
+        "objeto",
+        "dijimos",
+        "detalle",
+        "decir",
+        "puedo",
+        "retorna",
+        "debe",
+        "está",
+        "devuelven",
+        "diferentes",
+        "bueno"
+      ]
+    },
+    {
+      "texto": "Instancia un objeto, ¿Sí? Pero cuando yo instancia un objeto, o sea cuando creo un objeto Ese objeto dentro tiene métodos, tiene funciones Y las funciones que están dentro de los objetos las llamamos métodos",
+      "keywords": [
+        "creo",
+        "objetos",
+        "dentro",
+        "métodos",
+        "están",
+        "instancia",
+        "objeto",
+        "funciones",
+        "llamamos"
+      ]
+    },
+    {
+      "texto": "Este es un atributo, sí, los objetos van a tener atributos y van a tener métodos Entonces, por ejemplo, cuando yo llamo una función y entre paréntesis le pongo datos Yo sé que estoy pasando parámetros, diría, ¿No?",
+      "keywords": [
+        "diría",
+        "parámetros",
+        "paréntesis",
+        "objetos",
+        "métodos",
+        "atributos",
+        "pasando",
+        "ejemplo",
+        "estoy",
+        "entonces",
+        "función",
+        "tener",
+        "pongo",
+        "atributo",
+        "datos",
+        "llamo"
+      ]
+    },
+    {
+      "texto": "En un objeto, estoy cambiando los atributos, generalmente No importa esto, lo importante es que cuando vean, no se... O sea, ustedes no lo lean como si ustedes dicen Ah, acá en esta línea está llamando a tal función, está mal",
+      "keywords": [
+        "importa",
+        "importante",
+        "ustedes",
+        "llamando",
+        "lean",
+        "atributos",
+        "línea",
+        "objeto",
+        "generalmente",
+        "estoy",
+        "esto",
+        "dicen",
+        "cambiando",
+        "vean",
+        "está",
+        "función"
+      ]
+    },
+    {
+      "texto": "Si está creando un objeto, está creando un objeto Si está instanciando un objeto, está llamando a la función y son dos cosas diferentes Eso les tiene que quedar claro Se entendió, ¿No?",
+      "keywords": [
+        "quedar",
+        "claro",
+        "instanciando",
+        "diferentes",
+        "llamando",
+        "cosas",
+        "objeto",
+        "está",
+        "entendió",
+        "función",
+        "creando"
+      ]
+    },
+    {
+      "texto": "Y cómo se diferencian con la mayor fújula Sí, bueno, este es un objeto Es un método de un objeto, bien Nosotros tenemos nuestro repositorio local Sí, no sé si todos tienen su repositorio local a mano",
+      "keywords": [
+        "bueno",
+        "tenemos",
+        "local",
+        "bien",
+        "diferencian",
+        "mayor",
+        "cómo",
+        "fújula",
+        "objeto",
+        "método",
+        "nuestro",
+        "nosotros",
+        "repositorio",
+        "mano"
+      ]
+    },
+    {
+      "texto": "Este no es Ver, esperen que entro Bueno, lo voy a crear porque no sé cuál es todo lo que tengo ahí es Lo que vamos a hacer es crear, abrirlo con Visual Studio Code",
+      "keywords": [
+        "entro",
+        "tengo",
+        "studio",
+        "bueno",
+        "cuál",
+        "crear",
+        "vamos",
+        "esperen",
+        "abrirlo",
+        "visual",
+        "code"
+      ]
+    },
+    {
+      "texto": "Sí, y vamos a, como ya sabemos, todo lo que tenemos que crear y lo podemos hacer rápido Lo vamos a hacer con la Inteligencia Artificial Ustedes acá en el... En el Visual Studio Code ya saben que pueden instalar extensiones, ¿Verdad?",
+      "keywords": [
+        "inteligencia",
+        "ustedes",
+        "studio",
+        "instalar",
+        "tenemos",
+        "artificial",
+        "crear",
+        "vamos",
+        "sabemos",
+        "rápido",
+        "verdad",
+        "extensiones",
+        "podemos",
+        "visual",
+        "saben",
+        "code"
+      ]
+    },
+    {
+      "texto": "Acá ustedes pueden instalar extensiones Y un montón de extensiones que pueden instalar como el Code Pilot, el Codex, el Kilo Code Sí, hay un montón de extensiones que van a hacer que a ustedes acá a la derecha les aparezca un chat",
+      "keywords": [
+        "aparezca",
+        "ustedes",
+        "instalar",
+        "montón",
+        "pilot",
+        "chat",
+        "codex",
+        "extensiones",
+        "kilo",
+        "derecha",
+        "code"
+      ]
+    },
+    {
+      "texto": "De Inteligencia Artificial con el que pueden pedirle directamente en el wage natural que les sabe el Codex Sí, yo tengo el Codex Después este es el Visual Studio Code que sería el Code Pilot",
+      "keywords": [
+        "natural",
+        "tengo",
+        "inteligencia",
+        "studio",
+        "wage",
+        "pilot",
+        "artificial",
+        "codex",
+        "sería",
+        "directamente",
+        "sabe",
+        "visual",
+        "pedirle",
+        "después",
+        "code"
+      ]
+    },
+    {
+      "texto": "Y si no pueden instalar el Kilo o el Kilo que tienen algunos créditos gratis El Copilot me vino solo y el Codex lo tengo porque como yo pago la suscripción de OpenAI",
+      "keywords": [
+        "tengo",
+        "copilot",
+        "instalar",
+        "suscripción",
+        "pago",
+        "openai",
+        "codex",
+        "créditos",
+        "vino",
+        "kilo",
+        "gratis",
+        "algunos"
+      ]
+    },
+    {
+      "texto": "Claro, se queda... Y puedo usar el Codex Ah, no, no, no hay una razón especial Lo que sí dicen los que saben de programación es que el mejor para programar es el Cloud",
+      "keywords": [
+        "claro",
+        "programar",
+        "usar",
+        "puedo",
+        "queda",
+        "codex",
+        "especial",
+        "dicen",
+        "mejor",
+        "cloud",
+        "saben",
+        "programación",
+        "razón"
+      ]
+    },
+    {
+      "texto": "Sí, yo sé el Codex porque bueno, tengo plan de Codex, entonces uso el Codex y después este el Copilot tiene ya viene para instalarlo y tiene un montón de créditos que se le",
+      "keywords": [
+        "tengo",
+        "copilot",
+        "montón",
+        "bueno",
+        "instalarlo",
+        "codex",
+        "créditos",
+        "entonces",
+        "plan",
+        "viene",
+        "después"
+      ]
+    },
+    {
+      "texto": "Pero bueno, vamos a usar esto para crear nuestro proyecto de nuevo, que esto ya lo hicimos como tres veces Así que ya lo tenemos que saber, sí Vamos a poner... Crea una app mínima de Gradient",
+      "keywords": [
+        "crea",
+        "poner",
+        "usar",
+        "gradient",
+        "proyecto",
+        "bueno",
+        "tenemos",
+        "crear",
+        "vamos",
+        "tres",
+        "hicimos",
+        "nuestro",
+        "veces",
+        "esto",
+        "nuevo",
+        "saber",
+        "mínima"
+      ]
+    },
+    {
+      "texto": "En un script que se llame a punto par Sí, los que no tienen nada todavía por favor lo van haciendo conmigo si pueden Esto mismo lo pueden hacer en cualquier LLM, pero es más trabajoso porque hay que crear ustedes mismos el archivo",
+      "keywords": [
+        "mismo",
+        "ustedes",
+        "todavía",
+        "cualquier",
+        "script",
+        "favor",
+        "trabajoso",
+        "nada",
+        "crear",
+        "archivo",
+        "esto",
+        "haciendo",
+        "punto",
+        "conmigo",
+        "llame",
+        "mismos"
+      ]
+    },
+    {
+      "texto": "Acá ya me crea todo Ya me creo el archivo, que sigue Bueno, entonces se está re adelantando Que ustedes que harían, ya crearon un Natal En el script, que sigue ahora",
+      "keywords": [
+        "natal",
+        "crea",
+        "ustedes",
+        "creo",
+        "bueno",
+        "adelantando",
+        "script",
+        "crearon",
+        "entonces",
+        "sigue",
+        "está",
+        "ahora",
+        "archivo",
+        "harían"
+      ]
+    },
+    {
+      "texto": "En entorno virtual Una vez que tengo el entorno virtual, que tengo que hacer Ahí está la pista chicos, que la está dando Ya lo creé al entorno virtual, ¿qué tengo que hacer ahora?",
+      "keywords": [
+        "dando",
+        "tengo",
+        "pista",
+        "chicos",
+        "creé",
+        "entorno",
+        "está",
+        "virtual",
+        "ahora"
+      ]
+    },
+    {
+      "texto": "Activamos el entorno virtual En el medio Instalar la feria es necesaria Yo a las librerías, cuando me las instale, no las veo acá ¿Qué me falta? Que más puedo agregar para que sea reproducible por otra persona",
+      "keywords": [
+        "instale",
+        "instalar",
+        "feria",
+        "puedo",
+        "librerías",
+        "entorno",
+        "reproducible",
+        "activamos",
+        "medio",
+        "falta",
+        "persona",
+        "virtual",
+        "necesaria",
+        "agregar",
+        "otra"
+      ]
+    },
+    {
+      "texto": "Me voy a poner acá porque está trabajando esto, no sé qué le pasa Le hago, para hacer un poco más rápido Me voy a crear el archivo de recuerdos ¿Qué les ocurre otra cosa?",
+      "keywords": [
+        "pasa",
+        "poner",
+        "hago",
+        "poco",
+        "crear",
+        "rápido",
+        "cosa",
+        "trabajando",
+        "esto",
+        "está",
+        "recuerdos",
+        "ocurre",
+        "otra",
+        "archivo"
+      ]
+    },
+    {
+      "texto": "Muy bien, pero este repo, esta carpeta que acabo de crear Está inicializada con git Entonces, ¿qué tengo que hacer? ¿Se entiende, no? Esto es lo que hicimos las clases pasadas Git ignore pone todas las",
+      "keywords": [
+        "carpeta",
+        "tengo",
+        "acabo",
+        "entiende",
+        "crear",
+        "clases",
+        "bien",
+        "hicimos",
+        "ignore",
+        "entonces",
+        "está",
+        "esto",
+        "pone",
+        "repo",
+        "pasadas",
+        "inicializada"
+      ]
+    },
+    {
+      "texto": "las habituales, digamos, las entorno virtual Esta es la de entorno virtual Esta es la de variables de entorno, que es otra cosa Si no se confundan esto con esto Esto después lo vamos a ver",
+      "keywords": [
+        "variables",
+        "virtual",
+        "entorno",
+        "cosa",
+        "vamos",
+        "esto",
+        "digamos",
+        "habituales",
+        "otra",
+        "después",
+        "confundan"
+      ]
+    },
+    {
+      "texto": "Lo que es básicamente es un archivo donde nosotros tenemos nuestras claves Entonces, este archivo nunca lo vamos a subir a git ignore Siempre va a estar en git ignore Entonces ya instalamos",
+      "keywords": [
+        "siempre",
+        "subir",
+        "nunca",
+        "tenemos",
+        "claves",
+        "estar",
+        "básicamente",
+        "vamos",
+        "ignore",
+        "nuestras",
+        "entonces",
+        "instalamos",
+        "nosotros",
+        "archivo"
+      ]
+    },
+    {
+      "texto": "Ya tenemos la app ¿Qué hacíamos? Fernando Ya tenemos todo ¿Cómo ejecutábamos para probar el local nuestra? En mi archivo, ¿Cómo lo ejecuto? Es muy bien No puedo poner acá Que ejecute a .py",
+      "keywords": [
+        "poner",
+        "puedo",
+        "fernando",
+        "tenemos",
+        "local",
+        "hacíamos",
+        "cómo",
+        "nuestra",
+        "ejecuto",
+        "bien",
+        "probar",
+        "ejecute",
+        "ejecutábamos",
+        "archivo"
+      ]
+    },
+    {
+      "texto": "Estando dentro de entorno virtual O puedo abrir acá el .py Y apretar este botoncito de RAM Si cuelte las dos maneras Ahora, cuando yo quería hacer Ahí tienen la pista Ella se la dice por la termina",
+      "keywords": [
+        "termina",
+        "estando",
+        "puedo",
+        "pista",
+        "dentro",
+        "quería",
+        "entorno",
+        "dice",
+        "maneras",
+        "cuelte",
+        "ella",
+        "abrir",
+        "virtual",
+        "ahora",
+        "apretar",
+        "botoncito"
+      ]
+    },
+    {
+      "texto": "¿Qué tengo que hacer si yo quiero un link para compartir? Un link en la web, no local Si lo local lo puedo ver solo yo Esto solamente vive en mi computadora",
+      "keywords": [
+        "quiero",
+        "computadora",
+        "tengo",
+        "puedo",
+        "solamente",
+        "local",
+        "esto",
+        "compartir",
+        "vive",
+        "link"
+      ]
+    },
+    {
+      "texto": "¿Qué tenía que cambiar ahí? Esta no le da en pelota que es una extensión Que no funciona mal Y ahí, una vez que exputé Quiero medir arriba En vez de darme una, me da las dos",
+      "keywords": [
+        "funciona",
+        "quiero",
+        "tenía",
+        "exputé",
+        "cambiar",
+        "arriba",
+        "extensión",
+        "darme",
+        "pelota",
+        "medir"
+      ]
+    },
+    {
+      "texto": "Me da la local Y me da la de hidradio Que el guarda esto en sus servidores Porque esto cambia un montón A veces yo dentro lo pruebo Y hice sesenta y dos horas",
+      "keywords": [
+        "guarda",
+        "servidores",
+        "cambia",
+        "montón",
+        "hidradio",
+        "sesenta",
+        "dentro",
+        "local",
+        "veces",
+        "horas",
+        "esto",
+        "hice",
+        "pruebo"
+      ]
+    },
+    {
+      "texto": "A veces hice veinticuatro, a veces hice cuarenta y ocho Así que ya lo tenemos en este Les voy a pasar el link Y ustedes lo van a probar Y me dicen si funciona",
+      "keywords": [
+        "funciona",
+        "cuarenta",
+        "ustedes",
+        "veinticuatro",
+        "tenemos",
+        "pasar",
+        "veces",
+        "dicen",
+        "hice",
+        "probar",
+        "ocho",
+        "link"
+      ]
+    },
+    {
+      "texto": "Te envíe que funcionaron Entonces estamos acá Puedo poner aquí Ahora lo quiero subir a Git Y me había quedado en una parte Después del Git init De esta forma Y después del add",
+      "keywords": [
+        "quiero",
+        "subir",
+        "poner",
+        "aquí",
+        "quedado",
+        "funcionaron",
+        "puedo",
+        "forma",
+        "init",
+        "envíe",
+        "entonces",
+        "había",
+        "parte",
+        "estamos",
+        "ahora",
+        "después"
+      ]
+    },
+    {
+      "texto": "Varios tienen el repo Ustedes tienen su local Yo voy a crear uno nuevo No le creo nada Y ya trae mi reposito de lo remoto ¿Qué hago ahora? ¿Cómo lo vinculo?",
+      "keywords": [
+        "ustedes",
+        "creo",
+        "hago",
+        "remoto",
+        "vinculo",
+        "crear",
+        "local",
+        "nada",
+        "cómo",
+        "ahora",
+        "varios",
+        "nuevo",
+        "repo",
+        "trae",
+        "reposito"
+      ]
+    },
+    {
+      "texto": "Y está vacío Si todos los que lo crearon hoy lo van a ver Acá les aparece el machete De lo que tienen que hacer Ya hicimos el Git Y esto qué era",
+      "keywords": [
+        "vacío",
+        "hicimos",
+        "crearon",
+        "está",
+        "esto",
+        "machete",
+        "aparece"
+      ]
+    },
+    {
+      "texto": "¿Cómo se llaman? Vamos a poner Lo estamos diciendo que renombre la rama 2 De yo estoy parado Entonces ya hicimos esto ¿Qué era este origen? Yo creo que no Y nos veis",
+      "keywords": [
+        "veis",
+        "origen",
+        "poner",
+        "llaman",
+        "creo",
+        "renombre",
+        "vamos",
+        "diciendo",
+        "cómo",
+        "estoy",
+        "hicimos",
+        "parado",
+        "entonces",
+        "rama",
+        "esto",
+        "estamos"
+      ]
+    },
+    {
+      "texto": "Si lo vinculó Ya lo vinculamos Hay nada todavía acá El repositorio remoto Que tiene de Arias Origins Si ustedes ven a mí me pareció como una alertense Que yo puedo poner",
+      "keywords": [
+        "vinculamos",
+        "ustedes",
+        "poner",
+        "todavía",
+        "puedo",
+        "remoto",
+        "arias",
+        "origins",
+        "nada",
+        "alertense",
+        "pareció",
+        "repositorio",
+        "vinculó"
+      ]
+    },
+    {
+      "texto": "Que esto sea Que Origins main sea lo predeterminado Ya vas a ver que es Origins main Es como que dejarlo registrado Que cuando yo ponga Git push Va a ser Origins main",
+      "keywords": [
+        "dejarlo",
+        "origins",
+        "main",
+        "ponga",
+        "registrado",
+        "esto",
+        "push",
+        "predeterminado"
+      ]
+    },
+    {
+      "texto": "No hace falta que lo ponga Así como lo puse yo ¿Está claro eso? Claro, pones Git push Que es origina Y acá la ramame Vos vas a estar parado en esa ramama",
+      "keywords": [
+        "claro",
+        "pones",
+        "estar",
+        "ramama",
+        "push",
+        "está",
+        "origina",
+        "falta",
+        "parado",
+        "ponga",
+        "ramame",
+        "puse"
+      ]
+    },
+    {
+      "texto": "Entonces, vamos a ver si se subió Genial, se subió Ya tenemos esto, sigamos Bueno, este es lo que acabamos de ver Podemos poner Gitremot rename GitHub por ejemplo No hay ningún problema",
+      "keywords": [
+        "subió",
+        "poner",
+        "problema",
+        "genial",
+        "rename",
+        "sigamos",
+        "tenemos",
+        "bueno",
+        "ningún",
+        "vamos",
+        "ejemplo",
+        "entonces",
+        "esto",
+        "podemos",
+        "gitremot",
+        "acabamos",
+        "github"
+      ]
+    },
+    {
+      "texto": "Lo estamos aclarando tanto Vamos a ver que vamos a necesitar Otro nombre también Aparte de acá Vamos a empezar a hablar de GitHub No es la única plataforma de repositorios que trabaja con Git",
+      "keywords": [
+        "nombre",
+        "aclarando",
+        "trabaja",
+        "aparte",
+        "tanto",
+        "hablar",
+        "vamos",
+        "única",
+        "plataforma",
+        "también",
+        "repositorios",
+        "necesitar",
+        "empezar",
+        "estamos",
+        "otro",
+        "github"
+      ]
+    },
+    {
+      "texto": "Puede ser que es la más popular Pero hay un montón Parecidas a GitHub Así que trabajan con Git Donde vos puedes hacer un repositorio remoto Y podés subir Si tenemos GitLab, Gitback",
+      "keywords": [
+        "subir",
+        "podés",
+        "montón",
+        "gitlab",
+        "remoto",
+        "tenemos",
+        "parecidas",
+        "puedes",
+        "repositorio",
+        "gitback",
+        "trabajan",
+        "github",
+        "popular"
+      ]
+    },
+    {
+      "texto": "Sí, hay un montón No pasemos todavía Voltaría ahí una aplicación cortita Una parte que se llama Disculpen si no se dice así Estos son todos parecidos entre sí Son plataformas que están en la nube",
+      "keywords": [
+        "disculpen",
+        "cortita",
+        "todavía",
+        "montón",
+        "parecidos",
+        "están",
+        "aplicación",
+        "pasemos",
+        "voltaría",
+        "llama",
+        "nube",
+        "plataformas",
+        "parte",
+        "dice"
+      ]
+    },
+    {
+      "texto": "Y la diferencia entre ellas Por ejemplo, una diferencia importante Que GitHub me permite Por ejemplo, una página web Pero yo tengo que hacer todo un trámite Tengo que entrar, crear Y solamente me permite",
+      "keywords": [
+        "permite",
+        "importante",
+        "diferencia",
+        "tengo",
+        "trámite",
+        "solamente",
+        "crear",
+        "ejemplo",
+        "página",
+        "ellas",
+        "entrar",
+        "github"
+      ]
+    },
+    {
+      "texto": "Lo que hace es deplosar No es como GitHub, tienes que crear como un espacio Parte, conectarlo si es más complicado A la página, lo vamos a ver Una parte es los modelos",
+      "keywords": [
+        "tienes",
+        "deplosar",
+        "espacio",
+        "crear",
+        "vamos",
+        "modelos",
+        "complicado",
+        "conectarlo",
+        "parte",
+        "página",
+        "github"
+      ]
+    },
+    {
+      "texto": "Vos podés subir modelos Eso lo vamos a tratar De hacer más adelante si es que se pueden O acceder a modelos de otras personas Que ya están entrenados No sé si conocen Kaggle o algunos de esos",
+      "keywords": [
+        "acceder",
+        "subir",
+        "adelante",
+        "podés",
+        "personas",
+        "están",
+        "vamos",
+        "conocen",
+        "otras",
+        "modelos",
+        "tratar",
+        "algunos",
+        "kaggle",
+        "entrenados"
+      ]
+    },
+    {
+      "texto": "Repositorios de DataSets Tiene una parte que se llama Que es como les decía parecido A lo que sería el servicio de GitHub Los aloja y deja explorarlos Y los Space los aloja y los ejecuta",
+      "keywords": [
+        "space",
+        "parecido",
+        "explorarlos",
+        "servicio",
+        "sería",
+        "llama",
+        "datasets",
+        "aloja",
+        "repositorios",
+        "decía",
+        "ejecuta",
+        "parte",
+        "deja",
+        "github"
+      ]
+    },
+    {
+      "texto": "Esto es importante que los ejecuta No todas las plataformas en la novela Bueno, entonces vamos a hacer esto Para que entren a Esta página de HackingFace Y si no tienen cuenta creen su cuenta",
+      "keywords": [
+        "entren",
+        "importante",
+        "bueno",
+        "novela",
+        "vamos",
+        "entonces",
+        "esto",
+        "plataformas",
+        "ejecuta",
+        "página",
+        "creen",
+        "hackingface",
+        "cuenta"
+      ]
+    },
+    {
+      "texto": "Van a entrar Y van a poner acá Voy a crear una Cuando creamos el usuario No estamos creando el Space Lo mismo que en GitHub cuando creamos nuestro usuario No estamos creando un repositorio",
+      "keywords": [
+        "mismo",
+        "space",
+        "poner",
+        "crear",
+        "creamos",
+        "usuario",
+        "nuestro",
+        "repositorio",
+        "estamos",
+        "entrar",
+        "github",
+        "creando"
+      ]
+    },
+    {
+      "texto": "Creen su usuario Y después vamos a crear el Space Están haciendo chicos Ya sé que no No tengo que esperar que lo haga Ha habido ahí. ¿Eric, como ya tenías? A mí también.",
+      "keywords": [
+        "space",
+        "tengo",
+        "tenías",
+        "haga",
+        "están",
+        "crear",
+        "vamos",
+        "usuario",
+        "chicos",
+        "habido",
+        "eric",
+        "también",
+        "creen",
+        "haciendo",
+        "esperar",
+        "después"
+      ]
+    },
+    {
+      "texto": "Profesor, yo de acuerdo termino. No, está de más. ¿Tú estás solo a Vida Ile? Entonces entramos a Joden Face. Ya lo registramos. Seguimos con el paso que sigue, así que es crear el space.",
+      "keywords": [
+        "space",
+        "vida",
+        "face",
+        "crear",
+        "joden",
+        "estás",
+        "registramos",
+        "termino",
+        "entonces",
+        "está",
+        "entramos",
+        "paso",
+        "sigue",
+        "acuerdo",
+        "seguimos",
+        "profesor"
+      ]
+    },
+    {
+      "texto": "Vamos a entrar acá a HighInface. Ahora se puede salir. Entro acá al iconito del usuario y pongo New Space. Y acá van a ver que es superparecido a Eggith Hub en algunas cosas.",
+      "keywords": [
+        "entro",
+        "algunas",
+        "space",
+        "salir",
+        "cosas",
+        "usuario",
+        "vamos",
+        "eggith",
+        "highinface",
+        "superparecido",
+        "iconito",
+        "pongo",
+        "ahora",
+        "entrar"
+      ]
+    },
+    {
+      "texto": "Voy a poner el nombre que usted quiera. Cualquier licencia importa. No te puedo asegurar. No te quiero mentir. Pero sí te pide que la pongas. El tema es que vos sepas qué es lo que es, cómo crees que se comparta tu información.",
+      "keywords": [
+        "comparta",
+        "quiera",
+        "quiero",
+        "sepas",
+        "crees",
+        "asegurar",
+        "información",
+        "cómo",
+        "licencia",
+        "pongas",
+        "puedo",
+        "nombre",
+        "poner",
+        "importa",
+        "cualquier",
+        "pide",
+        "tema",
+        "usted",
+        "mentir"
+      ]
+    },
+    {
+      "texto": "Porque te puedo poner licencia. No sé qué es, que esté pública no significa que todo el mundo la pueda copiar. Tenés que especificar que yo creo que Meet era de las más permisivas.",
+      "keywords": [
+        "pública",
+        "esté",
+        "poner",
+        "creo",
+        "puedo",
+        "pueda",
+        "copiar",
+        "meet",
+        "significa",
+        "especificar",
+        "mundo",
+        "tenés",
+        "permisivas",
+        "licencia"
+      ]
+    },
+    {
+      "texto": "Para estos casos se lijo cualquiera. Pero en el caso de ustedes, si ustedes crean una app, van a tener que averiguar qué licencia les conviene para lo que ustedes quieran. Si quieren que la otra persona la reproduzca o no.",
+      "keywords": [
+        "otra",
+        "reproduzca",
+        "ustedes",
+        "casos",
+        "licencia",
+        "conviene",
+        "quieran",
+        "quieren",
+        "persona",
+        "caso",
+        "lijo",
+        "tener",
+        "cualquiera",
+        "crean",
+        "averiguar"
+      ]
+    },
+    {
+      "texto": "Generalmente cuando se pone público pueden especificar que si lo replican o lo cambian, que sea con créditos. Que tengan que ponerse o sí el nombre de usted. Después de configurar esta parte van a la parte de Space SDK y van a elegir Gradio y Plan.",
+      "keywords": [
+        "nombre",
+        "space",
+        "tengan",
+        "gradio",
+        "configurar",
+        "créditos",
+        "generalmente",
+        "especificar",
+        "ponerse",
+        "público",
+        "usted",
+        "parte",
+        "replican",
+        "cambian",
+        "plan",
+        "pone",
+        "después",
+        "elegir"
+      ]
+    },
+    {
+      "texto": "A todos les digo que pago. Lo que pasa es que este último mes cambiaron todo. Y creo que las cuentas que ya estaban creadas antes del cambio les aparece una manera y las nuevas les aparece de otra.",
+      "keywords": [
+        "digo",
+        "nuevas",
+        "pasa",
+        "cambiaron",
+        "creo",
+        "antes",
+        "pago",
+        "cuentas",
+        "cambio",
+        "último",
+        "estaban",
+        "manera",
+        "creadas",
+        "aparece",
+        "otra"
+      ]
+    },
+    {
+      "texto": "Así que a los que tengan Gradio Lite les pido porfa que pongan Gradio Lite. Yo les voy a mostrar cómo lo hago con esta cuenta, pero después voy a tratar de, entonces, de...",
+      "keywords": [
+        "tengan",
+        "hago",
+        "pongan",
+        "gradio",
+        "lite",
+        "porfa",
+        "cómo",
+        "tratar",
+        "mostrar",
+        "entonces",
+        "pido",
+        "después",
+        "cuenta"
+      ]
+    },
+    {
+      "texto": "Cuando termine la clase, de probar con la cuenta. Sí, se puede. Entonces, si tenés el Gradio Lite, seleccioné entonces Static Gradio Lite. Yo como me aparece así, elijo Gradio y elijo Blank sin...",
+      "keywords": [
+        "clase",
+        "termine",
+        "seleccioné",
+        "gradio",
+        "lite",
+        "entonces",
+        "static",
+        "blank",
+        "probar",
+        "tenés",
+        "elijo",
+        "aparece",
+        "cuenta"
+      ]
+    },
+    {
+      "texto": "sin template, porque yo le voy a subir el code. Bueno, chicos, entonces, los que crearon la cuenta recién me van a disculpar si les aparece diferente. Eso es la clase que viene, lo voy a probar con una cuenta nueva, a ver cómo me aparece y si hay que hacer algún cambio con respecto a la explicación, ¿sí?",
+      "keywords": [
+        "subir",
+        "clase",
+        "explicación",
+        "probar",
+        "aparece",
+        "cuenta",
+        "chicos",
+        "cómo",
+        "entonces",
+        "respecto",
+        "viene",
+        "diferente",
+        "algún",
+        "nueva",
+        "cambio",
+        "recién",
+        "code",
+        "disculpar",
+        "bueno",
+        "crearon",
+        "template"
+      ]
+    },
+    {
+      "texto": "La básica, o sea, lo básico es lo mismo, pero bueno, para que les quede el paso a paso y lo puedan replicar, ¿sí? Bien, bueno, sigo entonces. Estamos en el HaginFace, sí.",
+      "keywords": [
+        "mismo",
+        "básico",
+        "sigo",
+        "básica",
+        "bueno",
+        "replicar",
+        "bien",
+        "quede",
+        "entonces",
+        "paso",
+        "puedan",
+        "haginface",
+        "estamos"
+      ]
+    },
+    {
+      "texto": "Acá, en estas opciones, no sé cómo les aparece, pero a mí me aparece 0 GPU Free, que es la única opción que yo puedo elegir desde mi plan gratuito, ¿sí? Estas me aparecen desactivadas.",
+      "keywords": [
+        "aparecen",
+        "puedo",
+        "opción",
+        "cómo",
+        "desactivadas",
+        "opciones",
+        "gratuito",
+        "única",
+        "plan",
+        "aparece",
+        "free",
+        "elegir"
+      ]
+    },
+    {
+      "texto": "Y Create Space. Mira, el error más común, acá cuando querés, va a que te aparece desactivado el Create. Es que ya tengas varios repositorios creados. Todos pudieron crear el Space. No sé si me está creando el Space.",
+      "keywords": [
+        "error",
+        "space",
+        "creados",
+        "tengas",
+        "crear",
+        "desactivado",
+        "repositorios",
+        "mira",
+        "común",
+        "create",
+        "querés",
+        "varios",
+        "pudieron",
+        "está",
+        "aparece",
+        "creando"
+      ]
+    },
+    {
+      "texto": "Bueno, quizás está funcionando mal ahora. Pero vamos a seguir con la explicación y la vamos a... Yo les voy a mostrar cómo lo hago con las condiciones que tengo yo acá.",
+      "keywords": [
+        "quizás",
+        "tengo",
+        "hago",
+        "funcionando",
+        "bueno",
+        "seguir",
+        "explicación",
+        "vamos",
+        "cómo",
+        "condiciones",
+        "mostrar",
+        "está",
+        "ahora"
+      ]
+    },
+    {
+      "texto": "Pero la semana que viene lo vamos a hacer con las condiciones de una cuenta nueva, ¿sí? A ver si me creo el espacio o no. Este tiene que tirar directamente al repositorio.",
+      "keywords": [
+        "creo",
+        "nueva",
+        "vamos",
+        "espacio",
+        "condiciones",
+        "tirar",
+        "directamente",
+        "semana",
+        "repositorio",
+        "viene",
+        "cuenta"
+      ]
+    },
+    {
+      "texto": "Mira, para que lo pueda. Ya está creado. Continúo chicos, les muestro cómo lo hago yo con estas opciones y después lo vemos de nuevo, ¿sí? Con las opciones de ustedes de cuenta nueva.",
+      "keywords": [
+        "creado",
+        "muestro",
+        "ustedes",
+        "vemos",
+        "hago",
+        "continúo",
+        "pueda",
+        "chicos",
+        "nueva",
+        "cómo",
+        "opciones",
+        "mira",
+        "está",
+        "nuevo",
+        "después",
+        "cuenta"
+      ]
+    },
+    {
+      "texto": "Yo acá en HighinFace, ¿sí? También tiene acá un código de prueba como el que nosotros creamos parecido, así sencillito. Para que ustedes creen su App de Gradio. ¿Cómo hacer el comity push?",
+      "keywords": [
+        "prueba",
+        "parecido",
+        "ustedes",
+        "sencillito",
+        "gradio",
+        "creamos",
+        "comity",
+        "cómo",
+        "highinface",
+        "también",
+        "push",
+        "creen",
+        "nosotros",
+        "código"
+      ]
+    },
+    {
+      "texto": "Y si ustedes van acá los tres puntitos files, ahí les aparecen los archivos. Sí, acá está casi una copia. Pero ¿qué diferencia importante tiene? Nosotros a GitHub, ya que tenemos la opción de crear el ritm o no, de crear el gitting orororor.",
+      "keywords": [
+        "github",
+        "files",
+        "importante",
+        "puntitos",
+        "ustedes",
+        "aparecen",
+        "tres",
+        "está",
+        "nosotros",
+        "orororor",
+        "copia",
+        "diferencia",
+        "gitting",
+        "tenemos",
+        "crear",
+        "casi",
+        "opción",
+        "archivos",
+        "ritm"
+      ]
+    },
+    {
+      "texto": "Y si ponemos desactivamos todo, nos aparece un repositorio totalmente vacío, donde nosotros vamos a hacer un push y vamos a poner nuestros primeros archivos. En HighinFace, cuando nosotros creamos nuestros repositorios, automáticamente nos crea el ritm.",
+      "keywords": [
+        "ponemos",
+        "aparece",
+        "vacío",
+        "primeros",
+        "highinface",
+        "push",
+        "totalmente",
+        "nuestros",
+        "automáticamente",
+        "crea",
+        "desactivamos",
+        "vamos",
+        "repositorios",
+        "nosotros",
+        "repositorio",
+        "poner",
+        "creamos",
+        "archivos",
+        "ritm"
+      ]
+    },
+    {
+      "texto": "Sí, y hace el comity. Cuando nosotros entramos al ritm, de acá de HighinFace, vamos a verlo. Vamos a ver estos datos. ¿Qué son estos datos? Solamente nosotros contamos en GitHub si queremos subir algo y hacemos un ritm y le ponemos texto.",
+      "keywords": [
+        "algo",
+        "subir",
+        "solamente",
+        "verlo",
+        "vamos",
+        "comity",
+        "ponemos",
+        "highinface",
+        "queremos",
+        "entramos",
+        "contamos",
+        "hacemos",
+        "texto",
+        "nosotros",
+        "datos",
+        "ritm",
+        "github"
+      ]
+    },
+    {
+      "texto": "que le pongamos datos de configuración en el ritm. Van a tener que crear un ritm si o si que tenga esos datos de configuración. Bueno, cuando creamos el repositorio ya vienen estos por defecto, pero los podemos cambiar.",
+      "keywords": [
+        "defecto",
+        "vienen",
+        "bueno",
+        "crear",
+        "creamos",
+        "cambiar",
+        "tenga",
+        "pongamos",
+        "configuración",
+        "podemos",
+        "tener",
+        "repositorio",
+        "datos",
+        "ritm"
+      ]
+    },
+    {
+      "texto": "Estos tienen que estar en este formato específico, si tienen que tener el espacio, lo que es así con punto, por ejemplo, en esta línea tiene que estar entre comillas. tendríamos que tener en cuenta que tiene unas condiciones mínimas del ritm que tiene que tener.",
+      "keywords": [
+        "mínimas",
+        "estar",
+        "espacio",
+        "línea",
+        "condiciones",
+        "ejemplo",
+        "comillas",
+        "específico",
+        "tener",
+        "punto",
+        "tendríamos",
+        "ritm",
+        "formato",
+        "cuenta"
+      ]
+    },
+    {
+      "texto": "Si nosotros subimos un ritm vacío, un ritm y contexto, que no tiene estas opciones, les derro. Así que es importante esto. Y acá les dice qué tipo de datos tiene que ser cada una de las opciones,",
+      "keywords": [
+        "vacío",
+        "derro",
+        "importante",
+        "tipo",
+        "opciones",
+        "esto",
+        "cada",
+        "nosotros",
+        "subimos",
+        "datos",
+        "ritm",
+        "contexto",
+        "dice"
+      ]
+    },
+    {
+      "texto": "cuáles son las opciones que vienen por, que son obligatorias. Entonces tenemos un ritm con un montón de opciones. Se lo quiero escribir por el... No sé si alguno conoce el formato ya...",
+      "keywords": [
+        "quiero",
+        "alguno",
+        "montón",
+        "vienen",
+        "tenemos",
+        "cuáles",
+        "escribir",
+        "conoce",
+        "opciones",
+        "entonces",
+        "ritm",
+        "obligatorias",
+        "formato"
+      ]
+    },
+    {
+      "texto": "Lo escribí por el instante. El formato ya no es el formato. O sea, es la misma idea, pero más simple. O sea, el Jam no tiene llaves, no tiene evidentación, no tiene posármatas.",
+      "keywords": [
+        "instante",
+        "idea",
+        "misma",
+        "escribí",
+        "evidentación",
+        "simple",
+        "llaves",
+        "posármatas",
+        "formato"
+      ]
+    },
+    {
+      "texto": "Lo que no se ve acá es que este texto me empieza con tres guiones y termina con tres guiones. Entonces, HighinFace ya sabe que el texto que está entre tres guiones y tres guiones es texto en formato Jam, ya ML.",
+      "keywords": [
+        "termina",
+        "guiones",
+        "tres",
+        "highinface",
+        "entonces",
+        "texto",
+        "está",
+        "sabe",
+        "empieza",
+        "formato"
+      ]
+    },
+    {
+      "texto": "Vamos a seguir en orden porque si no... Me pregunta el SDK que va a ser Gradium, entre las opciones. Este es el Rhythm. Si así se ve el Rhythm, si nosotros lo viéramos, plan.",
+      "keywords": [
+        "gradium",
+        "seguir",
+        "vamos",
+        "rhythm",
+        "opciones",
+        "pregunta",
+        "orden",
+        "viéramos",
+        "nosotros",
+        "plan"
+      ]
+    },
+    {
+      "texto": "Si nosotros lo creamos. Tiene que empezar con tres guiones, terminar con tres guiones y tener todas estas opciones completas. Si alguna falta o alguna está mal escrita, no funciona el programa.",
+      "keywords": [
+        "funciona",
+        "completas",
+        "alguna",
+        "guiones",
+        "escrita",
+        "creamos",
+        "tres",
+        "opciones",
+        "está",
+        "programa",
+        "tener",
+        "empezar",
+        "falta",
+        "terminar",
+        "nosotros"
+      ]
+    },
+    {
+      "texto": "Si antes había más opciones, lo que estaba también stringlit, pero bueno, Docker. Pero ahora es de pago. Mi visual studio. Mi Repositorio local. Bueno, yo puedo conectar este Repositorio local con otro Repositorio Remoto que no sea este.",
+      "keywords": [
+        "estaba",
+        "antes",
+        "studio",
+        "pago",
+        "bueno",
+        "puedo",
+        "remoto",
+        "local",
+        "opciones",
+        "también",
+        "había",
+        "stringlit",
+        "conectar",
+        "visual",
+        "otro",
+        "repositorio",
+        "ahora",
+        "docker"
+      ]
+    },
+    {
+      "texto": "¿Qué opinan ustedes? O sea, puedo tener dos conexiones a la vez, una la tengo que borrar y la tengo que conectar a la otra. ¿Y cómo le digo cuando hago el Git push que lo quiero subir a uno y a otro?",
+      "keywords": [
+        "opinan",
+        "digo",
+        "tengo",
+        "ustedes",
+        "conexiones",
+        "quiero",
+        "hago",
+        "puedo",
+        "subir",
+        "cómo",
+        "conectar",
+        "push",
+        "otro",
+        "tener",
+        "borrar",
+        "otra"
+      ]
+    },
+    {
+      "texto": "Fíjense cómo hicimos hace rato en Git. Git push origin main. ¿Cómo tendría que hacer el push? Vamos a hacer. Tengo dos vinculados. El origen es el alias del Repositorio remoto, de un Repositorio remoto.",
+      "keywords": [
+        "tendría",
+        "tengo",
+        "origen",
+        "remoto",
+        "rato",
+        "main",
+        "vamos",
+        "alias",
+        "hicimos",
+        "cómo",
+        "push",
+        "vinculados",
+        "repositorio",
+        "origin",
+        "fíjense"
+      ]
+    },
+    {
+      "texto": "Pero yo puedo tener otro Repositorio remoto con otro alias. Nosotros tenemos ahora este Repositorio de Hagen-Face. Y tenemos nuestro Repositorio local que está conectado con Git. Queremos que también esté conectado con nuestro Repositorio nuevo de Hagen-Face.",
+      "keywords": [
+        "esté",
+        "remoto",
+        "alias",
+        "también",
+        "conectado",
+        "tener",
+        "hagen",
+        "puedo",
+        "face",
+        "queremos",
+        "está",
+        "nuevo",
+        "nosotros",
+        "repositorio",
+        "ahora",
+        "otro",
+        "tenemos",
+        "local",
+        "nuestro"
+      ]
+    },
+    {
+      "texto": "La puse al revés. Por ejemplo, Hagen, yo le pongo HF. Acá lo que vas a hacer es... ahí está. No sé, sigimos que Origin es un alias, es un nombre. No significa GitHub, no significa Hagen-Face.",
+      "keywords": [
+        "hagen",
+        "nombre",
+        "face",
+        "significa",
+        "alias",
+        "ejemplo",
+        "github",
+        "está",
+        "revés",
+        "pongo",
+        "sigimos",
+        "origin",
+        "puse"
+      ]
+    },
+    {
+      "texto": "Es el alias que en este caso le pusimos al Git Hagen. Entonces ponemos Git, Remote, HF, mi caso le puse al alias y le voy a poner la dirección por ahí.",
+      "keywords": [
+        "hagen",
+        "poner",
+        "alias",
+        "ponemos",
+        "dirección",
+        "pusimos",
+        "entonces",
+        "remote",
+        "caso",
+        "puse"
+      ]
+    },
+    {
+      "texto": "No, no está. me tienen que aparecer las conexiones, ¿no? Me aparece tanto el Hagen-Face como el Origin que es el Git. El HF que es el Hagen-Face, el Origin que es el Git.",
+      "keywords": [
+        "hagen",
+        "conexiones",
+        "tanto",
+        "face",
+        "está",
+        "aparecer",
+        "aparece",
+        "origin"
+      ]
+    },
+    {
+      "texto": "Por ahí ustedes le ponen un alias y después no se acuerdan. Le puse Hagen-Face o le puse HF o le puse HF. Lo hacen así, se acuerdan. Mandar repositorio remoto. ¿Y qué pasó?",
+      "keywords": [
+        "hagen",
+        "ustedes",
+        "mandar",
+        "ponen",
+        "pasó",
+        "remoto",
+        "face",
+        "acuerdan",
+        "alias",
+        "puse",
+        "repositorio",
+        "hacen",
+        "después"
+      ]
+    },
+    {
+      "texto": "¿Se acuerdan de que está error? No me dejó, ¿por qué? Vamos a ver el reposito. El ritmo está creado acá en una historia y en el local yo tengo otro ritmo.",
+      "keywords": [
+        "error",
+        "creado",
+        "tengo",
+        "ritmo",
+        "historia",
+        "dejó",
+        "vamos",
+        "acuerdan",
+        "local",
+        "está",
+        "otro",
+        "reposito"
+      ]
+    },
+    {
+      "texto": "¿Sabe que es otro ritmo? Porque el comit no es el mismo, el código no es el mismo. Entonces, ¿qué hacía yo para solucionar esto, por ejemplo? Ya hemos hecho. ¿Qué pasa con este que te va?",
+      "keywords": [
+        "mismo",
+        "solucionar",
+        "pasa",
+        "hemos",
+        "ritmo",
+        "comit",
+        "hacía",
+        "ejemplo",
+        "entonces",
+        "esto",
+        "hecho",
+        "código",
+        "sabe",
+        "otro"
+      ]
+    },
+    {
+      "texto": "¿Y qué dijimos que pasaba si no está este texto? ¿Nosotros pusimos este texto en local? ¿En el ritmo local? ¿Y qué pasa si no estás? Vamos a ir al visual. Vamos a decirle que me crea un pigny con estos datos.",
+      "keywords": [
+        "dijimos",
+        "pasaba",
+        "pasa",
+        "crea",
+        "ritmo",
+        "local",
+        "vamos",
+        "pusimos",
+        "decirle",
+        "texto",
+        "está",
+        "visual",
+        "nosotros",
+        "pigny",
+        "datos",
+        "estás"
+      ]
+    },
+    {
+      "texto": "Un pigny con la compilación. Yo nunca le dije si era en GIF, en Hineface, pero bueno se dio cuenta que era en Hineface. Ahí me creó el Rhythmic, con los datos del",
+      "keywords": [
+        "compilación",
+        "nunca",
+        "rhythmic",
+        "bueno",
+        "dije",
+        "creó",
+        "pigny",
+        "hineface",
+        "datos",
+        "cuenta"
+      ]
+    },
+    {
+      "texto": "remoto, porque ya le pasé, hice un CopyPace y le dije Copied esto. Y ahora vamos a ver si lo solucionó. Le pedí que haga el Push y el Push tenía que dar error.",
+      "keywords": [
+        "error",
+        "tenía",
+        "remoto",
+        "haga",
+        "dije",
+        "vamos",
+        "solucionó",
+        "push",
+        "esto",
+        "hice",
+        "copypace",
+        "pedí",
+        "pasé",
+        "ahora",
+        "copied"
+      ]
+    },
+    {
+      "texto": "de ese error lo que le dije es que trata de solucionar el conflicto. Debemos saber qué Ya que termine. Recuerda dónde esto chicos, esto lo vimos. Si se queda con uno,",
+      "keywords": [
+        "error",
+        "solucionar",
+        "termine",
+        "vimos",
+        "trata",
+        "chicos",
+        "dije",
+        "queda",
+        "debemos",
+        "recuerda",
+        "esto",
+        "dónde",
+        "conflicto",
+        "saber"
+      ]
+    },
+    {
+      "texto": "se queda con otro, pone uno arriba y el otro abajo, uno abajo y el otro arriba. tomó una decisión, lo resolvió, cerró el Merge, hizo el Comi y ahora va a tratar de",
+      "keywords": [
+        "tomó",
+        "comi",
+        "queda",
+        "arriba",
+        "hizo",
+        "resolvió",
+        "cerró",
+        "decisión",
+        "tratar",
+        "pone",
+        "merge",
+        "ahora",
+        "abajo",
+        "otro"
+      ]
+    },
+    {
+      "texto": "hacer el Push de nuevo. Y se Push correctamente Hineface. Ahora vamos a ver una cosita. ya estamos sobre la hora, lo vamos a hacer rapidito, después lo vamos a retomar. quería mostrar algo.",
+      "keywords": [
+        "algo",
+        "cosita",
+        "rapidito",
+        "quería",
+        "correctamente",
+        "vamos",
+        "hora",
+        "push",
+        "retomar",
+        "mostrar",
+        "nuevo",
+        "hineface",
+        "estamos",
+        "ahora",
+        "después"
+      ]
+    },
+    {
+      "texto": "Lea porfa, después el Tique de Salida y la actividad, y si no la pueden hacer porque no pudieron hacer la cuenta de Hineface Space, no la gane. ya les voy a preparar un videito que voy a subir al Aula Virtual con el caso de una",
+      "keywords": [
+        "space",
+        "videito",
+        "gane",
+        "actividad",
+        "subir",
+        "aula",
+        "salida",
+        "porfa",
+        "pudieron",
+        "preparar",
+        "caso",
+        "hineface",
+        "virtual",
+        "tique",
+        "después",
+        "cuenta"
+      ]
+    },
+    {
+      "texto": "Esto igual les va a hacer. Estamos acá en Hineface, hicimos el Push, vamos a ver los archivos. Y acá me da un error. Este era uno de los errores programados que teníamos, porque con el nuevo cambio de Hineface,",
+      "keywords": [
+        "error",
+        "programados",
+        "teníamos",
+        "vamos",
+        "hicimos",
+        "cambio",
+        "errores",
+        "push",
+        "esto",
+        "nuevo",
+        "hineface",
+        "archivos",
+        "estamos",
+        "igual"
+      ]
+    },
+    {
+      "texto": "ustedes cuando vean videos de internet, si porque esto es reciente, debe tener un mes el Cuando ustedes encuentren algún tutorial de cómo hacer esto mismo que estamos haciendo acá en la clase, van a ver que lo va a hacer así.",
+      "keywords": [
+        "mismo",
+        "internet",
+        "ustedes",
+        "videos",
+        "algún",
+        "clase",
+        "reciente",
+        "debe",
+        "tutorial",
+        "cómo",
+        "esto",
+        "vean",
+        "tener",
+        "haciendo",
+        "estamos",
+        "encuentren"
+      ]
+    },
+    {
+      "texto": "Esto no va. agregarle nada y esto les va a dar error. ¿Por qué? Porque ahora lo que te pide el código de importe una librería que se llama Spaces y agregue esto que es un decorador.",
+      "keywords": [
+        "error",
+        "decorador",
+        "pide",
+        "agregue",
+        "librería",
+        "nada",
+        "llama",
+        "agregarle",
+        "esto",
+        "spaces",
+        "importe",
+        "código",
+        "ahora"
+      ]
+    },
+    {
+      "texto": "Esto es lo que me va a configurar la máquina virtual de Hineface vieron nunca esto de la roba, esto se llama decorador y significa que estoy llamando a una función para que envuelva a la que sigue.",
+      "keywords": [
+        "vieron",
+        "decorador",
+        "nunca",
+        "llamando",
+        "envuelva",
+        "configurar",
+        "significa",
+        "llama",
+        "máquina",
+        "estoy",
+        "esto",
+        "roba",
+        "sigue",
+        "hineface",
+        "virtual",
+        "función"
+      ]
+    },
+    {
+      "texto": "Siempre se pone arriba de una función, si esto significa que esta función está envuelviendo esto. Entonces, el cambio que tendrían que hacer que en local le funciona pero en Hineface no, son estas dos líneas import Spaces y poner el decorador.",
+      "keywords": [
+        "siempre",
+        "tendrían",
+        "líneas",
+        "esto",
+        "pone",
+        "función",
+        "entonces",
+        "spaces",
+        "funciona",
+        "decorador",
+        "arriba",
+        "significa",
+        "cambio",
+        "envuelviendo",
+        "está",
+        "poner",
+        "local",
+        "hineface",
+        "import"
+      ]
+    },
+    {
+      "texto": "También tienen que tener en cuenta que si acá pone en chart true, tampoco le funciona. Como actualizamos ahora que hicimos cambio? ¿Vos crees que yo entre al repositorio y cambio directamente el texto ahí adentro?",
+      "keywords": [
+        "funciona",
+        "adentro",
+        "crees",
+        "actualizamos",
+        "true",
+        "chart",
+        "hicimos",
+        "cambio",
+        "también",
+        "directamente",
+        "texto",
+        "tener",
+        "pone",
+        "repositorio",
+        "ahora",
+        "tampoco",
+        "cuenta"
+      ]
+    },
+    {
+      "texto": "Y podés hacer una automatización que permita que vos subas solamente al GitHub y el GitHub lo mande al Hacking Face. Bueno, entonces hicimos unos cambios, ¿sí? Ahora agregamos estos dos y ahora vamos a hacer GitHub y LibCommit para que se hagan los cambios.",
+      "keywords": [
+        "subas",
+        "podés",
+        "cambios",
+        "solamente",
+        "hacking",
+        "face",
+        "bueno",
+        "vamos",
+        "libcommit",
+        "hicimos",
+        "entonces",
+        "agregamos",
+        "automatización",
+        "mande",
+        "ahora",
+        "hagan",
+        "github",
+        "permita"
+      ]
+    },
+    {
+      "texto": "Vamos a pedirle que se el push manda al repositorio remoto de Hacking Face, no origin, no Hacking Face, la ramame. Así que acá tendríamos que ver ahora que apenas si se el push se ejecuta nuevamente, ¿sí?",
+      "keywords": [
+        "tendríamos",
+        "remoto",
+        "face",
+        "apenas",
+        "pedirle",
+        "manda",
+        "vamos",
+        "nuevamente",
+        "push",
+        "ejecuta",
+        "repositorio",
+        "ahora",
+        "origin",
+        "ramame",
+        "hacking"
+      ]
+    },
+    {
+      "texto": "Cada vez que yo hago un cambio se vuelve a reiniciar. No hace falta que yo toque nadie, ¿sí? Y como que yo hiciera un push a GitHub y GitHub me mostraron la página.",
+      "keywords": [
+        "vuelve",
+        "nadie",
+        "hago",
+        "mostraron",
+        "cambio",
+        "hiciera",
+        "push",
+        "cada",
+        "reiniciar",
+        "falta",
+        "página",
+        "toque",
+        "github"
+      ]
+    },
+    {
+      "texto": "Bien, y ahí está. Les paso el link para que ustedes puedan ver que está subido a la nube y que lo puede ver cualquiera. La tarea básicamente era esa, que ustedes pueden hacer todo este proceso que hicimos hoy.",
+      "keywords": [
+        "ustedes",
+        "proceso",
+        "básicamente",
+        "bien",
+        "hicimos",
+        "tarea",
+        "está",
+        "paso",
+        "puedan",
+        "subido",
+        "cualquiera",
+        "nube",
+        "link"
+      ]
+    },
+    {
+      "texto": "De subirlo a GitHub, si crear los archivitos, y después subirlos, conectarlo con Hacking Face, subirlo y tratar de no tener ninguno de los errores comunes, saber cómo solucionarlos y hacer su depleto.",
+      "keywords": [
+        "depleto",
+        "subirlos",
+        "ninguno",
+        "comunes",
+        "face",
+        "crear",
+        "solucionarlos",
+        "archivitos",
+        "cómo",
+        "subirlo",
+        "tratar",
+        "github",
+        "errores",
+        "conectarlo",
+        "tener",
+        "saber",
+        "después",
+        "hacking"
+      ]
+    },
+    {
+      "texto": "Después, bueno, esto obviamente lo vamos a hacer más. Vamos a poner onda. Esto es solamente para que sepan cómo se sube el code. Si traten de fijarse si con ayuda de la documentación lo pueden hacer,",
+      "keywords": [
+        "traten",
+        "poner",
+        "sepan",
+        "onda",
+        "solamente",
+        "bueno",
+        "fijarse",
+        "documentación",
+        "vamos",
+        "cómo",
+        "ayuda",
+        "sube",
+        "esto",
+        "obviamente",
+        "después",
+        "code"
+      ]
+    },
+    {
+      "texto": "y si no lo pueden hacer, de todas maneras yo el lunes les voy a estar subiendo al aula virtual, un videíto, mostrándoles cómo se hace con la cuenta nueva, si es que todavía se puede hacer.",
+      "keywords": [
+        "aula",
+        "todavía",
+        "estar",
+        "nueva",
+        "cómo",
+        "videíto",
+        "maneras",
+        "virtual",
+        "subiendo",
+        "lunes",
+        "mostrándoles",
+        "cuenta"
+      ]
+    },
+    {
+      "texto": "Y bueno, esto es lo último que vamos a ver un poco, es que si ustedes vieron la documentación de gradio, esta página tiene un montón de bloques que ustedes pueden configurar.",
+      "keywords": [
+        "ustedes",
+        "montón",
+        "bueno",
+        "poco",
+        "documentación",
+        "vamos",
+        "gradio",
+        "bloques",
+        "configurar",
+        "último",
+        "esto",
+        "página",
+        "vieron"
+      ]
+    },
+    {
+      "texto": "Todo esto es configurable, los colores, los tamaños, los botones, los textos, todo es configurable y hay una forma más fácil de configurar que se llama Bloques. Que eso me gustaría que lo exploren y también esto a algo más lindo.",
+      "keywords": [
+        "algo",
+        "tamaños",
+        "forma",
+        "fácil",
+        "lindo",
+        "configurable",
+        "colores",
+        "configurar",
+        "textos",
+        "llama",
+        "bloques",
+        "exploren",
+        "gustaría",
+        "esto",
+        "también",
+        "botones"
+      ]
+    },
+    {
+      "texto": "Así que dejamos acá que ya es retarde. Les dejo todo el material en el aula virtual y me comprometo a lo del lunes.",
+      "keywords": [
+        "aula",
+        "dejo",
+        "material",
+        "comprometo",
+        "dejamos",
+        "lunes",
+        "virtual",
+        "retarde"
+      ]
+    }
+  ]
+}
