@@ -16,6 +16,45 @@ No hace falta seguir siempre todos los pasos en orden: **podés entrar directame
 | **4. 🎬 Subtítulos y Video (Drive)** | Salvar videos grabados sin audio y subtitular | • Ideal para el caso *"grabé un video en Drive, se transcribió bien pero no salió el audio"*.<br>• Convertís la transcripción (con el nombre de cada hablante) en subtítulos **`.SRT`** o **`.VTT`**.<br>• Previsualizás el video local con los subtítulos superpuestos en vivo, sincronizás el desfase de segundos con una frase de referencia, recortás el video por minuto:segundo o unís los subtítulos en un nuevo `.MP4`. |
 | **5. 🧠 Mi Estilo (ML) y Guiones** | Entrenar un modelo con tu forma de hablar y adaptar guiones | • **Entrenar Modelo ML**: analiza tus transcripciones reales y aprende tus muletillas, conectores (*"vamos a ver"*, *"o sea"*, *"fíjense que"*, *"por ejemplo"*, *"acá"*), ritmo de frase y vocabulario.<br>• **Convertir Guión a Mi Estilo**: le pegás cualquier guión formal o texto neutro y lo reescribe exactamente con tu forma natural de expresarte, mostrando qué fragmentos reales tuyos tomó de referencia (RAG). |
 
+
+
+### 📊 Diagrama de Flujo del Workflow (De arriba hacia abajo)
+
+```mermaid
+flowchart TD
+    IN(["📥 PUNTO DE PARTIDA<br/>¿Qué archivo tenés hoy?"]) --> P1
+
+    subgraph S1 ["PASO 1 · Video / Audio y Recorte por Tiempo"]
+        P1["🎵 Paso 1: Cargar Video o Audio<br/>• Extrae el audio a .MP3<br/>• O recorta el Video (.MP4) / Audio (.MP3) diciendo el minuto y segundo (Desde → Hasta)"]
+    end
+
+    P1 --> P2A & P2B
+
+    subgraph S2 ["PASO 2 · Obtener la Transcripción"]
+        P2A["🗣️ Opción A: Transcribir MP3 acá (Whisper IA)<br/>Transcribe en tu PC y separa las voces de los hablantes"]
+        P2B["📄 Opción B: Subir Transcripción ya hecha<br/>Detecta sola si es de Tactiq, YouTube, Whisper o SRT"]
+    end
+
+    P2A & P2B --> P3
+
+    subgraph S3 ["PASO 3 · Hablantes por Grupo, Recorte y Mi Voz"]
+        P3["👥 Paso 3: Etiquetar Hablantes y Procesar Voz<br/>• Grupos de Hablantes + Listado de nombres desde Excel (.xlsx)<br/>• Auto-Matcheo Inicial: detecta 'mi nombre es...' en el audio o sincroniza con Tactiq<br/>• Silenciar/excluir hablantes y marcar '⭐ Esta es mi voz'<br/>• Recortar Voz y Transcripción por minuto:segundo (mm:ss) o por frase"]
+    end
+
+    P3 --> OUT_VOZ["🎙️ Salida de Voz / Audio y Texto<br/>• Tu voz limpia aislada (.MP3 / .WAV / Dataset .ZIP)<br/>• Audio con hablantes silenciados<br/>• Transcripción recortada (.TXT / .SRT)"]
+    P3 --> P4
+    P3 --> P5
+
+    subgraph S4 ["PASO 4 · Subtítulos y Videos sin Audio (Drive)"]
+        P4["🎬 Paso 4: Subtítulos y Sincronización con Video<br/>• Convierte la transcripción etiquetada a .SRT / .VTT<br/>• Sincroniza el desfase de segundos con el video sin audio<br/>• Recorta el video por minuto:segundo o le une los subtítulos en un nuevo .MP4"]
+    end
+
+    subgraph S5 ["PESTAÑA 5 · Modelo ML de Mi Estilo y Guiones"]
+        P5["🧠 Pestaña 5: Entrenar Mi Estilo (ML) y Convertir Guiones<br/>• Entrena un modelo con tus transcripciones (aprende tus muletillas, conectores y ritmo)<br/>• Recibe cualquier guión neutro y lo reescribe con tu forma real de hablar"]
+        P5 -. "Deseable a futuro (Roadmap)" .-> FUT(["🔊 Próxima etapa: Clonar mi voz y convertir el guión en mi estilo directamente a audio con mi voz"])
+    end
+```
+
 ---
 
 ## 🔄 Sincronizador Automático con GitHub (Uso en varias PCs)

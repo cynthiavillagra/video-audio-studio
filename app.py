@@ -3130,6 +3130,79 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       Entrená un modelo ML con tus transcripciones para que aprenda tus muletillas y forma de explicar, enviale cualquier <strong>guión</strong> y lo reescribe a <strong>tu estilo</strong>.
     </div>
   </div>
+  <!-- DIAGRAMA DE FLUJO VERTICAL (DE ARRIBA HACIA ABAJO) -->
+  <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #93c5fd">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <strong style="font-size:0.9rem;color:#1e3a8a">📊 Diagrama de Flujo del Trabajo (De arriba hacia abajo — hacé clic en cualquier bloque para ir directo):</strong>
+      <button type="button" class="btn-outline btn-xs" onclick="const el=document.getElementById('wf-diagrama-box'); el.style.display = el.style.display==='none' ? 'flex' : 'none';">
+        ↕ Mostrar / Ocultar diagrama de flujo
+      </button>
+    </div>
+
+    <div id="wf-diagrama-box" style="display:flex;flex-direction:column;align-items:center;gap:4px;max-width:860px;margin:0 auto;font-size:0.81rem">
+      <!-- NODO 1: PASO 1 -->
+      <div onclick="irAPaso(1)" style="width:100%;max-width:680px;background:#fff;border:2px solid #3b82f6;border-radius:10px;padding:10px 14px;cursor:pointer;box-shadow:0 2px 5px rgba(37,99,235,0.08);text-align:center">
+        <div style="font-weight:800;color:#1d4ed8;font-size:0.88rem">📥 PASO 1 · Cargar Video o Audio · Extraer MP3 o Recortar por Minuto y Segundo (mm:ss)</div>
+        <div style="color:#475569;margin-top:2px">Subís un video o audio → Extrae el <code>.MP3</code> o recorta el <strong>Video (<code>.MP4</code>) / Audio (<code>.MP3</code>)</strong> diciendo <em>Desde (min:seg)</em> y <em>Hasta (min:seg)</em></div>
+      </div>
+
+      <div style="font-size:1.15rem;color:#2563eb;font-weight:900;line-height:1">↓</div>
+
+      <!-- NODO 2: PASO 2 (Bifurcación Opción A / Opción B) -->
+      <div onclick="irAPaso(2)" style="width:100%;max-width:760px;background:#fff;border:2px solid #2563eb;border-radius:10px;padding:10px 14px;cursor:pointer;box-shadow:0 2px 5px rgba(37,99,235,0.08)">
+        <div style="font-weight:800;color:#1d4ed8;font-size:0.88rem;text-align:center;margin-bottom:6px">📝 PASO 2 · Obtener la Transcripción (Elegís uno de los 2 caminos)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 10px;text-align:center">
+            <strong style="color:#1e40af;display:block">🗣️ Camino A: Transcribir acá con IA (Whisper)</strong>
+            <span>Transcribe el MP3 en tu PC y separa las voces</span>
+          </div>
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 10px;text-align:center">
+            <strong style="color:#1e40af;display:block">📄 Camino B: Subir Transcripción ya hecha</strong>
+            <span>Detecta sola si es de <strong>Tactiq, YouTube, Whisper o SRT</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <div style="font-size:1.15rem;color:#2563eb;font-weight:900;line-height:1">↓</div>
+
+      <!-- NODO 3: PASO 3 -->
+      <div onclick="irAPaso(3)" style="width:100%;max-width:760px;background:#fff;border:2px solid #059669;border-radius:10px;padding:10px 14px;cursor:pointer;box-shadow:0 2px 5px rgba(5,150,105,0.1);text-align:center">
+        <div style="font-weight:800;color:#047857;font-size:0.88rem">👥 PASO 3 · Hablantes por Grupo, Auto-Matcheo Inicial, Recorte (mm:ss) y Aislar Mi Voz</div>
+        <div style="color:#334155;margin-top:3px">
+          • <strong>Grupos de Hablantes</strong> + Lista desde <strong>Excel (<code>.xlsx</code>)</strong> ·
+          • <strong>Auto-Matcheo Inicial</strong> (detecta <em>"mi nombre es..."</em> en el audio o sincroniza con <strong>Tactiq</strong>) y guarda las huellas de voz ·<br>
+          • <strong>Silenciar hablantes</strong> · <strong>Recortar Voz y Transcripción por minuto:segundo o frase</strong> ·
+          • <strong>Aislar solo tu voz limpia</strong> (<code>.MP3</code> / <code>.WAV</code> / <code>Dataset .ZIP</code>)
+        </div>
+      </div>
+
+      <!-- FLECHAS DE RAMIFICACIÓN HACIA PASO 4 Y PESTAÑA 5 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;width:100%;max-width:760px;text-align:center;font-size:1.1rem;color:#4f46e5;font-weight:900;line-height:1.1">
+        <div>↙</div>
+        <div>↘</div>
+      </div>
+
+      <!-- NODOS 4 Y 5 EN PARALELO AL FINAL DEL FLUJO -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:760px">
+        <div onclick="irAPaso(4)" style="background:#fff;border:2px solid #7c3aed;border-radius:10px;padding:10px 12px;cursor:pointer;box-shadow:0 2px 5px rgba(124,58,237,0.1);text-align:center">
+          <div style="font-weight:800;color:#6d28d9;font-size:0.86rem">🎬 PASO 4 · Subtítulos y Video sin Audio (Drive)</div>
+          <div style="color:#475569;margin-top:3px">
+            Sincroniza la transcripción con un video grabado sin audio, recorta el video por <code>mm:ss</code> y exporta los subtítulos <strong><code>.SRT / .VTT</code></strong> o el <strong><code>.MP4</code> subtitulado</strong>.
+          </div>
+        </div>
+
+        <div onclick="irAPaso(5)" style="background:#fff;border:2px solid #4f46e5;border-radius:10px;padding:10px 12px;cursor:pointer;box-shadow:0 2px 5px rgba(79,70,229,0.1);text-align:center">
+          <div style="font-weight:800;color:#4338ca;font-size:0.86rem">🧠 PESTAÑA 5 · Modelo ML de Mi Estilo y Guiones</div>
+          <div style="color:#475569;margin-top:3px">
+            Entrena un modelo ML con tus transcripciones (aprende tus muletillas y forma de hablar) y convierte cualquier <strong>guión neutro a tu estilo</strong>.
+            <div style="margin-top:4px;font-size:0.74rem;color:#6b21a8;background:#faf5ff;border:1px dashed #c084fc;border-radius:5px;padding:2px 6px">
+              🚀 <em>A futuro: pasar el guión convertido a audio hablado con tu voz clonada</em>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- BARRA DE 4 PASOS CLAROS -->
