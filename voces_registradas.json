@@ -1,45 +1,13 @@
 {
   "perfiles": {},
-  "listado_nombres": [
-    "Walter Alexis Willich",
-    "matias damian rodriguez",
-    "Ignacio Toto",
-    "Silvina Laura Passini",
-    "Gabriela Coronel",
-    "Araceli Amherdt",
-    "Fernando Venini",
-    "Lauger Natera",
-    "Lucas Paz",
-    "Florencia Pavon",
-    "Pedro Bueno Pereyra",
-    "Lucas Mateo Suarez Ramos",
-    "Griselda Blanco",
-    "Abigail Zaida Nina Romero",
-    "Fernanda Fava"
-  ],
+  "listado_nombres": [],
   "grupos": {
     "General": {
       "nombre": "General",
       "categoria": "",
       "area": "",
       "subgrupo": "",
-      "nombres": [
-        "Walter Alexis Willich",
-        "matias damian rodriguez",
-        "Ignacio Toto",
-        "Silvina Laura Passini",
-        "Gabriela Coronel",
-        "Araceli Amherdt",
-        "Fernando Venini",
-        "Lauger Natera",
-        "Lucas Paz",
-        "Florencia Pavon",
-        "Pedro Bueno Pereyra",
-        "Lucas Mateo Suarez Ramos",
-        "Griselda Blanco",
-        "Abigail Zaida Nina Romero",
-        "Fernanda Fava"
-      ],
+      "nombres": [],
       "perfiles": {},
       "creado_en": "2026-11-09 15:18:01"
     }
