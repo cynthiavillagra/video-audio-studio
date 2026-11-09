@@ -3080,16 +3080,57 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 <header>
   <div>
-    <h1>🎙️ Estudio de Audio, Hablantes y Subtítulos</h1>
-    <p>Flujo paso a paso: 1. Convertir a MP3 · 2. Transcribir o Subir (Tactiq/YouTube/Whisper) · 3. Etiquetar Hablantes por Grupo · 4. Subtítulos y Video</p>
+    <h1>🎙️ Estudio de Audio, Hablantes por Grupo, Subtítulos y Estilo ML</h1>
+    <p>Recorte por minuto:segundo · Transcripción IA o Tactiq/YouTube · Reconocimiento de Hablantes · Subtítulos para videos sin audio · Guiones a tu Estilo</p>
   </div>
-  <div id="git-bar">
-    <span>🐙</span>
-    <strong id="git-estado-txt">GitHub: Verificando…</strong>
-    <button type="button" class="btn-outline btn-xs" id="btn-git-sinc">🔄 Sincronizar</button>
-    <button type="button" class="btn-outline btn-xs" id="btn-git-cfg" style="display:none">⚙️ Configurar</button>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <button type="button" class="btn-outline btn-xs" id="btn-toggle-guia" onclick="toggleGuiaBienvenida()" style="background:#eff6ff;border-color:#93c5fd;color:#1d4ed8">
+      ❓ ¿Qué hace esta app? (Ocultar / Ver guía)
+    </button>
+    <div id="git-bar">
+      <span>🐙</span>
+      <strong id="git-estado-txt">GitHub: Verificando…</strong>
+      <button type="button" class="btn-outline btn-xs" id="btn-git-sinc">🔄 Sincronizar</button>
+      <button type="button" class="btn-outline btn-xs" id="btn-git-cfg" style="display:none">⚙️ Configurar</button>
+    </div>
   </div>
 </header>
+
+<!-- RESUMEN DE BIENVENIDA PARA QUIEN INGRESA POR PRIMERA VEZ -->
+<div class="card" id="card-bienvenida-guia" style="background:linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%);border:1.5px solid #bfdbfe;padding:16px 18px;margin-bottom:16px">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+    <div>
+      <h2 style="margin:0;font-size:1.05rem;color:#1e3a8a">👋 ¡Bienvenida/o! ¿Qué hace esta aplicación y cómo empezar?</h2>
+      <p style="margin:4px 0 0;font-size:0.84rem;color:#334155">
+        Esta aplicación procesa <strong>100% en tu PC</strong> tus grabaciones de clases o reuniones. <strong>No es obligatorio empezar por el Paso 1</strong>: hacé clic directo en la pestaña que necesites según lo que quieras hacer hoy:
+      </p>
+    </div>
+    <button type="button" class="btn-outline btn-xs" onclick="toggleGuiaBienvenida()">▲ Ocultar resumen</button>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:10px;font-size:0.81rem">
+    <div style="background:#fff;border:1px solid #dbeafe;border-radius:10px;padding:10px;cursor:pointer" onclick="irAPaso(1)">
+      <strong style="color:#1d4ed8;display:block;margin-bottom:3px">1️⃣ Video/Audio a MP3 y Recorte</strong>
+      Convertí videos o audios a <code>.MP3</code>, o <strong>recortá Videos (<code>.MP4</code>) y Audios</strong> indicando el <strong>minuto y segundo</strong> exacto de inicio y fin.
+    </div>
+    <div style="background:#fff;border:1px solid #dbeafe;border-radius:10px;padding:10px;cursor:pointer" onclick="irAPaso(2)">
+      <strong style="color:#1d4ed8;display:block;margin-bottom:3px">2️⃣ Transcribir o Subir Texto</strong>
+      Transcribí un MP3 con IA (Whisper) <strong>o subí una transcripción ya hecha</strong> (detecta sola si viene de <strong>Tactiq, YouTube, Whisper o SRT</strong>).
+    </div>
+    <div style="background:#fff;border:1px solid #dbeafe;border-radius:10px;padding:10px;cursor:pointer" onclick="irAPaso(3)">
+      <strong style="color:#1d4ed8;display:block;margin-bottom:3px">3️⃣ Hablantes, Mi Voz y Recorte</strong>
+      Organizá hablantes en <strong>Grupos</strong> (subiendo lista en Excel), etiquetá automático con la <strong>1ra clase o Tactiq</strong>, silenciá hablantes, recortá por <code>mm:ss</code> y aislá <strong>tu voz limpia</strong>.
+    </div>
+    <div style="background:#fff;border:1px solid #dbeafe;border-radius:10px;padding:10px;cursor:pointer" onclick="irAPaso(4)">
+      <strong style="color:#1d4ed8;display:block;margin-bottom:3px">4️⃣ Subtítulos y Video sin Audio</strong>
+      ¿Un video de Drive se grabó sin audio pero tenés la transcripción? Sincronizá el texto con el video y descargá los subtítulos <code>.SRT</code> o el <code>.MP4</code> subtitulado.
+    </div>
+    <div style="background:#fff;border:1px solid #dbeafe;border-radius:10px;padding:10px;cursor:pointer" onclick="irAPaso(5)">
+      <strong style="color:#1d4ed8;display:block;margin-bottom:3px">5️⃣ Mi Estilo (ML) y Guiones</strong>
+      Entrená un modelo ML con tus transcripciones para que aprenda tus muletillas y forma de explicar, enviale cualquier <strong>guión</strong> y lo reescribe a <strong>tu estilo</strong>.
+    </div>
+  </div>
+</div>
 
 <!-- BARRA DE 4 PASOS CLAROS -->
 <nav class="pasos-stepper" id="stepper-nav">
@@ -3940,6 +3981,20 @@ let grupoActivo = 'General';
 let listaGrupos = [];
 let nombresGrupoActual = [];
 let archivoVideoP4 = null;
+
+window.toggleGuiaBienvenida = function() {
+  const box = document.getElementById('card-bienvenida-guia');
+  if (!box) return;
+  const oculto = box.style.display === 'none';
+  box.style.display = oculto ? 'block' : 'none';
+  try { localStorage.setItem('ocultar_guia_bienvenida', oculto ? '0' : '1'); } catch (e) {}
+};
+try {
+  if (localStorage.getItem('ocultar_guia_bienvenida') === '1') {
+    const b = document.getElementById('card-bienvenida-guia');
+    if (b) b.style.display = 'none';
+  }
+} catch (e) {}
 
 function escHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
