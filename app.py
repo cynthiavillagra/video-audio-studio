@@ -1892,6 +1892,9 @@ def _worker_analizar(job_id: str, ruta_entrada: str, es_temporal: bool,
             "segmentos": segmentos,
             "hablantes": hablantes,
             "X": X,
+            "offset": 0.0,
+            "sincronizado": True,
+            "origen_media": "whisper",
         }
         with JOBS_LOCK:
             SESIONES[sesion_id] = sesion_data
@@ -1905,6 +1908,9 @@ def _worker_analizar(job_id: str, ruta_entrada: str, es_temporal: bool,
             resultado={
                 "modo": "analisis",
                 "sesion_id": sesion_id,
+                "offset": 0.0,
+                "sincronizado": True,
+                "origen_media": "whisper",
                 "nombre_original": nombre_original,
                 "nombre_mp3": nombre_mp3,
                 "duracion": round(duracion, 2),
@@ -2610,6 +2616,12 @@ def cargar_sesiones_disco() -> None:
             data.setdefault("cal", "192k")
             data.setdefault("mono", True)
             data.setdefault("grupo", "General")
+            data.setdefault("offset", 0.0)
+            if "sincronizado" not in data:
+                es_whisper = not str(data.get("modelo", "")).lower().startswith("importado")
+                data["sincronizado"] = bool(es_whisper and data.get("nombre_mp3"))
+                if data["sincronizado"]:
+                    data["origen_media"] = "whisper"
 
             ruta_npy = os.path.join(SESIONES_DIR, f"{sid}_X.npy")
             if os.path.isfile(ruta_npy):
@@ -3415,6 +3427,7 @@ code {
 .divider { border: 0; border-top: 1px solid var(--border); margin: 16px 0; }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-2 > *, .grid-2-60 > *, .grid-3 > * { min-width: 0; }
 .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
 .grid-2-60 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; align-items: start; }
 @media (max-width: 900px) {
@@ -3596,6 +3609,31 @@ a.btn-xs { padding: 4px 9px; font-size: 0.75rem; border-radius: 6px; }
 .tl-leyenda { display: flex; gap: 14px; font-size: 0.74rem; color: var(--muted); margin-top: 4px; }
 .tl-leyenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
 .pub-ahora { font-size: 0.82rem; color: var(--text-2); margin-top: 8px; min-height: 1.3em; }
+
+/* ---------- Vincular (paso 2) y Resultados (paso 4) ---------- */
+#p4-video { width: 100%; max-height: 340px; background: #000; border-radius: 8px; display: block; }
+.vacio-mini { font-size: 0.82rem; color: var(--muted); border: 1px dashed var(--border-strong); border-radius: 8px; padding: 14px; text-align: center; margin-top: 8px; }
+.res-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 0.9fr); gap: 18px; align-items: start; }
+@media (max-width: 1000px) { .res-top { grid-template-columns: 1fr; } }
+.res-material { font-size: 0.86rem; color: var(--text-2); margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+.res-material .fila { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.res-material .k { color: var(--muted); min-width: 92px; font-size: 0.8rem; }
+.res-material .ok { color: var(--ok); font-weight: 600; }
+.res-material .pend { color: var(--warn); font-weight: 600; }
+.res-grupo-tit { font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 22px 0 8px; }
+.voces-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 8px; }
+.voces-grid .voz-fila { grid-template-columns: 12px minmax(0, 1fr) auto; }
+.voces-grid .voz-fila > .dot { grid-column: 1; grid-row: 1; }
+.voces-grid .voz-fila > .voz-nom { grid-column: 2; grid-row: 1; }
+.voces-grid .voz-fila > .row { grid-column: 3; grid-row: 1; }
+.voces-grid .voz-fila > .voz-stats { grid-column: 2 / -1; grid-row: 2; }
+.voces-grid .voz-fila > .seg3 { grid-column: 2 / -1; grid-row: 3; justify-self: start; }
+.voz-fila .voz-nom { font-weight: 600; font-size: 0.88rem; overflow-wrap: anywhere; }
+
+#res-video-card.deshabilitada #btn-pub-generar { opacity: 0.45; pointer-events: none; }
+
+.ses-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+@media (max-width: 760px) { .ses-item { flex-direction: column; align-items: flex-start; } }
 
 /* ---------- Recetas ---------- */
 .recetas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0 0 14px; }
@@ -3948,24 +3986,19 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     <button type="button" class="step-btn" data-step="2">
       <span class="step-num">2</span>
       <span class="step-title">Transcripción</span>
-      <span class="step-sub">Whisper o subir archivo</span>
+      <span class="step-sub">Crear, vincular, sincronizar</span>
     </button>
     <button type="button" class="step-btn" data-step="3">
       <span class="step-num">3</span>
-      <span class="step-title">Hablantes y mi voz</span>
-      <span class="step-sub">Etiquetar, silenciar, aislar</span>
+      <span class="step-title">Hablantes</span>
+      <span class="step-sub">Quién es quién y revisar</span>
     </button>
     <button type="button" class="step-btn" data-step="4">
       <span class="step-num">4</span>
-      <span class="step-title">Subtítulos y video</span>
-      <span class="step-sub">Sincronizar y exportar</span>
+      <span class="step-title">Resultados</span>
+      <span class="step-sub">Audio, texto, subtítulos, video</span>
     </button>
     <div class="nav-group-label" style="margin-top:14px">Herramientas</div>
-    <button type="button" class="step-btn" data-step="6">
-      <span class="step-num"><svg><use href="#i-mute"/></svg></span>
-      <span class="step-title">Video para publicar</span>
-      <span class="step-sub">Silenciar o subtitular voces</span>
-    </button>
     <button type="button" class="step-btn" data-step="5">
       <span class="step-num"><svg><use href="#i-spark"/></svg></span>
       <span class="step-title">Mi estilo y guiones</span>
@@ -4009,23 +4042,18 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       </button>
       <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(2)">
         <span class="gnum">2</span>
-        <div><strong>Transcripción</strong><span>A: transcribir un audio o video acá con Whisper (separa las voces). B: subir una ya hecha; detecta sola si es de Tactiq, YouTube, Whisper o SRT.</span></div>
+        <div><strong>Transcripción</strong><span>Crearla con Whisper o subir una ya hecha (Tactiq, YouTube, SRT…), <strong>vincularla con su video</strong> y sincronizarla. Con Whisper queda sincronizada sola.</span></div>
         <span class="ir">Ir →</span>
       </button>
       <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(3)">
         <span class="gnum">3</span>
-        <div><strong>Hablantes y mi voz</strong><span>Grupos de hablantes (con lista desde Excel), matcheo automático por presentación o por Tactiq, silenciar hablantes, recortar y exportar tu voz limpia (MP3, WAV o dataset ZIP).</span></div>
+        <div><strong>Hablantes</strong><span>Quién es quién (a mano, con Tactiq, por presentaciones o con una lista), cuál sos vos, y revisar línea por línea. Las correcciones quedan guardadas.</span></div>
         <span class="ir">Ir →</span>
       </button>
       <div class="guia-rama">
         <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(4)">
           <span class="gnum">4</span>
-          <div><strong>Subtítulos y video</strong><span>Para videos que se grabaron sin audio: sincronizás la transcripción con el video y exportás SRT / VTT o el MP4 subtitulado.</span></div>
-          <span class="ir">Ir →</span>
-        </button>
-        <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(6)">
-          <span class="gnum"><svg width="15" height="15"><use href="#i-mute"/></svg></span>
-          <div><strong>Video para publicar</strong><span>Con el video y su transcripción (analizada acá o de Tactiq, con nombres), elegís por cada voz si se escucha, se silencia con subtítulo o solo se subtitula. Nombres reales o anonimizados, y volumen nivelado.</span></div>
+          <div><strong>Resultados</strong><span>Con todo conectado: tu voz limpia, audio sin ciertas voces, transcripción, subtítulos SRT/VTT y video con voces silenciadas o subtituladas (recetas), con vista previa.</span></div>
           <span class="ir">Ir →</span>
         </button>
         <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(5)">
@@ -4041,10 +4069,10 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       <p>Un recorrido típico de punta a punta. No hace falta pasar por todas las secciones.</p>
       <ol>
         <li><div><strong>Video / Audio.</strong> Recortás el video (por ejemplo, el principio y el final que sobran) y extraés el audio en MP3.</div></li>
-        <li><div><strong>Transcripción.</strong> Con ese MP3 hacés la transcripción con Whisper, que separa a los hablantes. Si la clase la transcribiste con Tactiq, subís esa: ya viene con los nombres de cada uno. Si tiene partes que quedaron fuera del video recortado, la recortás al subirla.</div></li>
-        <li><div><strong>Hablantes y mi voz.</strong> Etiquetás quién es quién y guardás las voces en el grupo, así en las próximas clases se reconocen solas.</div></li>
-        <li><div><strong>Subtítulos y video.</strong> Generás los subtítulos (SRT) para subirlos junto al video, por ejemplo en Drive. Si el video salió sin audio por error, acá sincronizás la transcripción con la imagen para que no quede desfasada.</div></li>
-        <li><div><strong>Video para publicar</strong> <em>(opcional)</em>. Si vas a compartir la clase fuera del curso, silenciás las voces de los alumnos y lo que dijeron queda como subtítulo.</div></li>
+        <li><div><strong>Transcripción.</strong> Con ese MP3 hacés la transcripción con Whisper, que separa a los hablantes y queda sincronizada sola. Si la clase la transcribiste con Tactiq, subís esa (ya viene con los nombres), la <strong>vinculás con el video</strong> y la sincronizás con una frase de referencia. Si tiene partes que quedaron fuera del video recortado, la recortás al subirla.</div></li>
+        <li><div><strong>Hablantes.</strong> Etiquetás quién es quién, marcás cuál sos vos y corregís las líneas mal asignadas. Las voces quedan en el grupo para reconocerlas solas en las próximas clases.</div></li>
+        <li><div><strong>Resultados.</strong> Bajás los subtítulos (SRT) para subirlos con el video a Drive. Si el video salió sin audio, usás la receta "Subtítulos de todo el video".</div></li>
+        <li><div><strong>Resultados → Video</strong> <em>(opcional)</em>. Si vas a compartir la clase fuera del curso, usás "Publicar sin voces de alumnos": se silencian y lo que dijeron queda como subtítulo.</div></li>
       </ol>
     </div>
 
@@ -4226,7 +4254,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       <p>Transcribí un audio o video con Whisper, subí una transcripción hecha en otro lado o abrí una que ya procesaste (al final).</p>
     </div>
   </div>
-  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Transcribir un video o un audio con Whisper, separando a los hablantes</li><li>Subir una transcripción hecha con otra herramienta (Tactiq, YouTube…)</li><li>Vincular una transcripción con su audio o video</li><li>Recortar una transcripción (por ejemplo, las partes que quedaron fuera del video)</li></ul></div>
+  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Transcribir un video o un audio con Whisper, separando a los hablantes</li><li>Subir una transcripción hecha con otra herramienta (Tactiq, YouTube…)</li><li>Vincular la transcripción con su video y sincronizarla (por ej. si viene de Tactiq)</li><li>Recortar una transcripción (por ejemplo, las partes que quedaron fuera del video)</li></ul></div>
 
   <div class="grid-2">
     <!-- OPCIÓN A -->
@@ -4353,15 +4381,92 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
         </div>
       </details>
 
-      <button type="button" class="btn-secondary btn-block btn-lg" id="btn-p2-subir-trans" disabled>Cargar y pasar al paso 3</button>
+      <button type="button" class="btn-secondary btn-block btn-lg" id="btn-p2-subir-trans" disabled>Cargar y vincular con el video</button>
       <div id="p2-res-import"></div>
     </div>
   </div>
+  <!-- Vincular y sincronizar la transcripción abierta -->
+  <div class="card destacada" id="p2-vinculo" style="display:none;margin-top:16px">
+    <div class="paso-cab">
+      <span class="paso-n"><svg width="16" height="16"><use href="#i-link"/></svg></span>
+      <div style="flex:1">
+        <h2>Vincular con su video y sincronizar</h2>
+        <p>Así lo que dice la transcripción coincide con el video. Queda guardado en la transcripción.</p>
+      </div>
+    </div>
+    <div class="row" style="margin-bottom:14px">
+      <label for="p4-sel-sesion-activa" style="font-size:0.8rem;font-weight:600">Transcripción abierta</label>
+      <select id="p4-sel-sesion-activa" style="flex:1;min-width:240px;max-width:520px"></select>
+      <span id="p2v-estado" class="badge"></span>
+    </div>
+    <div class="grid-2" style="align-items:start">
+      <div>
+        <div class="pub-video-wrap">
+          <video id="p4-video" controls preload="metadata" playsinline></video>
+          <div class="sub-overlay pub-overlay"><span id="p4-sub-live" style="display:none"></span></div>
+        </div>
+        <div class="prev-reloj" style="margin-bottom:0">
+          <span class="t-grande" id="p2v-t">00:00</span>
+          <span class="t-dur">/ <span id="p2v-dur">--:--</span></span>
+          <span class="prev-saltos">
+            <button type="button" class="btn-outline btn-xs" data-salto-v="-5">−5 s</button>
+            <button type="button" class="btn-outline btn-xs" data-salto-v="-1">−1 s</button>
+            <button type="button" class="btn-outline btn-xs" data-salto-v="1">+1 s</button>
+            <button type="button" class="btn-outline btn-xs" data-salto-v="5">+5 s</button>
+          </span>
+        </div>
+        <div id="p2v-sin-media" class="vacio-mini">Elegí a la derecha el video o audio de esta clase para verlo acá.</div>
+      </div>
+
+      <div class="stack" style="gap:14px">
+        <div class="campo">
+          <label for="p2v-media">1 · Video o audio de esta clase</label>
+          <div class="row" style="flex-wrap:nowrap">
+            <select id="p2v-media" style="flex:1"></select>
+            <input type="file" id="p2v-arch" accept=".mp4,.mkv,.mov,.webm,.avi,.mp3,.wav,.m4a,.ogg,video/*,audio/*" hidden>
+            <button type="button" class="btn-outline btn-sm" onclick="document.getElementById('p2v-arch').click()">Subir</button>
+          </div>
+          <div id="p2v-media-info" style="font-size:0.78rem;color:var(--muted);margin-top:4px"></div>
+        </div>
+
+        <div id="p2v-sync" class="panel">
+          <span class="panel-titulo">2 · Sincronizar</span>
+          <p class="panel-desc" id="p2v-sync-ayuda">Elegí una frase, buscá en el video el momento en que se dice, pausá y tocá <strong>Hacer coincidir</strong>. Se ajusta toda la transcripción, hacia atrás y hacia adelante.</p>
+          <div class="campo" style="margin-bottom:8px">
+            <label for="p4-sel-frase-ref">Frase de referencia</label>
+            <select id="p4-sel-frase-ref"></select>
+          </div>
+          <div class="row" style="gap:6px;margin-bottom:10px">
+            <button type="button" class="btn-outline btn-xs" id="btn-p2v-ir-frase" title="Lleva el video al momento donde la transcripción cree que está la frase">Ir a la frase</button>
+            <input type="text" id="p4-t-video-ancla" class="tiempo" placeholder="se dice en 02:35" style="width:130px" aria-label="Minuto del video en que se dice la frase">
+            <button type="button" class="btn-outline btn-xs" id="btn-p4-tomar-ancla-video" title="Usar el momento donde está pausado el video">Tomar del video</button>
+            <button type="button" class="btn-primary btn-sm" id="btn-p4-sync-video">Hacer coincidir</button>
+          </div>
+          <div class="row" style="gap:6px">
+            <label for="p4-offset-seg" style="font-size:0.8rem;font-weight:600">Desfase (s)</label>
+            <input type="number" id="p4-offset-seg" step="0.5" value="0" class="tiempo" style="width:90px">
+            <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(-1)">−1 s</button>
+            <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(1)">+1 s</button>
+            <button type="button" class="btn-outline btn-xs" onclick="invertirSignoOffsetSub()" title="Cambia el signo">±</button>
+            <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(0, true)">0</button>
+          </div>
+          <div id="p2v-explica" style="font-size:0.78rem;color:var(--text-2);margin-top:8px"></div>
+          <button type="button" class="btn-secondary btn-sm btn-block" id="btn-p2v-ok" style="margin-top:10px">✓ Está sincronizada</button>
+        </div>
+
+        <div class="row-between">
+          <span style="font-size:0.78rem;color:var(--muted)" id="p2v-guardado"></span>
+          <button type="button" class="btn-primary" onclick="irAPaso(3)">Seguir: Hablantes →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="card" id="card-sesiones-previas" style="margin-top:16px">
     <div class="card-head" style="margin-bottom:10px">
       <div>
         <h2>Transcripciones guardadas</h2>
-        <p>Hacé clic en una para abrirla al instante en el paso 3 o 4.</p>
+        <p>Abrí una para vincularla con su video, revisar los hablantes o ir directo a Resultados.</p>
       </div>
     </div>
     <div id="lista-sesiones-guardadas" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto">
@@ -4379,10 +4484,10 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     <div>
       <div class="eyebrow">Paso 3</div>
       <h1>Hablantes y mi voz</h1>
-      <p>En 3 pasos: identificá quién es quién, revisá la transcripción y llevate lo que necesites (tu voz, el audio, la transcripción o un video).</p>
+      <p>Identificá quién es quién y revisá la transcripción. Después, en Resultados, te llevás lo que necesites.</p>
     </div>
   </div>
-  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Etiquetar quién habla (a mano, con una lista de nombres o con Tactiq)</li><li>Guardar las voces para que se reconozcan solas en próximas grabaciones</li><li>Recortar el audio y la transcripción a un tramo</li><li>Aislar tu voz o silenciar a otros en el audio</li><li>Llevar la transcripción a un video con subtítulos o voces silenciadas</li></ul></div>
+  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Poner nombre a cada voz (a mano, con Tactiq, por presentaciones o con una lista)</li><li>Marcar cuál es tu voz</li><li>Guardar las voces para reconocerlas solas en próximas clases</li><li>Corregir líneas con la persona equivocada o el texto mal transcripto</li></ul></div>
 
   <div id="p3-vacio" class="card vacio">
     <div class="vacio-icon"><svg><use href="#i-users"/></svg></div>
@@ -4429,6 +4534,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
         </div>
       </div>
 
+      <div id="p3-aviso-media" class="aviso-mini" style="margin-bottom:12px"></div>
       <details class="plegable" id="p3-auto-box">
         <summary>✨ Completar los nombres automáticamente <span class="hint">· con Tactiq, por presentaciones o con una lista</span></summary>
         <div class="plegable-body">
@@ -4511,7 +4617,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
         <span class="paso-n">2</span>
         <div>
           <h2>Revisar la transcripción <span style="font-weight:400;color:var(--muted);font-size:0.86rem">· <span id="p3-cont-seg">0</span> líneas</span></h2>
-          <p>Si una línea quedó con la persona equivocada, cambiala en su nombre. El texto se puede corregir haciendo clic. Con ⛳ y 🏁 marcás el tramo para el paso 3.</p>
+          <p>Si una línea quedó con la persona equivocada, cambiala en su nombre; el texto se corrige haciendo clic. Todo se guarda solo. Con ⛳ y 🏁 marcás un tramo para Resultados.</p>
         </div>
       </div>
       <div class="row" style="margin-bottom:10px">
@@ -4520,19 +4626,48 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
         <label class="check" style="font-size:0.8rem"><input type="checkbox" id="p3-chk-ocultar-fuera"><span>Solo las líneas del tramo</span></label>
       </div>
       <div class="segmentos-wrap" id="p3-seg-wrap"></div>
+      <div class="row-between" style="margin-top:12px">
+        <span style="font-size:0.78rem;color:var(--muted)">Las correcciones se guardan solas.</span>
+        <button type="button" class="btn-primary" onclick="irAPaso(4)">Seguir: Resultados →</button>
+      </div>
     </div>
 
-    <!-- ============ 3. ¿QUÉ QUERÉS LLEVARTE? ============ -->
-    <div class="card paso-bloque">
-      <div class="paso-cab">
-        <span class="paso-n">3</span>
-        <div>
-          <h2>¿Qué querés llevarte?</h2>
-          <p>Elegí el tramo (o dejá todo) y lo que necesitás.</p>
-        </div>
-      </div>
+  </div>
+</section>
 
-      <div class="panel" style="margin-bottom:14px">
+<!-- ====================================================================== -->
+<!-- PASO 4: SUBTÍTULOS Y SINCRONIZACIÓN CON VIDEO                          -->
+<!-- ====================================================================== -->
+<section class="step-section" id="step-4">
+  <div class="sec-head">
+    <div>
+      <div class="eyebrow">Paso 4</div>
+      <h1>Resultados</h1>
+      <p>Con la transcripción vinculada, sincronizada y con los hablantes identificados, llevate lo que necesites.</p>
+    </div>
+  </div>
+  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Tu voz limpia para entrenar o clonar</li><li>Audio sin ciertas voces</li><li>Transcripción o subtítulos (SRT / VTT) del tramo que quieras</li><li>Video con voces silenciadas y/o subtítulos (por ej. para publicar sin los alumnos)</li><li>Recortar el video o unirle subtítulos</li></ul></div>
+
+  <div id="p4-vacio" class="card vacio">
+    <div class="vacio-icon"><svg><use href="#i-cc"/></svg></div>
+    <h3>Primero abrí una transcripción</h3>
+    <p>Creala o abrila en el paso 2 (Transcripción), vinculala con su video o audio y, si hace falta, sincronizala.</p>
+    <button type="button" class="btn-primary" onclick="irAPaso(2)">Ir a Transcripción</button>
+  </div>
+
+  <div id="p4-contenido" style="display:none">
+    <!-- Material + reproductor + tramo -->
+    <div class="card">
+      <div class="res-top">
+        <div class="stack" style="gap:12px">
+          <div>
+            <span class="ctx-label">Material</span>
+            <div id="res-material" class="res-material"></div>
+          </div>
+          <div>
+            <span class="ctx-label">Tramo</span>
+            <div style="margin-top:6px">
+              <div class="panel">
         <div class="row" style="gap:10px;align-items:flex-end">
           <div class="campo">
             <label for="p3-t-ini">Desde</label>
@@ -4568,6 +4703,40 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
         </details>
       </div>
 
+            </div>
+          </div>
+        </div>
+        <div id="pub-preview" class="preview" style="margin-top:0">
+          <div class="pub-video-wrap">
+            <video id="pub-audio" controls preload="metadata" playsinline></video>
+            <div class="sub-overlay pub-overlay"><span id="pub-sub-live" style="display:none"></span></div>
+            <span class="pub-mute-tag" id="pub-mute-tag" style="display:none">🔇 silenciada</span>
+          </div>
+          <div class="prev-reloj">
+            <span class="t-grande" id="pub-prev-t">00:00</span>
+            <span class="t-dur">/ <span id="pub-prev-dur">--:--</span></span>
+            <span class="prev-saltos">
+              <button type="button" class="btn-outline btn-xs" data-salto-pub="-5">−5 s</button>
+              <button type="button" class="btn-outline btn-xs" data-salto-pub="5">+5 s</button>
+            </span>
+          </div>
+          <div class="timeline" id="pub-timeline" title="Hacé clic para ir a ese momento">
+            <div class="tl-capa" id="pub-tl-marcas"></div>
+            <div class="tl-cabezal" id="pub-tl-cabezal"></div>
+          </div>
+          <div class="tl-leyenda" id="pub-tl-leyenda" style="display:none">
+            <span><i style="background:rgba(220,38,38,0.55)"></i>silenciada + subtítulo</span>
+            <span><i style="background:rgba(37,99,235,0.55)"></i>solo subtítulo</span>
+          </div>
+          <div id="pub-audio-info" class="pub-ahora">Dale play para revisar.</div>
+          <label class="check" id="pub-simular-box" style="font-size:0.8rem;margin-top:6px"><input type="checkbox" id="pub-simular" checked><span>Simular lo elegido en "Video" (silencio y subtítulos, aproximado)</span></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- AUDIO + TEXTO -->
+    <div class="res-grupo-tit">Audio y texto</div>
+    <div class="card">
       <div class="salidas-grid">
         <!-- A. Mi voz limpia -->
         <div class="salida">
@@ -4637,178 +4806,124 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
           <button type="button" class="btn-danger-soft btn-xs" id="btn-p3-recortar-sesion-perm" style="margin-top:10px" title="Borra de esta transcripción lo que está fuera del tramo">Dejar solo el tramo en esta transcripción</button>
         </div>
 
-        <!-- D. Video -->
-        <div class="salida">
-          <div class="salida-tit">🎬 Video con subtítulos o voces silenciadas</div>
-          <p class="salida-desc">Abre "Video para publicar" con esta transcripción y la receta elegida. Ahí elegís el video.</p>
-          <div class="stack" style="gap:6px">
-            <button type="button" class="btn-outline btn-sm btn-block receta-btn" data-receta="publicar">Silenciar alumnos y subtitularlos (anónimos)</button>
-            <button type="button" class="btn-outline btn-sm btn-block receta-btn" data-receta="sub-alumnos">Subtítulos solo de alumnos (con nombre)</button>
-            <button type="button" class="btn-outline btn-sm btn-block receta-btn" data-receta="sub-todos">Subtítulos de todo el video (con nombres)</button>
-            <button type="button" class="btn-outline btn-sm btn-block receta-btn" data-receta="igualar">Solo igualar el volumen de las voces</button>
-          </div>
-          <button type="button" class="btn-ghost btn-xs" style="margin-top:8px" onclick="irAPaso(4)">Sincronizar subtítulos con un video sin audio →</button>
-        </div>
       </div>
     </div>
-  </div>
-</section>
 
-<!-- ====================================================================== -->
-<!-- PASO 4: SUBTÍTULOS Y SINCRONIZACIÓN CON VIDEO                          -->
-<!-- ====================================================================== -->
-<section class="step-section" id="step-4">
-  <div class="sec-head">
-    <div>
-      <div class="eyebrow">Paso 4</div>
-      <h1>Subtítulos y video</h1>
-      <p>Para videos grabados sin audio: sincronizá la transcripción con el video y exportá los subtítulos o el MP4.</p>
-    </div>
-  </div>
-  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Crear subtítulos (SRT / VTT) para subir con el video, por ejemplo a Drive o YouTube</li><li>Sincronizar la transcripción con un video que salió sin audio (si no, queda desfasada)</li><li>Recortar el video o unirle los subtítulos en un MP4</li></ul></div>
-
-  <div id="p4-vacio" class="card vacio">
-    <div class="vacio-icon"><svg><use href="#i-cc"/></svg></div>
-    <h3>Primero abrí una transcripción</h3>
-    <p>Para armar los subtítulos, abrí o subí la transcripción en el paso 2.</p>
-    <button type="button" class="btn-primary" onclick="irAPaso(2)">Ir a Transcripción</button>
-  </div>
-
-  <div id="p4-contenido" style="display:none">
-    <!-- Vinculación transcripción ⟷ video -->
-    <div class="card destacada">
-      <div class="vinculo-bar">
-        <div class="campo">
-          <label for="p4-sel-sesion-activa">Transcripción</label>
-          <select id="p4-sel-sesion-activa"></select>
+    <!-- SUBTÍTULOS -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>📝 Subtítulos para el video</h2>
+          <p>Ya sincronizados con el video vinculado. Para subir a Drive, YouTube o VLC.</p>
         </div>
-        <div class="vinculo-flecha"><svg><use href="#i-link"/></svg></div>
-        <div class="campo">
-          <label>Video</label>
-          <div class="row" style="flex-wrap:nowrap">
-            <span id="p4-badge-video-par" class="badge badge-ambar" style="padding:7px 10px;white-space:normal;flex:1">Ningún video elegido todavía</span>
-            <button type="button" class="btn-primary btn-sm" onclick="document.getElementById('arch-p4-video').click()">Elegir video</button>
-          </div>
+        <div class="row" style="gap:6px">
+          <button type="button" class="btn-primary btn-sm" onclick="descargarSubtitulosPaso4('srt')">Descargar SRT</button>
+          <button type="button" class="btn-outline btn-sm" onclick="descargarSubtitulosPaso4('vtt')">VTT</button>
+          <button type="button" class="btn-outline btn-sm" onclick="descargarSubtitulosPaso4('txt_ts')">TXT con tiempos</button>
         </div>
       </div>
-      <div id="p4-match-diagnostico" style="margin-top:8px;font-size:0.82rem;color:var(--text-2)"></div>
-    </div>
-
-    <div class="grid-2" style="align-items:start">
-      <!-- Video -->
-      <div class="video-col">
-        <div class="video-stage">
-          <video id="p4-video" controls></video>
-          <div class="sub-overlay"><span id="p4-sub-live">Cargá tu video y dale play para ver los subtítulos</span></div>
+      <div class="grid-2" style="align-items:start">
+        <div class="stack" style="gap:8px">
+          <label class="check"><input type="checkbox" id="p4-inc-nom" checked><span>Con el nombre de quien habla (<code>[Nombre]: texto</code>)</span></label>
+          <label class="check"><input type="checkbox" id="p4-chk-bloque-00"><span>Si el video empieza antes que la transcripción, agregar un cartel inicial desde <code>00:00</code></span></label>
+          <label class="check" style="display:none"><input type="checkbox" id="p4-inc-sil"><span>Incluir líneas excluidas</span></label>
         </div>
-        <div class="row-between" style="margin-bottom:16px">
-          <div style="font-size:0.78rem;color:var(--muted)" id="p4-video-nombre">El video se reproduce en tu navegador, no se sube a internet.</div>
-          <input type="file" id="arch-p4-video" accept=".mp4,.mkv,.webm,.mov,video/*" hidden>
-          <button type="button" class="btn-outline btn-xs" onclick="document.getElementById('arch-p4-video').click()">Cambiar video</button>
-        </div>
-      </div>
-
-      <!-- Controles -->
-      <div class="stack" style="gap:16px">
-        <div class="card" style="margin:0">
-          <h3><span class="paso-num">1</span>Sincronizar</h3>
-          <p class="sub-desc">El <code>00:00</code> del subtítulo es el comienzo del video. Elegí una frase y decí en qué momento del video se escucha: se recalculan todas las marcas hacia atrás y hacia adelante.</p>
-
-          <div class="campo" style="margin-bottom:10px">
-            <label for="p4-sel-frase-ref">Frase de referencia</label>
-            <select id="p4-sel-frase-ref"></select>
-          </div>
-          <div class="campo" style="margin-bottom:10px">
-            <label for="p4-t-video-ancla">¿En qué minuto del video se dice?</label>
-            <div class="row" style="gap:6px">
-              <input type="text" id="p4-t-video-ancla" class="tiempo" placeholder="02:35" style="width:110px">
-              <button type="button" class="btn-outline btn-xs" id="btn-p4-tomar-ancla-video" title="Copia el minuto:segundo donde está pausado el video">Tomar del video</button>
-              <button type="button" class="btn-primary btn-sm" id="btn-p4-sync-video">Hacer coincidir</button>
-            </div>
-          </div>
-
-          <div class="panel" style="padding:10px 12px">
-            <div class="row" style="gap:6px">
-              <label for="p4-offset-seg" style="font-size:0.8rem;font-weight:600">Desfase (seg)</label>
-              <input type="number" id="p4-offset-seg" step="0.5" value="0" class="tiempo" style="width:90px">
-              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(-1)">−1 s</button>
-              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(+1)">+1 s</button>
-              <button type="button" class="btn-outline btn-xs" onclick="invertirSignoOffsetSub()" title="Invierte el signo si el video empezó antes que la transcripción">± Invertir</button>
-              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(0, true)">Reset</button>
-            </div>
-          </div>
-          <div id="p4-preview-sincro" style="margin-top:10px;font-size:0.8rem;line-height:1.45"></div>
-        </div>
-
-        <div class="card" style="margin:0">
-          <h3><span class="paso-num">2</span>Descargar subtítulos</h3>
-          <p class="sub-desc">Para Drive, YouTube o VLC.</p>
-          <div class="stack" style="gap:8px;margin-bottom:12px">
-            <label class="check"><input type="checkbox" id="p4-inc-nom" checked><span>Incluir el nombre del hablante (<code>[Nombre]: texto</code>)</span></label>
-            <label class="check"><input type="checkbox" id="p4-chk-bloque-00" checked><span>Si el video empieza antes que la transcripción, agregar un bloque inicial desde <code>00:00:00</code></span></label>
-            <label class="check"><input type="checkbox" id="p4-inc-sil"><span>Incluir hablantes silenciados</span></label>
-          </div>
-          <details class="plegable">
-            <summary>Formato en pantalla <span class="hint">· 84 caracteres, hasta 6 s</span></summary>
-            <div class="plegable-body grid-2" style="gap:10px">
-              <div class="campo">
-                <label for="p4-max-chars">Caracteres por cartel</label>
-                <select id="p4-max-chars">
-                  <option value="70">70 (2 líneas de 35)</option>
-                  <option value="84" selected>84 (estándar, 2 de 42)</option>
-                  <option value="100">100 (2 líneas de 50)</option>
-                </select>
-              </div>
-              <div class="campo">
-                <label for="p4-max-dur">Duración en pantalla</label>
-                <select id="p4-max-dur">
-                  <option value="4.5">1,2 a 4,5 s (dinámico)</option>
-                  <option value="6.0" selected>1,2 a 6 s (estándar)</option>
-                  <option value="8.0">1,2 a 8 s (pausado)</option>
-                </select>
-              </div>
-            </div>
-          </details>
-          <div class="row" style="gap:6px">
-            <button type="button" class="btn-primary btn-sm" onclick="descargarSubtitulosPaso4('srt')">Descargar SRT</button>
-            <button type="button" class="btn-outline btn-sm" onclick="descargarSubtitulosPaso4('vtt')">VTT</button>
-            <button type="button" class="btn-outline btn-sm" onclick="descargarSubtitulosPaso4('txt_ts')">TXT con tiempos</button>
-          </div>
-        </div>
-
-        <div class="card" style="margin:0">
-          <h3><span class="paso-num">3</span>Recortar video y/o unir subtítulos</h3>
-          <p class="sub-desc">Dejá los tiempos vacíos para usar el video entero.</p>
-          <div class="grid-2" style="gap:10px;margin-bottom:10px">
-            <div class="campo">
-              <label for="p4-t-ini">Desde</label>
-              <div class="input-con-btn">
-                <input type="text" id="p4-t-ini" class="tiempo" placeholder="02:10">
-                <button type="button" class="btn-outline btn-xs" id="btn-p4-tomar-ini" title="Usar el segundo actual del video">Actual</button>
-              </div>
-            </div>
-            <div class="campo">
-              <label for="p4-t-fin">Hasta</label>
-              <div class="input-con-btn">
-                <input type="text" id="p4-t-fin" class="tiempo" placeholder="35:00">
-                <button type="button" class="btn-outline btn-xs" id="btn-p4-tomar-fin" title="Usar el segundo actual del video">Actual</button>
-              </div>
-            </div>
-          </div>
-          <div class="row">
-            <select id="p4-modo-unir" style="flex:1;min-width:200px">
-              <option value="soft" selected>Unir subtítulos internos (rápido)</option>
-              <option value="burn">Subtítulos quemados en la imagen</option>
-              <option value="solo_recortar_video">Solo recortar el video</option>
+        <div class="grid-2" style="gap:10px">
+          <div class="campo">
+            <label for="p4-max-chars">Caracteres por cartel</label>
+            <select id="p4-max-chars">
+              <option value="70">70 (2 líneas de 35)</option>
+              <option value="84" selected>84 (estándar)</option>
+              <option value="100">100 (2 líneas de 50)</option>
             </select>
-            <button type="button" class="btn-secondary btn-sm" id="btn-p4-unir-video">Procesar MP4</button>
           </div>
-          <div id="p4-res-unir" style="margin-top:8px;font-size:0.84rem"></div>
+          <div class="campo">
+            <label for="p4-max-dur">Duración en pantalla</label>
+            <select id="p4-max-dur">
+              <option value="4.5">1,2 a 4,5 s</option>
+              <option value="6.0" selected>1,2 a 6 s (estándar)</option>
+              <option value="8.0">1,2 a 8 s</option>
+            </select>
+          </div>
         </div>
       </div>
+      <p style="font-size:0.78rem;color:var(--muted);margin:10px 0 0">Si se elige un tramo arriba, los subtítulos son solo de ese tramo (con los tiempos del video completo).</p>
+    </div>
+
+    <!-- VIDEO -->
+    <div class="res-grupo-tit">Video</div>
+    <div class="card" id="res-video-card">
+      <div id="res-video-aviso" class="aviso-mini" style="margin-bottom:12px"></div>
+      <div class="card-head" style="margin-bottom:10px">
+        <div>
+          <h2>🎬 Silenciar o subtitular voces</h2>
+          <p>Elegí una receta o decidí voz por voz. Mirá el efecto en el reproductor de arriba antes de generar. <span id="pub-resumen-video"></span></p>
+        </div>
+      </div>
+      <div class="recetas" role="group" aria-label="Recetas">
+        <span class="recetas-tit">Recetas</span>
+        <button type="button" class="receta" data-receta-pub="publicar"><strong>Publicar sin voces de alumnos</strong><span>Los silencia y los subtitula como "Alumno 1, 2…"</span></button>
+        <button type="button" class="receta" data-receta-pub="sub-alumnos"><strong>Subtítulos de los alumnos</strong><span>No se los escuchó: se agregan sus frases con nombre</span></button>
+        <button type="button" class="receta" data-receta-pub="sub-todos"><strong>Subtítulos de todo el video</strong><span>El video salió sin audio: todos con nombre</span></button>
+        <button type="button" class="receta" data-receta-pub="igualar"><strong>Solo igualar el volumen</strong><span>Tu voz y la de los alumnos parejas, sin subtítulos</span></button>
+      </div>
+      <div class="row" style="gap:6px;margin-bottom:10px">
+        <span style="font-size:0.75rem;color:var(--muted)">A los demás (todos menos vos):</span>
+        <button type="button" class="btn-outline btn-xs" data-bulk="demas:silenciar">Silenciar</button>
+        <button type="button" class="btn-outline btn-xs" data-bulk="demas:subtitulo">Solo subtítulo</button>
+        <span style="width:1px;height:18px;background:var(--border)"></span>
+        <button type="button" class="btn-outline btn-xs" data-bulk="todos:silenciar">Silenciar a todos</button>
+        <button type="button" class="btn-outline btn-xs" data-bulk="todos:normal">Reiniciar</button>
+      </div>
+      <div id="pub-lista-voces" class="voces-grid"></div>
+
+      <hr class="divider">
+      <div class="grid-2" style="align-items:start">
+        <div class="stack" style="gap:12px">
+          <div class="campo">
+            <label>Nombre en los subtítulos</label>
+            <div class="segmentado" style="grid-template-columns:1fr 1fr 1fr">
+              <label><input type="radio" name="pub-nombres" value="anon" checked><span>Anonimizado</span></label>
+              <label><input type="radio" name="pub-nombres" value="real"><span>Nombre real</span></label>
+              <label><input type="radio" name="pub-nombres" value="ninguno"><span>Sin nombre</span></label>
+            </div>
+          </div>
+          <div class="campo" id="pub-box-prefijo">
+            <label for="pub-prefijo">Etiqueta anónima</label>
+            <input type="text" id="pub-prefijo" value="Alumno" placeholder="Alumno" style="max-width:220px">
+            <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Queda "Alumno 1", "Alumno 2"… en el orden en que hablan.</div>
+          </div>
+        </div>
+        <div class="stack" style="gap:10px">
+          <label class="check"><input type="checkbox" id="pub-igualar" checked><span><strong>Igualar el volumen entre voces</strong> (sube a quien habla bajo y baja a quien habla alto)</span></label>
+          <label class="check"><input type="checkbox" id="pub-nivelar" checked><span><strong>Nivelar el volumen general</strong> (volumen estándar en todo el video)</span></label>
+          <label class="check"><input type="checkbox" id="pub-margen" checked><span>Margen de seguridad: silenciar también 0,2 s antes y después</span></label>
+        </div>
+      </div>
+      <div class="row-between" style="margin-top:14px">
+        <span id="pub-resumen-sel" style="font-size:0.84rem;color:var(--text-2)"></span>
+        <button type="button" class="btn-primary btn-lg" id="btn-pub-generar">Generar video</button>
+      </div>
+      <div id="pub-progreso-render"></div>
+    </div>
+
+    <div class="card">
+      <h3>✂️ Recortar el video y/o unirle subtítulos</h3>
+      <p class="sub-desc">Usa el tramo de arriba (vacío = video entero) y los subtítulos de esta transcripción.</p>
+      <div class="row">
+        <input type="hidden" id="p4-t-ini"><input type="hidden" id="p4-t-fin">
+        <select id="p4-modo-unir" style="flex:1;min-width:220px;max-width:420px">
+          <option value="soft" selected>Unir subtítulos como pista (rápido)</option>
+          <option value="burn">Subtítulos quemados en la imagen</option>
+          <option value="solo_recortar_video">Solo recortar el video</option>
+        </select>
+        <button type="button" class="btn-secondary btn-sm" id="btn-p4-unir-video">Procesar MP4</button>
+      </div>
+      <div id="p4-res-unir" style="margin-top:8px;font-size:0.84rem"></div>
     </div>
   </div>
 </section>
+
 
 <!-- ====================================================================== -->
 <!-- PESTAÑA 5: MI ESTILO (ML) Y GUIONES                                     -->
@@ -4942,198 +5057,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
 </section>
 
 
-<!-- ====================================================================== -->
-<!-- SECCIÓN 6: VIDEO PARA PUBLICAR (SILENCIAR VOCES + SUBTÍTULOS)          -->
-<!-- ====================================================================== -->
-<section class="step-section" id="step-6">
-  <div class="sec-head">
-    <div>
-      <div class="eyebrow">Herramientas</div>
-      <h1>Video para publicar</h1>
-      <p>Elegí, voz por voz, si se escucha, si se silencia y queda como subtítulo, o si solo se le agregan subtítulos.</p>
-    </div>
-  </div>
-  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Publicar una clase sin que se escuchen las voces de los alumnos (o de nadie)</li><li>Que lo que dijeron quede como subtítulo, con nombre anonimizado o real</li><li>Agregar subtítulos solo de los alumnos cuando en la grabación no se los escucha</li><li>Usar una transcripción con nombres (por ejemplo, de Tactiq) o analizar las voces del video</li><li>Dejar el volumen parejo en todo el video</li></ul></div>
 
-  <!-- 1. Video y análisis -->
-  <div class="card">
-    <h2><span class="paso-num">1</span>Elegí el video</h2>
-    <p class="sub-desc">El video queda guardado en <code>audios/</code> para poder reutilizarlo.</p>
-    <div class="grid-2">
-      <div class="dropzone" id="pub-zona" style="padding:22px">
-        <div class="dz-icon"><svg><use href="#i-upload"/></svg></div>
-        <div class="dz-title" id="pub-zona-titulo">Arrastrá o elegí un video</div>
-        <div class="dz-sub">MP4, MKV, MOV, WEBM</div>
-        <input type="file" id="pub-arch" accept=".mp4,.mkv,.mov,.webm,.avi,video/*" hidden>
-      </div>
-      <div class="stack" style="gap:12px">
-        <div class="campo">
-          <label for="pub-sel-video">O uno que ya está en <code>audios/</code></label>
-          <select id="pub-sel-video"></select>
-        </div>
-        <div class="campo">
-          <label>Reconocer las voces</label>
-          <div class="segmentado">
-            <label><input type="radio" name="pub-fuente" value="analizar" checked><span>Analizar este video</span></label>
-            <label><input type="radio" name="pub-fuente" value="guardada"><span>Usar una transcripción guardada</span></label>
-          </div>
-        </div>
-        <div id="pub-box-analizar" class="grid-2" style="gap:10px">
-          <div class="campo">
-            <label for="pub-modelo">Modelo</label>
-            <select id="pub-modelo"><option value="base">Base (más rápido)</option><option value="small" selected>Small (más preciso)</option></select>
-          </div>
-          <div class="campo">
-            <label for="pub-hablantes">Hablantes</label>
-            <select id="pub-hablantes">
-              <option value="0" selected>Automático</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-              <option value="4">4</option>
-              <option value="5">5</option>
-              <option value="6">6</option>
-              <option value="7">7</option>
-              <option value="8">8</option>
-              <option value="9">9</option>
-              <option value="10">10</option>
-              <option value="11">11</option>
-              <option value="12">12</option>
-              <option value="13">13</option>
-              <option value="14">14</option>
-              <option value="15">15</option>
-              <option value="16">16</option>
-              <option value="17">17</option>
-              <option value="18">18</option>
-              <option value="19">19</option>
-              <option value="20">20</option>
-              <option value="21">21</option>
-              <option value="22">22</option>
-              <option value="23">23</option>
-              <option value="24">24</option>
-              <option value="25">25</option>
-              <option value="26">26</option>
-              <option value="27">27</option>
-              <option value="28">28</option>
-              <option value="29">29</option>
-              <option value="30">30</option>
-            </select>
-          </div>
-        </div>
-        <div id="pub-box-guardada" class="campo" style="display:none">
-          <label for="pub-sel-sesion">Transcripción guardada <span style="font-weight:400;color:var(--muted)">(de esta misma clase; si de Tactiq, ya trae los nombres)</span></label>
-          <select id="pub-sel-sesion"></select>
-        </div>
-        <button type="button" class="btn-primary btn-block" id="btn-pub-analizar">Reconocer voces</button>
-      </div>
-    </div>
-    <div id="pub-prev-slot1">
-      <div id="pub-preview" class="preview" style="display:none">
-        <div class="pub-video-wrap">
-          <video id="pub-audio" controls preload="metadata" playsinline></video>
-          <div class="sub-overlay pub-overlay"><span id="pub-sub-live" style="display:none"></span></div>
-          <span class="pub-mute-tag" id="pub-mute-tag" style="display:none">🔇 silenciada</span>
-        </div>
-        <div class="prev-reloj">
-          <span class="t-grande" id="pub-prev-t">00:00</span>
-          <span class="t-dur">/ <span id="pub-prev-dur">--:--</span></span>
-          <span class="prev-saltos">
-            <button type="button" class="btn-outline btn-xs" data-salto-pub="-5">−5 s</button>
-            <button type="button" class="btn-outline btn-xs" data-salto-pub="5">+5 s</button>
-          </span>
-        </div>
-        <div class="timeline" id="pub-timeline" title="Hacé clic para ir a ese momento">
-          <div class="tl-capa" id="pub-tl-marcas"></div>
-          <div class="tl-cabezal" id="pub-tl-cabezal"></div>
-        </div>
-        <div class="tl-leyenda" id="pub-tl-leyenda" style="display:none">
-          <span><i style="background:rgba(220,38,38,0.55)"></i>silenciada + subtítulo</span>
-          <span><i style="background:rgba(37,99,235,0.55)"></i>solo subtítulo</span>
-        </div>
-        <div id="pub-audio-info" class="pub-ahora">Dale play para ver el video.</div>
-        <label class="check" id="pub-simular-box" style="display:none;font-size:0.8rem;margin-top:6px"><input type="checkbox" id="pub-simular" checked><span>Simular el resultado al reproducir (silencio y subtítulos, aproximado)</span></label>
-      </div>
-    </div>
-    <div id="pub-progreso-analisis"></div>
-  </div>
-
-  <div id="pub-paso2" style="display:none">
-    <!-- 2. Voces -->
-    <div class="card">
-      <div class="card-head">
-        <div>
-          <h2><span class="paso-num">2</span>Qué hacer con cada voz</h2>
-          <p>Escuchá cada voz y elegí: <strong>se escucha</strong>, <strong>silenciar</strong> (queda como subtítulo) o <strong>solo subtítulo</strong> (el audio no se toca). <span id="pub-resumen-video"></span></p>
-        </div>
-        <div class="row" style="gap:6px">
-          <span style="font-size:0.75rem;color:var(--muted)">A los demás (todos menos vos):</span>
-          <button type="button" class="btn-outline btn-xs" data-bulk="demas:silenciar">Silenciar</button>
-          <button type="button" class="btn-outline btn-xs" data-bulk="demas:subtitulo">Solo subtítulo</button>
-          <span style="width:1px;height:18px;background:var(--border)"></span>
-          <button type="button" class="btn-outline btn-xs" data-bulk="todos:silenciar">Silenciar a todos</button>
-          <button type="button" class="btn-outline btn-xs" data-bulk="todos:normal">Reiniciar</button>
-        </div>
-      </div>
-      <div class="recetas" role="group" aria-label="Recetas">
-        <span class="recetas-tit">Recetas</span>
-        <button type="button" class="receta" data-receta-pub="publicar"><strong>Publicar sin voces de alumnos</strong><span>Los silencia y los subtitula como "Alumno 1, 2…"</span></button>
-        <button type="button" class="receta" data-receta-pub="sub-alumnos"><strong>Subtítulos de los alumnos</strong><span>No se los escuchó: se agregan sus frases con nombre</span></button>
-        <button type="button" class="receta" data-receta-pub="sub-todos"><strong>Subtítulos de todo el video</strong><span>El video salió sin audio: todos con nombre</span></button>
-        <button type="button" class="receta" data-receta-pub="igualar"><strong>Solo igualar el volumen</strong><span>Tu voz y la de los alumnos parejas, sin subtítulos</span></button>
-      </div>
-      <div class="pub-dos-col">
-        <div id="pub-lista-voces" class="stack" style="gap:8px"></div>
-        <div id="pub-prev-slot2" class="pub-prev-col"></div>
-      </div>
-    </div>
-
-    <!-- 3. Opciones -->
-    <div class="card">
-      <h2><span class="paso-num">3</span>Subtítulos, sincronización y volumen</h2>
-      <p class="sub-desc">Se subtitula solo lo que dicen las voces marcadas como «silenciar» o «solo subtítulo».</p>
-      <div class="grid-2" style="align-items:start">
-        <div class="stack" style="gap:12px">
-          <div class="campo">
-            <label>Nombre en los subtítulos</label>
-            <div class="segmentado" style="grid-template-columns:1fr 1fr 1fr">
-              <label><input type="radio" name="pub-nombres" value="anon" checked><span>Anonimizado</span></label>
-              <label><input type="radio" name="pub-nombres" value="real"><span>Nombre real</span></label>
-              <label><input type="radio" name="pub-nombres" value="ninguno"><span>Sin nombre</span></label>
-            </div>
-          </div>
-          <div class="campo" id="pub-box-prefijo">
-            <label for="pub-prefijo">Etiqueta anónima</label>
-            <input type="text" id="pub-prefijo" value="Alumno" placeholder="Alumno" style="max-width:220px">
-            <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Queda "Alumno 1", "Alumno 2"… en el orden en que hablan. Si querés otro nombre para alguien (por ej. "Profe"), usá «Nombre real» y cambialo en su fila.</div>
-          </div>
-          <div class="campo" id="pub-box-offset">
-            <label for="pub-offset">Desfase de la transcripción respecto del video (seg)</label>
-            <div class="row" style="gap:6px">
-              <input type="number" id="pub-offset" class="tiempo" step="0.5" value="0" style="width:100px">
-              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetPub(-1)">−1 s</button>
-              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetPub(1)">+1 s</button>
-              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetPub(0)">0</button>
-            </div>
-            <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Si la transcripción es de Tactiq, suele estar corrida. Calculalo en <a href="#" onclick="irAPaso(4);return false">Subtítulos y video</a> (frase de referencia) y copialo acá; si la abriste ahí, se completa solo. Probalo con ▶ Escuchar.</div>
-          </div>
-        </div>
-        <div class="stack" style="gap:10px">
-          <label class="check"><input type="checkbox" id="pub-igualar" checked><span><strong>Igualar el volumen entre voces</strong> (sube a quien habla bajo y baja a quien habla alto)</span></label>
-          <label class="check"><input type="checkbox" id="pub-nivelar" checked><span><strong>Nivelar el volumen general</strong> (que todo el video quede a un volumen estándar)</span></label>
-          <label class="check"><input type="checkbox" id="pub-margen" checked><span>Margen de seguridad: silenciar también 0,2 s antes y después de cada intervención</span></label>
-          <div class="panel" style="font-size:0.8rem;color:var(--text-2)">
-            El reconocimiento de voces y los tiempos de la transcripción pueden fallar (sobre todo con Tactiq, que marca solo el inicio de cada frase). Antes de publicar, mirá el video: si se escucha algo que debía silenciarse, corregí el desfase o el hablante de esa línea en el <a href="#" onclick="irAPaso(3);return false">paso 3</a> y volvé a generar.
-          </div>
-        </div>
-      </div>
-      <hr class="divider">
-      <div class="row-between">
-        <span id="pub-resumen-sel" style="font-size:0.84rem;color:var(--text-2)"></span>
-        <button type="button" class="btn-primary btn-lg" id="btn-pub-generar">Generar video</button>
-      </div>
-      <div id="pub-progreso-render"></div>
-    </div>
-  </div>
-</section>
 
 </div><!-- /main-inner -->
 </main>
@@ -5215,6 +5139,7 @@ function irAPaso(num) {
   if (num === 2) {
     cargarAudiosDisponibles();
     cargarSesionesGuardadas();
+    renderVinculoP2();
   }
   if (num === 3 && sesionActiva) {
     renderPaso3();
@@ -5224,9 +5149,6 @@ function irAPaso(num) {
   }
   if (num === 5) {
     cargarEstadoEstiloPaso5();
-  }
-  if (num === 6) {
-    cargarPublicar();
   }
 }
 
@@ -5456,35 +5378,10 @@ document.getElementById('btn-p1-recortar-existente').onclick = async () => {
 
 
 // ==============================================================================
-// SECCIÓN 6: VIDEO PARA PUBLICAR (silenciar voces + subtítulos de lo que dijeron)
+// PASO 4 · RESULTADOS: VIDEO (silenciar / subtitular voces) + reproductor común
 // ==============================================================================
-const pub = { video: '', sesion: null, modo: {}, nombres: {}, idxMuestra: {}, miVoz: null, recetaPendiente: null };
+const pub = { video: '', sesion: null, modo: {}, nombres: {}, idxMuestra: {}, miVoz: null };
 
-async function cargarPublicar() {
-  try {
-    const [ra, rs] = await Promise.all([fetch('/api/audios_existentes'), fetch('/api/sesiones_guardadas')]);
-    const archivos = await ra.json();
-    const sesiones = await rs.json();
-    const vids = archivos.filter(a => a.tipo === 'video');
-    const sel = document.getElementById('pub-sel-video');
-    const prev = pub.video || sel.value;
-    sel.innerHTML = '<option value="">— Elegir —</option>' + vids.map(a =>
-      `<option value="${escHtml(a.nombre)}" ${a.nombre === prev ? 'selected' : ''}>${escHtml(a.nombre)} (${fmtMB(a.bytes)})</option>`).join('');
-    const ss = document.getElementById('pub-sel-sesion');
-    ss.innerHTML = sesiones.length
-      ? sesiones.map(x => `<option value="${escHtml(x.sesion_id)}">${escHtml(x.nombre_original)} · ${fmtHMS(x.duracion)} · ${x.cantidad_hablantes} voces · ${escHtml(x.modelo || '')}</option>`).join('')
-      : '<option value="">(No hay transcripciones guardadas: usá "Analizar este video")</option>';
-    if (sel.value) cargarPreviewPub(sel.value);
-  } catch (e) {}
-}
-
-function pubFuente() { return document.querySelector('input[name="pub-fuente"]:checked').value; }
-document.querySelectorAll('input[name="pub-fuente"]').forEach(r => r.addEventListener('change', () => {
-  const g = pubFuente() === 'guardada';
-  document.getElementById('pub-box-analizar').style.display = g ? 'none' : 'grid';
-  document.getElementById('pub-box-guardada').style.display = g ? 'block' : 'none';
-  document.getElementById('btn-pub-analizar').textContent = g ? 'Usar esta transcripción' : 'Reconocer voces';
-}));
 document.querySelectorAll('input[name="pub-nombres"]').forEach(r => r.addEventListener('change', () => {
   document.getElementById('pub-box-prefijo').style.display = pubModoNombre() === 'anon' ? 'block' : 'none';
   renderVocesPub();
@@ -5495,14 +5392,12 @@ function pubModoNombre() { return document.querySelector('input[name="pub-nombre
 
 // Vista previa del video
 function cargarPreviewPub(nombre) {
-  const box = document.getElementById('pub-preview');
   const v = document.getElementById('pub-audio');
-  if (!nombre) { box.style.display = 'none'; v.removeAttribute('src'); v.load(); return; }
+  if (!nombre) { if (v.getAttribute('src')) { v.removeAttribute('src'); v.load(); } return; }
   const src = '/audios/' + encodeURIComponent(nombre);
   if (v.getAttribute('src') !== src) { v.src = src; }
-  box.style.display = 'block';
 }
-function offsetPub() { return parseFloat(document.getElementById('pub-offset').value) || 0; }
+function offsetPub() { return sesionActiva ? (Number(sesionActiva.offset) || 0) : 0; }
 function segActualPub(t) {
   if (!pub.sesion) return null;
   const off = offsetPub();
@@ -5584,36 +5479,7 @@ function renderTimelinePub() {
     v.currentTime = Math.max(0, (v.currentTime || 0) + Number(b.dataset.saltoPub));
   });
   document.getElementById('pub-simular').addEventListener('change', () => { if (!document.getElementById('pub-simular').checked) v.muted = false; actualizarVivoPub(); });
-  document.getElementById('pub-offset').addEventListener('input', () => { renderTimelinePub(); actualizarVivoPub(); });
 })();
-
-// Subir video
-const pubZona = document.getElementById('pub-zona');
-const pubArch = document.getElementById('pub-arch');
-pubZona.onclick = () => pubArch.click();
-pubZona.ondragover = e => { e.preventDefault(); pubZona.classList.add('sobre'); };
-pubZona.ondragleave = () => pubZona.classList.remove('sobre');
-pubZona.ondrop = e => { e.preventDefault(); pubZona.classList.remove('sobre'); if (e.dataTransfer.files[0]) subirVideoPub(e.dataTransfer.files[0]); };
-pubArch.onchange = () => { if (pubArch.files[0]) subirVideoPub(pubArch.files[0]); pubArch.value = ''; };
-
-async function subirVideoPub(file) {
-  const tit = document.getElementById('pub-zona-titulo');
-  tit.textContent = `Subiendo ${file.name}…`;
-  try {
-    const r = await fetch('/api/publicar_subir_video?nombre=' + encodeURIComponent(file.name), { method: 'POST', body: file });
-    if (!r.ok) throw new Error(await r.text());
-    const d = await r.json();
-    pub.video = d.nombre_video;
-    await cargarPublicar();
-    document.getElementById('pub-sel-video').value = d.nombre_video;
-    tit.textContent = `✔ ${d.nombre_video}`;
-    cargarPreviewPub(d.nombre_video);
-  } catch (e) {
-    tit.textContent = 'Arrastrá o elegí un video';
-    alert('No se pudo subir el video: ' + e.message);
-  }
-}
-document.getElementById('pub-sel-video').addEventListener('change', e => { pub.video = e.target.value; cargarPreviewPub(pub.video); });
 
 function barraProgreso(cont, texto) {
   const box = document.createElement('div');
@@ -5636,63 +5502,6 @@ async function seguirJob(jobId, box) {
     if (d.estado === 'completado') return d.resultado;
   }
 }
-
-document.getElementById('btn-pub-analizar').onclick = async () => {
-  pub.video = document.getElementById('pub-sel-video').value;
-  if (!pub.video) { alert('Primero subí o elegí un video.'); return; }
-  const cont = document.getElementById('pub-progreso-analisis');
-  const btn = document.getElementById('btn-pub-analizar');
-  btn.disabled = true;
-  try {
-    let sid;
-    if (pubFuente() === 'guardada') {
-      sid = document.getElementById('pub-sel-sesion').value;
-      if (!sid) throw new Error('No hay una transcripción guardada para elegir.');
-      cont.innerHTML = '';
-    } else {
-      const box = barraProgreso(cont, 'Reconociendo voces');
-      const q = new URLSearchParams({
-        nombre: pub.video, usar_mp3_existente: '1', solo_extraer: '0',
-        modelo: document.getElementById('pub-modelo').value,
-        hablantes: document.getElementById('pub-hablantes').value, idioma: 'es'
-      });
-      const r = await fetch('/api/iniciar?' + q.toString(), { method: 'POST' });
-      if (!r.ok) throw new Error(await r.text());
-      const res = await seguirJob((await r.json()).job_id, box);
-      sid = res.sesion_id;
-      cont.innerHTML = '';
-    }
-    const rs = await fetch('/api/sesion?id=' + encodeURIComponent(sid));
-    if (!rs.ok) throw new Error(await rs.text());
-    pub.sesion = await rs.json();
-    pub.modo = {};
-    pub.nombres = {};
-    pub.idxMuestra = {};
-    // Desfase: 0 si se analizó este video; si la transcripción está abierta en el paso 4, se toma el de ahí
-    let off = 0;
-    if (pubFuente() === 'guardada') {
-      const selP4 = document.getElementById('p4-sel-sesion-activa');
-      if (selP4 && selP4.value === sid) off = parseFloat(document.getElementById('p4-offset-seg').value) || 0;
-    }
-    document.getElementById('pub-offset').value = off;
-    document.getElementById('pub-box-offset').style.display = pubFuente() === 'guardada' ? 'block' : 'none';
-    cargarPreviewPub(pub.video);
-    document.getElementById('pub-prev-slot2').appendChild(document.getElementById('pub-preview'));
-    document.getElementById('pub-simular-box').style.display = 'flex';
-    document.getElementById('pub-resumen-video').textContent =
-      `${pub.sesion.hablantes.length} voces en ${fmtHMS(pub.sesion.duracion)}.`;
-    pub.miVoz = detectarMiVoz(pub.sesion.sesion_id, pub.sesion.hablantes) || (vocesOrdenadas()[0] || {}).id || null;
-    document.getElementById('pub-paso2').style.display = 'block';
-    document.getElementById('pub-progreso-render').innerHTML = '';
-    renderVocesPub();
-    if (pub.recetaPendiente) { aplicarRecetaPub(pub.recetaPendiente); pub.recetaPendiente = null; }
-    document.getElementById('pub-paso2').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch (e) {
-    cont.innerHTML = `<div style="color:var(--danger);font-weight:600;margin-top:10px">✘ ${escHtml(e.message)}</div>`;
-  } finally {
-    btn.disabled = false;
-  }
-};
 
 function vocesOrdenadas() {
   return [...(pub.sesion?.hablantes || [])].sort((a, b) => (b.duracion || 0) - (a.duracion || 0));
@@ -5751,7 +5560,7 @@ function renderVocesPub() {
   cont.innerHTML = voces.map((h, i) => `
     <div class="voz-fila" data-spk="${escHtml(h.id)}">
       <span class="dot" style="background:${escHtml(h.color || '#94a3b8')}"></span>
-      <input type="text" value="${escHtml(pub.nombres[h.id] ?? h.nombre ?? h.id)}" aria-label="Nombre de la voz" data-spk="${escHtml(h.id)}" class="pub-inp-nombre">
+      <span class="voz-nom">${escHtml(h.nombre ?? h.id)}</span>
       <div class="voz-stats">${h.cantidad || 0} ${h.cantidad === 1 ? 'intervención' : 'intervenciones'} · ${fmtHMS(h.duracion || 0)}<br><span class="etq"></span></div>
       <div class="row" style="gap:4px;flex-wrap:nowrap">
         <button type="button" class="btn-outline btn-xs" data-play="${escHtml(h.id)}">▶ Escuchar</button>
@@ -5766,16 +5575,14 @@ function renderVocesPub() {
   cont.querySelectorAll('[data-play]').forEach(b => b.onclick = () => escucharVozPub(b.dataset.play));
   cont.querySelectorAll('[data-yo]').forEach(b => b.onclick = () => {
     pub.miVoz = b.dataset.yo;
+    if (sesionActiva) sesionActiva.miVozId = pub.miVoz;
     const h = pub.sesion.hablantes.find(x => x.id === pub.miVoz);
-    recordarMiVoz(pub.sesion.sesion_id, h ? { ...h, nombre: pub.nombres[h.id] || h.nombre } : null);
+    recordarMiVoz(pub.sesion.sesion_id, h || null);
     renderVocesPub();
+    actualizarResumenAudioPaso3();
   });
   renderEtiquetasPub();
 }
-window.ajustarOffsetPub = function(d) {
-  const inp = document.getElementById('pub-offset');
-  inp.value = d === 0 ? 0 : Math.round(((parseFloat(inp.value) || 0) + d) * 10) / 10;
-};
 function escucharVozPub(spk) {
   const segs = (pub.sesion.segmentos || []).filter(s => s.hablante === spk && (s.fin - s.inicio) >= 1.5);
   const lista = segs.length ? segs : (pub.sesion.segmentos || []).filter(s => s.hablante === spk);
@@ -5789,7 +5596,7 @@ function escucharVozPub(spk) {
   document.getElementById('pub-audio-info').innerHTML =
     `<strong>${escHtml(pub.nombres[spk] || h?.nombre || spk)}</strong> · ${fmtHMS(s.inicio)} · “${escHtml((s.texto || '').slice(0, 90))}”`;
   pub._escuchando = true;
-  audio.currentTime = Math.max(0, s.inicio + (parseFloat(document.getElementById('pub-offset').value) || 0));
+  audio.currentTime = Math.max(0, s.inicio + offsetPub());
   audio.play().catch(() => {});
   clearTimeout(pub._stop);
   pub._stop = setTimeout(() => audio.pause(), Math.min(8, s.fin - s.inicio + 0.3) * 1000);
@@ -5821,24 +5628,6 @@ function aplicarRecetaPub(receta) {
 }
 document.querySelectorAll('[data-receta-pub]').forEach(b => b.onclick = () => aplicarRecetaPub(b.dataset.recetaPub));
 
-window.abrirPublicarConSesion = async function(sid, receta) {
-  irAPaso(6);
-  await cargarPublicar();
-  const radio = document.querySelector('input[name="pub-fuente"][value="guardada"]');
-  radio.checked = true;
-  radio.dispatchEvent(new Event('change'));
-  document.getElementById('pub-sel-sesion').value = sid;
-  pub.recetaPendiente = receta;
-  const selV = document.getElementById('pub-sel-video');
-  if (selV.value) {
-    document.getElementById('btn-pub-analizar').click();
-  } else {
-    document.getElementById('pub-progreso-analisis').innerHTML =
-      '<div class="aviso-mini" style="margin-top:12px">Elegí o subí el <strong>video</strong> de esta clase y tocá <strong>Usar esta transcripción</strong>: la receta se aplica sola.</div>';
-    document.getElementById('pub-zona').scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
-};
-
 document.getElementById('btn-pub-generar').onclick = async () => {
   const igualarPub = document.getElementById('pub-igualar').checked;
   if (!pub.sesion || (!subtituladosPub().size && !igualarPub && !document.getElementById('pub-nivelar').checked)) return;
@@ -5854,7 +5643,7 @@ document.getElementById('btn-pub-generar').onclick = async () => {
         nombre_video: pub.video,
         silenciados: Object.keys(pub.modo).filter(k => pub.modo[k] === 'silenciar'),
         subtitular: Object.keys(pub.modo).filter(k => pub.modo[k] === 'subtitulo'),
-        offset: parseFloat(document.getElementById('pub-offset').value) || 0,
+        offset: offsetPub(),
         nombres: pub.nombres,
         modo_nombre: pubModoNombre(),
         prefijo_anon: document.getElementById('pub-prefijo').value.trim() || 'Alumno',
@@ -6222,25 +6011,26 @@ async function cargarSesionesGuardadas() {
       cont.innerHTML = '<span style="font-size:0.84rem;color:var(--muted)">Todavía no hay transcripciones guardadas. Creá una con la Opción A o subí una con la Opción B abajo.</span>';
       return;
     }
-    cont.innerHTML = lista.map(s => `
-      <div class="cola-item" style="background:#f0fdf4;border-color:#bbf7d0">
-        <div>
-          <strong>🎙️ ${escHtml(s.nombre_original)}</strong>
-          <span class="badge badge-azul" style="margin-left:6px">${escHtml(s.modelo)}</span>
-          <span style="font-size:0.82rem;color:#334155;margin-left:8px">
-            Duración: <strong>${fmtHMS(s.duracion)}</strong> · <strong>${s.cantidad_segmentos}</strong> fragmentos · <strong>${s.cantidad_hablantes}</strong> hablantes detectados
-          </span>
+    cont.innerHTML = lista.map(s => {
+      const estado = !s.nombre_mp3 ? '<span class="badge badge-ambar">sin video</span>'
+        : s.sincronizado ? '<span class="badge badge-verde">✓ vinculada y sincronizada</span>'
+        : '<span class="badge badge-ambar">vinculada · falta sincronizar</span>';
+      return `
+      <div class="ses-item">
+        <div style="min-width:0">
+          <strong style="overflow-wrap:anywhere">${escHtml(s.nombre_original)}</strong>
+          <div style="font-size:0.78rem;color:var(--muted);margin-top:2px">
+            ${fmtHMS(s.duracion)} · ${s.cantidad_segmentos} líneas · ${s.cantidad_hablantes} voces · ${escHtml(s.modelo)}${s.nombre_mp3 ? ` · ${escHtml(s.nombre_mp3)}` : ''}
+          </div>
+          <div style="margin-top:4px">${estado}</div>
         </div>
-        <div style="display:flex;gap:6px">
-          <button type="button" class="btn-primary btn-sm" onclick="abrirSesionGuardada('${escHtml(s.sesion_id)}', 3)">
-            👥 Abrir en Paso 3 (Hablantes)
-          </button>
-          <button type="button" class="btn-secondary btn-sm" onclick="abrirSesionGuardada('${escHtml(s.sesion_id)}', 4)">
-            🎬 Abrir en Paso 4 (Subtítulos/Video)
-          </button>
+        <div class="row" style="gap:6px;flex-wrap:nowrap">
+          <button type="button" class="btn-outline btn-xs" onclick="abrirSesionGuardada('${escHtml(s.sesion_id)}', 2)">Vincular / sincronizar</button>
+          <button type="button" class="btn-outline btn-xs" onclick="abrirSesionGuardada('${escHtml(s.sesion_id)}', 3)">Hablantes</button>
+          <button type="button" class="btn-primary btn-xs" onclick="abrirSesionGuardada('${escHtml(s.sesion_id)}', 4)">Resultados</button>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   } catch (e) {}
 }
 
@@ -6250,6 +6040,10 @@ window.abrirSesionGuardada = async function(sid, pasoDestino = 3) {
   const d = await r.json();
   activarSesion(d);
   irAPaso(pasoDestino);
+  if (pasoDestino === 2) {
+    await renderVinculoP2();
+    document.getElementById('p2-vinculo').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 };
 
 // Opción A: Transcribir con Whisper
@@ -6390,7 +6184,8 @@ btnP2SubirTrans.onclick = async () => {
       </div>
     `;
     activarSesion(d);
-    setTimeout(() => irAPaso(3), 600);
+    await renderVinculoP2();
+    document.getElementById('p2-vinculo').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     resDiv.innerHTML = `<div style="margin-top:8px;color:var(--danger);font-weight:700">✘ ${escHtml(e.message)}</div>`;
   } finally {
@@ -6417,6 +6212,10 @@ function activarSesion(datos) {
     offsetSub: 0
   };
   for (const h of (sesionActiva.hablantes || [])) h.silenciado = false;
+  sesionActiva.offset = Number(datos.offset) || 0;
+  sesionActiva.sincronizado = Boolean(datos.sincronizado);
+  sesionActiva.origen_media = datos.origen_media || '';
+  if (typeof pub !== 'undefined') { pub.modo = {}; pub.idxMuestra = {}; }
   sesionActiva.miVozId = detectarMiVoz(sesionActiva.sesion_id, sesionActiva.hablantes || []);
 }
 
@@ -6634,7 +6433,9 @@ function renderPaso3() {
     }
   };
 
-  audioEl.addEventListener('timeupdate', actualizarCabezalP3);
+  audioEl.onerror = () => {
+    if (audioEl.getAttribute('src')) document.getElementById('p3-player-info').textContent = `No se pudo abrir "${sesionActiva?.nombre_mp3}". ¿Sigue en la carpeta audios/? Revisalo en Transcripción.`;
+  };
   cargarGruposYListado().then(() => {
     renderHablantesPaso3();
     renderSegmentosPaso3();
@@ -6661,11 +6462,14 @@ function renderDiagnosticoClaridad() {
   const partes = [
     `${st.hablantes.length} ${st.hablantes.length === 1 ? 'voz' : 'voces'}`,
     fmtHMS(st.duracion),
-    st.nombre_mp3 ? `audio: ${st.nombre_mp3}` : 'sin audio vinculado',
+    st.nombre_mp3 ? `${esVideoNombre(st.nombre_mp3) ? 'video' : 'audio'}: ${escHtml(st.nombre_mp3)}${st.sincronizado ? '' : ' <span class="pend">(sin sincronizar)</span>'}` : '<span class="pend">sin video ni audio</span>',
     yo ? `<span class="ok">tu voz: ${escHtml(yo.nombre)}</span>` : '<span class="pend">tu voz: sin marcar</span>',
     sinNombre ? `<span class="pend">${sinNombre} sin nombre</span>` : '<span class="ok">todas con nombre</span>'
   ];
   document.getElementById('p3-ctx-datos').innerHTML = partes.join(' · ');
+  document.getElementById('p3-aviso-media').innerHTML = !st.nombre_mp3
+    ? 'Esta transcripción no tiene video ni audio vinculado, por eso no se puede escuchar. <a href="#" onclick="irAPaso(2);return false">Vincularlo en Transcripción →</a>'
+    : (!st.sincronizado ? 'La transcripción todavía no está sincronizada con su video: lo que escuches puede no coincidir con el texto. <a href="#" onclick="irAPaso(2);return false">Sincronizar →</a>' : '');
   // El panel de "completar automáticamente" se abre solo si faltan nombres
   const auto = document.getElementById('p3-auto-box');
   if (auto && !auto.dataset.tocado) auto.open = sinNombre > 0;
@@ -6811,11 +6615,25 @@ document.getElementById('btn-p3-nuevo-spk').onclick = () => {
 
 function reproducirFragmentoPaso3(ini, fin, etiqueta) {
   const audioEl = document.getElementById('p3-audio');
-  if (!sesionActiva || !sesionActiva.nombre_mp3) return;
-  sesionActiva.pararEn = fin;
-  audioEl.currentTime = Math.max(0, ini);
-  audioEl.play();
-  document.getElementById('p3-player-info').textContent = `▶ Escuchando: ${etiqueta} (${fmtHMS(ini)} → ${fmtHMS(fin)})`;
+  const info = document.getElementById('p3-player-info');
+  if (!sesionActiva || !sesionActiva.nombre_mp3) {
+    info.textContent = 'Esta transcripción no tiene video ni audio vinculado: vinculalo en Transcripción.';
+    return;
+  }
+  const off = offSes(sesionActiva);
+  const arrancar = () => {
+    sesionActiva.pararEn = fin + off;
+    audioEl.currentTime = Math.max(0, ini + off);
+    const pr = audioEl.play();
+    if (pr && pr.catch) pr.catch(err => { info.textContent = 'No se pudo reproducir: ' + err.message; });
+    info.textContent = `▶ ${etiqueta} (${fmtHMS(ini + off)} → ${fmtHMS(fin + off)} del video)`;
+  };
+  if (audioEl.readyState >= 1) arrancar();
+  else {
+    info.textContent = 'Cargando el audio…';
+    audioEl.addEventListener('loadedmetadata', arrancar, { once: true });
+    audioEl.load();
+  }
 }
 
 function esSegSilenciado(st, seg) {
@@ -6824,10 +6642,13 @@ function esSegSilenciado(st, seg) {
   return Boolean(h && h.silenciado);
 }
 
+function offSes(st) { return Number((st || sesionActiva || {}).offset) || 0; }
+// El tramo se expresa en tiempo del VIDEO; las líneas, en tiempo de la transcripción (+ desfase)
 function estaEnRango(st, seg) {
-  const r0 = st.rangoInicio ?? 0;
-  const r1 = st.rangoFin ?? st.duracion;
-  return seg.fin > r0 && seg.inicio < r1;
+  const off = offSes(st);
+  const r0 = st.rangoInicio ?? -Infinity;
+  const r1 = st.rangoFin ?? Infinity;
+  return seg.fin + off > r0 && seg.inicio + off < r1;
 }
 
 function renderSegmentosPaso3() {
@@ -6867,7 +6688,7 @@ function renderSegmentosPaso3() {
     ).join('');
 
     row.innerHTML = `
-      <button type="button" class="seg-time-btn">▶ ${fmtHMS(seg.inicio)} - ${fmtHMS(seg.fin)}</button>
+      <button type="button" class="seg-time-btn" ${st.nombre_mp3 ? '' : 'disabled title="Sin video o audio vinculado"'}>▶ ${fmtHMS(seg.inicio + offSes(st))}</button>
       <select style="border-left:4px solid ${spk.color};font-weight:700;font-size:0.82rem">${opts}</select>
       <div class="seg-texto" contenteditable="true" spellcheck="false" style="font-size:0.9rem;padding:4px">${escHtml(seg.texto)}</div>
       <div style="display:flex;gap:4px">
@@ -6883,22 +6704,27 @@ function renderSegmentosPaso3() {
       seg.hablante = sel.value;
       delete seg.override_mute;
       renderHablantesPaso3(); renderSegmentosPaso3(); actualizarResumenAudioPaso3();
+      programarGuardadoSesion();
     };
     const txtEl = row.querySelector('.seg-texto');
-    txtEl.onblur = () => { seg.texto = txtEl.textContent.trim(); };
+    txtEl.onblur = () => {
+      const nuevo = txtEl.textContent.trim();
+      if (nuevo !== seg.texto) { seg.texto = nuevo; programarGuardadoSesion(); }
+    };
     row.querySelector('.btn-ini').onclick = () => {
-      st.rangoInicio = seg.inicio;
-      document.getElementById('p3-t-ini').value = fmtHMS(seg.inicio);
+      st.rangoInicio = seg.inicio + offSes(st);
+      document.getElementById('p3-t-ini').value = fmtCorte(st.rangoInicio);
       renderSegmentosPaso3(); actualizarResumenAudioPaso3();
     };
     row.querySelector('.btn-fin').onclick = () => {
-      st.rangoFin = seg.fin;
-      document.getElementById('p3-t-fin').value = fmtHMS(seg.fin);
+      st.rangoFin = seg.fin + offSes(st);
+      document.getElementById('p3-t-fin').value = fmtCorte(Math.ceil(st.rangoFin));
       renderSegmentosPaso3(); actualizarResumenAudioPaso3();
     };
     row.querySelector('.btn-mute').onclick = () => {
       seg.override_mute = !sil;
       renderSegmentosPaso3(); actualizarResumenAudioPaso3();
+      programarGuardadoSesion();
     };
 
     wrap.appendChild(row);
@@ -6961,15 +6787,15 @@ document.getElementById('btn-p3-aplicar-rango').onclick = aplicarInputsRangoPaso
 document.getElementById('p3-chk-ocultar-fuera').onchange = () => renderSegmentosPaso3();
 
 document.getElementById('btn-p3-tomar-ini-audio').onclick = () => {
-  const a = document.getElementById('p3-audio');
+  const a = document.getElementById('pub-audio');
   if (!a) return;
-  document.getElementById('p3-t-ini').value = fmtHMS(a.currentTime || 0);
+  document.getElementById('p3-t-ini').value = fmtCorte(a.currentTime || 0);
   aplicarInputsRangoPaso3();
 };
 document.getElementById('btn-p3-tomar-fin-audio').onclick = () => {
-  const a = document.getElementById('p3-audio');
+  const a = document.getElementById('pub-audio');
   if (!a) return;
-  document.getElementById('p3-t-fin').value = fmtHMS(a.currentTime || 0);
+  document.getElementById('p3-t-fin').value = fmtCorte(Math.ceil(a.currentTime || 0));
   aplicarInputsRangoPaso3();
 };
 
@@ -6985,44 +6811,34 @@ window.descargarTranscripcionRecortadaPaso3 = function(formato) {
   if (!sesionActiva) return;
   aplicarInputsRangoPaso3();
   const st = sesionActiva;
-  const r0 = st.rangoInicio ?? 0;
-  const r1 = st.rangoFin ?? st.duracion;
+  const off = offSes(st);
+  const conRango = st.rangoInicio !== null || st.rangoFin !== null;
+  const [r0, r1] = rangoP3();
   const resetReloj = document.getElementById('p3-chk-reset-reloj').checked;
-  const shift = (resetReloj && r0 > 0) ? r0 : 0;
+  const shift = (resetReloj && conRango && r0 > 0) ? r0 : 0;
   const mapaNom = {};
   for (const h of st.hablantes) mapaNom[h.id] = h.nombre;
-
   const segs = st.segmentos.filter(s => estaEnRango(st, s) && !esSegSilenciado(st, s));
-  if (!segs.length) {
-    alert('No hay fragmentos activos dentro de ese rango de minutos y segundos.');
-    return;
-  }
-
-  let contenido = '';
-  let ext = '.txt';
+  if (!segs.length) { alert('No hay líneas dentro de ese tramo.'); return; }
+  let contenido = '', ext;
   if (formato === 'srt') {
-    const { bloques } = construirBloquesSubtitulosSincronizados(st, -shift, true, false, false, { maxChars: 84, minDur: 1.2, maxDur: 6.0 });
-    contenido = bloques.map((b, i) => {
-      return `${i + 1}\n${fmtSrt(b.ini, ',')} --> ${fmtSrt(b.fin, ',')}\n${b.textoSrt || b.textoPlano}\n`;
-    }).join('\n');
-    ext = '_recorte.srt';
+    const { bloques } = construirBloquesSubtitulosSincronizados(st, off - shift, true, false, false, { maxChars: 84, minDur: 1.2, maxDur: 6.0 });
+    contenido = bloques.map((b, i) => `${i + 1}\n${fmtSrt(b.ini, ',')} --> ${fmtSrt(b.fin, ',')}\n${b.textoSrt || b.textoPlano}\n`).join('\n');
+    ext = '_transcripcion.srt';
   } else if (formato === 'txt_limpio') {
     contenido = segs.map(s => `${mapaNom[s.hablante] || s.hablante}: ${s.texto}`).join('\n');
-    ext = '_recorte_texto.txt';
+    ext = '_transcripcion_texto.txt';
   } else {
     contenido = segs.map(s => {
-      const ini = Math.max(0, Math.max(s.inicio, r0) - shift);
-      const fin = Math.max(ini + 0.2, Math.min(s.fin, r1) - shift);
+      const ini = Math.max(0, Math.max(s.inicio + off, conRango ? r0 : -Infinity) - shift);
+      const fin = Math.max(ini + 0.2, Math.min(s.fin + off, conRango ? r1 : Infinity) - shift);
       return `[${fmtHMS(ini)} - ${fmtHMS(fin)}] ${mapaNom[s.hablante] || s.hablante}: ${s.texto}`;
     }).join('\n');
-    ext = '_recorte_tiempos.txt';
+    ext = '_transcripcion_tiempos.txt';
   }
-
-  const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
   const a = document.createElement('a');
-  const base = st.nombre_original.replace(/\.[^.]+$/, '');
-  a.href = URL.createObjectURL(blob);
-  a.download = `${base}${ext}`;
+  a.href = URL.createObjectURL(new Blob([contenido], { type: 'text/plain;charset=utf-8' }));
+  a.download = `${st.nombre_original.replace(/\.[^.]+$/, '')}${conRango ? '_tramo' : ''}${ext}`;
   a.click();
 };
 
@@ -7037,13 +6853,17 @@ document.getElementById('btn-p3-recortar-sesion-perm').onclick = async () => {
   const reset = document.getElementById('p3-chk-reset-reloj').checked;
   if (!confirm(`¿Dejar en la transcripción de esta sesión únicamente el tramo desde ${desde || '00:00'} hasta ${hasta || 'el final'}?`)) return;
 
+  await guardarSesionServidor();
+  const off = offSes(sesionActiva);
+  const tD = desde ? Math.max(0, parseTiempoCliente(desde) - off) : null;
+  const tH = hasta ? Math.max(0, parseTiempoCliente(hasta) - off) : null;
   const r = await fetch('/api/recortar_transcripcion_sesion', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({
       sesion_id: sesionActiva.sesion_id,
-      desde,
-      hasta,
+      desde: tD !== null ? tD.toFixed(2) : '',
+      hasta: tH !== null ? tH.toFixed(2) : '',
       reiniciar_reloj: reset
     })
   });
@@ -7052,20 +6872,31 @@ document.getElementById('btn-p3-recortar-sesion-perm').onclick = async () => {
   sesionActiva.segmentos = d.segmentos;
   sesionActiva.hablantes = d.hablantes;
   sesionActiva.duracion = d.duracion;
+  if (reset) {
+    // La transcripción ahora empieza en 00:00: hay que volver a sincronizarla con su video
+    await guardarVinculoP2({ offset: tD !== null ? Math.round((tD + off) * 10) / 10 : off, sincronizado: !!sesionActiva.nombre_mp3 });
+  }
   sesionActiva.rangoInicio = null;
   sesionActiva.rangoFin = null;
   document.getElementById('p3-t-ini').value = '';
   document.getElementById('p3-t-fin').value = '';
   renderPaso3();
+  renderPaso4();
 };
 
+function durMediaP3() {
+  const a = document.getElementById('pub-audio');
+  const st = sesionActiva;
+  return (a && isFinite(a.duration) && a.duration > 0) ? a.duration : (st.duracion || 0) + Math.max(0, offSes(st));
+}
 function rangoP3() {
   const st = sesionActiva;
-  return [st.rangoInicio ?? 0, st.rangoFin ?? st.duracion];
+  return [st.rangoInicio ?? 0, st.rangoFin ?? durMediaP3()];
 }
 function durEnRango(segs) {
   const [r0, r1] = rangoP3();
-  return segs.reduce((acc, s) => acc + Math.max(0, Math.min(s.fin, r1) - Math.max(s.inicio, r0)), 0);
+  const off = offSes(sesionActiva);
+  return segs.reduce((acc, s) => acc + Math.max(0, Math.min(s.fin + off, r1) - Math.max(s.inicio + off, r0)), 0);
 }
 function lineaExcluida(s) { return s.override_mute === true; }
 
@@ -7078,7 +6909,7 @@ function actualizarResumenAudioPaso3() {
     badgeRango.textContent = `Tramo: ${fmtHMS(r0)} → ${fmtHMS(r1)} (${fmtHMS(r1 - r0)})`;
     badgeRango.className = 'badge badge-verde';
   } else {
-    badgeRango.textContent = `Tramo: todo el archivo (${fmtHMS(st.duracion)})`;
+    badgeRango.textContent = `Tramo: todo (${fmtHMS(durMediaP3())})`;
     badgeRango.className = 'badge badge-azul';
   }
   renderTimelineP3();
@@ -7101,7 +6932,7 @@ function actualizarResumenAudioPaso3() {
     aviso.innerHTML = '';
     btnA.disabled = false;
     let mios = st.segmentos.filter(s => s.hablante === yo.id && !lineaExcluida(s) && estaEnRango(st, s));
-    if (minSeg > 0) mios = mios.filter(s => (Math.min(s.fin, r1) - Math.max(s.inicio, r0)) >= minSeg);
+    if (minSeg > 0) mios = mios.filter(s => (Math.min(s.fin + offSes(st), r1) - Math.max(s.inicio + offSes(st), r0)) >= minSeg);
     let dur = durEnRango(mios);
     if (maxMin > 0) dur = Math.min(dur, maxMin * 60);
     document.getElementById('p3-resumen-audio').innerHTML = `${mios.length} fragmentos de <strong>${escHtml(yo.nombre)}</strong> · sale ≈ ${fmtHMS(dur)}`;
@@ -7130,8 +6961,9 @@ function actualizarResumenAudioPaso3() {
 function renderTimelineP3() {
   const st = sesionActiva;
   const capa = document.getElementById('p3-tl-marcas');
-  if (!st || !capa || !st.duracion) return;
-  const pct = t => `${Math.max(0, Math.min(100, t / st.duracion * 100))}%`;
+  const dur = st ? durMediaP3() : 0;
+  if (!st || !capa || !dur) return;
+  const pct = t => `${Math.max(0, Math.min(100, t / dur * 100))}%`;
   const [r0, r1] = rangoP3();
   capa.innerHTML = (st.rangoInicio !== null || st.rangoFin !== null)
     ? `<div class="tl-rango" style="left:${pct(r0)};width:calc(${pct(r1)} - ${pct(r0)})"></div>` : '';
@@ -7139,18 +6971,21 @@ function renderTimelineP3() {
 }
 function actualizarCabezalP3() {
   const st = sesionActiva;
-  const a = document.getElementById('p3-audio');
+  const a = document.getElementById('pub-audio');
   const cab = document.getElementById('p3-tl-cabezal');
-  if (!st || !a || !cab || !st.duracion) return;
-  cab.style.left = `calc(${Math.min(100, (a.currentTime || 0) / st.duracion * 100)}% - 1px)`;
+  if (!st || !a || !cab) return;
+  const dur = durMediaP3();
+  if (dur) cab.style.left = `calc(${Math.min(100, (a.currentTime || 0) / dur * 100)}% - 1px)`;
 }
+document.getElementById('pub-audio').addEventListener('timeupdate', actualizarCabezalP3);
+document.getElementById('pub-audio').addEventListener('loadedmetadata', () => { if (sesionActiva) actualizarResumenAudioPaso3(); });
 document.getElementById('p3-timeline').addEventListener('click', e => {
   const st = sesionActiva;
-  const a = document.getElementById('p3-audio');
-  if (!st || !st.nombre_mp3 || !st.duracion) return;
+  const a = document.getElementById('pub-audio');
+  if (!st || !st.nombre_mp3) return;
+  const dur = durMediaP3();
   const r = e.currentTarget.getBoundingClientRect();
-  st.pararEn = null;
-  a.currentTime = Math.max(0, Math.min(st.duracion, (e.clientX - r.left) / r.width * st.duracion));
+  a.currentTime = Math.max(0, Math.min(dur, (e.clientX - r.left) / r.width * dur));
 });
 
 // B · elegir voces
@@ -7215,6 +7050,7 @@ async function exportarAudioP3(payload, btn, box) {
 document.getElementById('btn-p3-export-audio').onclick = () => {
   const st = sesionActiva;
   if (!st || !st.nombre_mp3 || !st.miVozId) return;
+  const off = offSes(st);
   const mios = st.segmentos.filter(s => s.hablante === st.miVozId && !lineaExcluida(s));
   exportarAudioP3({
     sesion_id: st.sesion_id, modo: 'aislar',
@@ -7223,7 +7059,7 @@ document.getElementById('btn-p3-export-audio').onclick = () => {
     min_dur_seg: Number(document.getElementById('p3-min-seg').value || 0),
     pausa_seg: 0.3, rango_inicio: st.rangoInicio, rango_fin: st.rangoFin,
     intervalos: [],
-    activos: mios.map(s => ({ inicio: s.inicio, fin: s.fin, texto: s.texto, confianza: s.confianza || 0.8 }))
+    activos: mios.map(s => ({ inicio: Math.max(0, s.inicio + off), fin: s.fin + off, texto: s.texto, confianza: s.confianza || 0.8 })).filter(s => s.fin > 0)
   }, document.getElementById('btn-p3-export-audio'), document.getElementById('p3-res-audio'));
 };
 
@@ -7232,6 +7068,7 @@ document.getElementById('btn-p3b-export').onclick = () => {
   const st = sesionActiva;
   if (!st || !st.nombre_mp3) return;
   const q = vocesElegidasP3b();
+  const off = offSes(st);
   const quitar = st.segmentos.filter(s => q.has(s.hablante) || lineaExcluida(s));
   const modo = quitar.length ? document.getElementById('p3b-modo').value : 'rango_directo';
   if (modo === 'rango_directo' && st.rangoInicio === null && st.rangoFin === null) {
@@ -7243,19 +7080,231 @@ document.getElementById('btn-p3b-export').onclick = () => {
     formato: document.getElementById('p3b-fmt').value,
     max_minutos: 0, min_dur_seg: 0, pausa_seg: 0.3,
     rango_inicio: st.rangoInicio, rango_fin: st.rangoFin,
-    intervalos: quitar.map(s => [s.inicio, s.fin]),
-    activos: st.segmentos.filter(s => !quitar.includes(s)).map(s => ({ inicio: s.inicio, fin: s.fin, texto: s.texto, confianza: s.confianza || 0.8 }))
+    intervalos: quitar.map(s => [Math.max(0, s.inicio + off), s.fin + off]).filter(x => x[1] > 0),
+    activos: st.segmentos.filter(s => !quitar.includes(s)).map(s => ({ inicio: Math.max(0, s.inicio + off), fin: s.fin + off, texto: s.texto, confianza: s.confianza || 0.8 })).filter(s => s.fin > 0)
   }, document.getElementById('btn-p3b-export'), document.getElementById('p3b-res'));
 };
 
-// D · Recetas de video: abren "Video para publicar" con esta transcripción
-document.querySelectorAll('.receta-btn').forEach(b => b.onclick = () => {
-  if (!sesionActiva) return;
-  abrirPublicarConSesion(sesionActiva.sesion_id, b.dataset.receta);
-});
 
 // ==============================================================================
-// PASO 4: CONVERTIR A SUBTÍTULOS Y SINCRONIZAR CON VIDEO SIN AUDIO (DRIVE)
+// PASO 2 · VINCULAR LA TRANSCRIPCIÓN CON SU VIDEO / AUDIO Y SINCRONIZAR
+// ==============================================================================
+const EXT_VIDEO_GEN = /\.(mp4|mkv|mov|avi|webm)$/i;
+function esVideoNombre(n) { return EXT_VIDEO_GEN.test(n || ''); }
+
+async function renderVinculoP2() {
+  const card = document.getElementById('p2-vinculo');
+  if (!sesionActiva) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  const st = sesionActiva;
+  try {
+    const lista = await (await fetch('/api/sesiones_guardadas')).json();
+    const sel = document.getElementById('p4-sel-sesion-activa');
+    sel.innerHTML = lista.map(x => `<option value="${escHtml(x.sesion_id)}" ${x.sesion_id === st.sesion_id ? 'selected' : ''}>${escHtml(x.nombre_original)} · ${fmtHMS(x.duracion)} · ${x.cantidad_hablantes} voces${x.nombre_mp3 ? (x.sincronizado ? ' · ✓ sincronizada' : ' · vinculada') : ' · sin video'}</option>`).join('');
+  } catch (e) {}
+  let medios = [];
+  try { medios = await (await fetch('/api/audios_existentes')).json(); } catch (e) {}
+  const selM = document.getElementById('p2v-media');
+  const actual = st.nombre_mp3 || '';
+  const ops = medios.map(a => `<option value="${escHtml(a.nombre)}" ${a.nombre === actual ? 'selected' : ''}>${a.tipo === 'video' ? '🎬 ' : '🎵 '}${escHtml(a.nombre)}</option>`);
+  if (actual && !medios.some(a => a.nombre === actual)) ops.unshift(`<option value="${escHtml(actual)}" selected>⚠ ${escHtml(actual)} (no está en audios/)</option>`);
+  selM.innerHTML = '<option value="">— Sin video ni audio —</option>' + ops.join('');
+  const selRef = document.getElementById('p4-sel-frase-ref');
+  const mapaN = Object.fromEntries(st.hablantes.map(h => [h.id, h.nombre]));
+  selRef.innerHTML = st.segmentos.filter(x => (x.texto || '').trim().length >= 8).map(x =>
+    `<option value="${x.inicio}">[${fmtHMS(x.inicio)}] ${escHtml(mapaN[x.hablante] || '')}: ${escHtml(x.texto.slice(0, 70))}</option>`).join('');
+  document.getElementById('p4-offset-seg').value = st.offset || 0;
+  cargarMediaP2();
+  actualizarEstadoVinculoP2();
+}
+
+function cargarMediaP2() {
+  const st = sesionActiva;
+  const v = document.getElementById('p4-video');
+  const nom = st && st.nombre_mp3;
+  document.getElementById('p2v-sin-media').style.display = nom ? 'none' : 'block';
+  v.style.display = nom ? 'block' : 'none';
+  if (!nom) { if (v.getAttribute('src')) { v.removeAttribute('src'); v.load(); } return; }
+  const src = '/audios/' + encodeURIComponent(nom);
+  if (v.getAttribute('src') !== src) v.src = src;
+  v.style.height = esVideoNombre(nom) ? '' : '54px';
+}
+
+function actualizarEstadoVinculoP2() {
+  const st = sesionActiva;
+  if (!st) return;
+  const badge = document.getElementById('p2v-estado');
+  const info = document.getElementById('p2v-media-info');
+  const sync = document.getElementById('p2v-sync');
+  const ex = document.getElementById('p2v-explica');
+  if (!st.nombre_mp3) {
+    badge.className = 'badge badge-ambar';
+    badge.textContent = 'Sin video ni audio';
+    info.textContent = 'Sin video o audio vinculado solo vas a poder sacar textos y subtítulos (no escuchar las voces ni silenciarlas).';
+    sync.style.display = 'none';
+    return;
+  }
+  sync.style.display = 'block';
+  const tipo = esVideoNombre(st.nombre_mp3) ? 'video' : 'audio';
+  info.textContent = st.origen_media === 'whisper'
+    ? `La transcripción salió de este ${tipo} con Whisper: ya está sincronizada.`
+    : `${tipo === 'video' ? 'Video' : 'Audio'} vinculado. Si la transcripción viene de otro lado (por ej. Tactiq), sincronizala.`;
+  if (st.sincronizado) {
+    badge.className = 'badge badge-verde';
+    badge.textContent = `✓ Sincronizada${st.offset ? ` · desfase ${st.offset > 0 ? '+' : ''}${st.offset} s` : ''}`;
+  } else {
+    badge.className = 'badge badge-ambar';
+    badge.textContent = 'Falta sincronizar';
+  }
+  const off = Number(st.offset) || 0;
+  ex.innerHTML = off === 0
+    ? 'Sin desfase: el 00:00 de la transcripción es el 00:00 del video.'
+    : off > 0
+      ? `La transcripción va <strong>${fmtHMS(off)}</strong> atrasada: lo que marca en 00:00 pasa en el ${fmtHMS(off)} del video.`
+      : `La transcripción va <strong>${fmtHMS(-off)}</strong> adelantada: las frases anteriores al inicio del video quedan afuera.`;
+  document.getElementById('btn-p2v-ok').textContent = st.sincronizado ? '✓ Sincronizada' : '✓ Está sincronizada (confirmar)';
+  document.getElementById('btn-p2v-ok').className = st.sincronizado ? 'btn-outline btn-sm btn-block' : 'btn-secondary btn-sm btn-block';
+}
+
+async function guardarVinculoP2(campos) {
+  const st = sesionActiva;
+  if (!st) return;
+  try {
+    const r = await fetch('/api/sesion_vincular', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sesion_id: st.sesion_id, ...campos })
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    st.nombre_mp3 = d.nombre_mp3; st.offset = d.offset; st.sincronizado = d.sincronizado; st.origen_media = d.origen_media;
+    document.getElementById('p2v-guardado').textContent = 'Guardado ✓';
+  } catch (e) {
+    alert('No se pudo guardar: ' + e.message);
+  }
+  actualizarEstadoVinculoP2();
+}
+let _tOffsetP2 = null;
+function cambiarOffsetP2(valor, guardarYa = false) {
+  const st = sesionActiva;
+  if (!st) return;
+  valor = Math.round(Number(valor || 0) * 10) / 10;
+  st.offset = valor;
+  document.getElementById('p4-offset-seg').value = valor;
+  actualizarEstadoVinculoP2();
+  actualizarSubVivoP2();
+  clearTimeout(_tOffsetP2);
+  _tOffsetP2 = setTimeout(() => guardarVinculoP2({ offset: valor, sincronizado: true }), guardarYa ? 0 : 700);
+}
+
+document.getElementById('p4-sel-sesion-activa').onchange = e => abrirSesionGuardada(e.target.value, 2);
+document.getElementById('p2v-media').onchange = async e => {
+  await guardarVinculoP2({ nombre_media: e.target.value, offset: 0, sincronizado: false });
+  document.getElementById('p4-offset-seg').value = 0;
+  cargarMediaP2();
+};
+document.getElementById('p2v-arch').onchange = async e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  const info = document.getElementById('p2v-media-info');
+  info.textContent = `Subiendo ${f.name}…`;
+  try {
+    const r = await fetch('/api/subir_medio?nombre=' + encodeURIComponent(f.name), { method: 'POST', body: f });
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    await guardarVinculoP2({ nombre_media: d.nombre, offset: 0, sincronizado: false });
+    await renderVinculoP2();
+  } catch (err) {
+    info.textContent = '';
+    alert('No se pudo subir: ' + err.message);
+  }
+};
+
+const videoP4 = document.getElementById('p4-video');
+function actualizarSubVivoP2() {
+  const st = sesionActiva;
+  const t = videoP4.currentTime || 0;
+  document.getElementById('p2v-t').textContent = fmtCorte(t);
+  const subEl = document.getElementById('p4-sub-live');
+  if (!st) { subEl.style.display = 'none'; return; }
+  const off = Number(st.offset) || 0;
+  const seg = st.segmentos.find(x => x.inicio + off <= t && t < x.fin + off);
+  if (seg) {
+    const h = st.hablantes.find(x => x.id === seg.hablante);
+    subEl.textContent = `${h ? '[' + h.nombre + '] ' : ''}${seg.texto}`;
+    subEl.style.display = 'inline-block';
+  } else {
+    subEl.style.display = 'none';
+  }
+}
+videoP4.addEventListener('timeupdate', actualizarSubVivoP2);
+videoP4.addEventListener('seeked', actualizarSubVivoP2);
+videoP4.addEventListener('loadedmetadata', () => {
+  document.getElementById('p2v-dur').textContent = isFinite(videoP4.duration) ? fmtCorte(videoP4.duration) : '--:--';
+});
+document.querySelectorAll('[data-salto-v]').forEach(b => b.onclick = () => {
+  videoP4.currentTime = Math.max(0, (videoP4.currentTime || 0) + Number(b.dataset.saltoV));
+});
+document.getElementById('btn-p2v-ir-frase').onclick = () => {
+  if (!sesionActiva) return;
+  const t = Number(document.getElementById('p4-sel-frase-ref').value || 0);
+  videoP4.currentTime = Math.max(0, t + (Number(sesionActiva.offset) || 0));
+  videoP4.play().catch(() => {});
+};
+document.getElementById('btn-p4-tomar-ancla-video').onclick = () => {
+  document.getElementById('p4-t-video-ancla').value = fmtCorte(videoP4.currentTime || 0);
+};
+document.getElementById('btn-p4-sync-video').onclick = () => {
+  if (!sesionActiva) return;
+  const tFrase = Number(document.getElementById('p4-sel-frase-ref').value || 0);
+  const txt = document.getElementById('p4-t-video-ancla').value.trim();
+  let tVideo = txt ? parseTiempoCliente(txt) : (videoP4.currentTime || 0);
+  if (tVideo === null || isNaN(tVideo)) { alert('Tiempo inválido. Ejemplo: 02:35'); return; }
+  if (!txt) document.getElementById('p4-t-video-ancla').value = fmtCorte(tVideo);
+  cambiarOffsetP2(tVideo - tFrase, true);
+};
+document.getElementById('btn-p2v-ok').onclick = () => guardarVinculoP2({ offset: Number(sesionActiva?.offset) || 0, sincronizado: true });
+document.getElementById('p4-offset-seg').oninput = e => cambiarOffsetP2(e.target.value);
+window.ajustarOffsetSub = function(delta, reset = false) {
+  if (!sesionActiva) return;
+  cambiarOffsetP2(reset ? 0 : (Number(sesionActiva.offset) || 0) + delta);
+};
+window.invertirSignoOffsetSub = function() {
+  if (!sesionActiva) return;
+  cambiarOffsetP2(-(Number(sesionActiva.offset) || 0));
+};
+window.aplicarDesfaseDesdePaso3 = function(offsetSeg) {
+  if (!sesionActiva) return;
+  irAPaso(2);
+  cambiarOffsetP2(offsetSeg, true);
+};
+
+// ==============================================================================
+// GUARDAR CORRECCIONES DE LA TRANSCRIPCIÓN (hablante por línea, texto, exclusiones)
+// ==============================================================================
+let _tGuardarSes = null;
+function programarGuardadoSesion() {
+  clearTimeout(_tGuardarSes);
+  _tGuardarSes = setTimeout(guardarSesionServidor, 1200);
+}
+async function guardarSesionServidor() {
+  clearTimeout(_tGuardarSes);
+  const st = sesionActiva;
+  if (!st) return;
+  try {
+    await fetch('/api/sesion_guardar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sesion_id: st.sesion_id,
+        segmentos: st.segmentos.map(x => ({ hablante: x.hablante, texto: x.texto, override_mute: x.override_mute === true })),
+        hablantes: st.hablantes.map(h => ({ id: h.id, nombre: h.nombre, color: h.color }))
+      })
+    });
+  } catch (e) {}
+}
+
+// ==============================================================================
+// PASO 4 · RESULTADOS
 // ==============================================================================
 async function renderPaso4() {
   if (!sesionActiva) {
@@ -7265,172 +7314,39 @@ async function renderPaso4() {
   }
   document.getElementById('p4-vacio').style.display = 'none';
   document.getElementById('p4-contenido').style.display = 'block';
+  const st = sesionActiva;
+  recalcularEstadisticasSesion();
+  const yo = st.hablantes.find(h => h.id === st.miVozId);
+  const tipo = st.nombre_mp3 ? (esVideoNombre(st.nombre_mp3) ? 'video' : 'audio') : '';
+  const sinNombre = st.hablantes.filter(h => /^(hablante\s*\d+|spk_\d+)$/i.test(String(h.nombre || '').trim())).length;
+  document.getElementById('res-material').innerHTML = `
+    <div class="fila"><span class="k">Transcripción</span><strong>${escHtml(st.nombre_original || st.sesion_id)}</strong></div>
+    <div class="fila"><span class="k">${tipo === 'audio' ? 'Audio' : 'Video'}</span>${st.nombre_mp3 ? escHtml(st.nombre_mp3) : '<span class="pend">sin vincular</span> <a href="#" onclick="irAPaso(2);return false">vincular</a>'}</div>
+    <div class="fila"><span class="k">Sincronización</span>${!st.nombre_mp3 ? '—' : st.sincronizado ? `<span class="ok">✓ sincronizada${st.offset ? ` (desfase ${st.offset > 0 ? '+' : ''}${st.offset} s)` : ''}</span>` : '<span class="pend">sin confirmar</span> <a href="#" onclick="irAPaso(2);return false">sincronizar</a>'}</div>
+    <div class="fila"><span class="k">Voces</span>${st.hablantes.length} · ${yo ? `<span class="ok">vos: ${escHtml(yo.nombre)}</span>` : '<span class="pend">tu voz sin marcar</span>'}${sinNombre ? ` · <span class="pend">${sinNombre} sin nombre</span>` : ''} <a href="#" onclick="irAPaso(3);return false">editar</a></div>`;
 
-  try {
-    const r = await fetch('/api/sesiones_guardadas');
-    const lista = await r.json();
-    const selSes = document.getElementById('p4-sel-sesion-activa');
-    if (selSes) {
-      selSes.innerHTML = lista.map(s =>
-        `<option value="${escHtml(s.sesion_id)}" ${s.sesion_id === sesionActiva.sesion_id ? 'selected' : ''}>📄 ${escHtml(s.nombre_original)} (${fmtHMS(s.duracion)} · ${s.cantidad_segmentos} frases)</option>`
-      ).join('');
-      selSes.onchange = async () => {
-        await abrirSesionGuardada(selSes.value, 4);
-      };
-    }
-  } catch (e) {}
+  cargarPreviewPub(st.nombre_mp3);
+  document.getElementById('pub-preview').style.display = st.nombre_mp3 ? 'block' : 'none';
+  pub.sesion = st;
+  pub.video = st.nombre_mp3;
+  pub.nombres = {};
+  pub.miVoz = st.miVozId || detectarMiVoz(st.sesion_id, st.hablantes) || null;
+  st.miVozId = pub.miVoz;
 
-  const selRef = document.getElementById('p4-sel-frase-ref');
-  selRef.innerHTML = sesionActiva.segmentos.map((s, idx) =>
-    `<option value="${s.inicio}">[En transcripción: ${fmtHMS(s.inicio)}] ${escHtml(s.texto.slice(0, 80))}</option>`
-  ).join('');
-  if (sesionActiva.offsetSub !== undefined && sesionActiva.offsetSub !== null) {
-    document.getElementById('p4-offset-seg').value = sesionActiva.offsetSub;
-  }
-  actualizarPreviewSincroPaso4();
-  verificarCoincidenciaVideoTranscripcion();
+  const aviso = document.getElementById('res-video-aviso');
+  const esVid = tipo === 'video';
+  aviso.innerHTML = !st.nombre_mp3
+    ? 'Para generar videos, vinculá el video de esta clase en <a href="#" onclick="irAPaso(2);return false">Transcripción</a>.'
+    : !esVid ? 'Esta transcripción está vinculada a un <strong>audio</strong>. Para generar video, vinculá el video en <a href="#" onclick="irAPaso(2);return false">Transcripción</a>.'
+    : !st.sincronizado ? '⚠ La sincronización no está confirmada: revisala en <a href="#" onclick="irAPaso(2);return false">Transcripción</a> antes de silenciar.' : '';
+  document.getElementById('btn-p4-unir-video').disabled = !esVid;
+  document.getElementById('res-video-card').classList.toggle('deshabilitada', !esVid);
+  document.getElementById('pub-resumen-video').textContent = '';
+
+  renderVocesPub();
+  renderVocesP3b();
+  actualizarResumenAudioPaso3();
 }
-
-function verificarCoincidenciaVideoTranscripcion() {
-  const badge = document.getElementById('p4-badge-video-par');
-  const diag = document.getElementById('p4-match-diagnostico');
-  const v = document.getElementById('p4-video');
-  if (!badge || !diag || !sesionActiva) return;
-
-  if (!archivoVideoP4) {
-    const baseOrig = sesionActiva.nombre_original.replace(/\.[^.]+$/, '');
-    badge.textContent = 'Falta elegir el archivo de video (.mp4 / .mkv)';
-    badge.className = 'badge badge-ambar';
-    diag.innerHTML = `💡 <strong>Sugerencia:</strong> Esta transcripción proviene de <code>${escHtml(sesionActiva.nombre_original)}</code> (duración: <strong>${fmtHMS(sesionActiva.duracion)}</strong>). Elegí el video correspondiente con el botón <strong>"🎬 Elegir Video"</strong>.`;
-    return;
-  }
-
-  badge.textContent = `🎬 ${archivoVideoP4.name} (${fmtMB(archivoVideoP4.size)})`;
-  badge.className = 'badge badge-verde';
-
-  const durV = v && v.duration && !isNaN(v.duration) ? v.duration : 0;
-  const durT = sesionActiva.duracion || 0;
-  const baseV = archivoVideoP4.name.replace(/\.[^.]+$/, '').toLowerCase();
-  const baseT = sesionActiva.nombre_original.replace(/\.[^.]+$/, '').toLowerCase();
-  const mismoNombre = baseV === baseT || baseV.includes(baseT) || baseT.includes(baseV);
-
-  if (durV > 0) {
-    const diff = Math.round(Math.abs(durV - durT));
-    if (diff <= 15) {
-      diag.innerHTML = `✅ <strong>¡Coincidencia exacta!</strong> El video dura <strong>${fmtHMS(durV)}</strong> y la transcripción abarca <strong>${fmtHMS(durT)}</strong>${mismoNombre ? ' (y tienen el mismo nombre base)' : ''}. Están listos para exportar o unir.`;
-    } else {
-      diag.innerHTML = `ℹ️ <strong>Duración del video: ${fmtHMS(durV)}</strong> vs <strong>Transcripción: ${fmtHMS(durT)}</strong> (diferencia de ${fmtHMS(diff)}). Si el video empezó a grabarse antes o después que la transcripción, usá el botón <strong>"📍 Sincronizar esta frase con el segundo actual del video"</strong> abajo a la derecha.`;
-    }
-  } else {
-    diag.innerHTML = `🎬 Video vinculado: <strong>${escHtml(archivoVideoP4.name)}</strong> con la transcripción <strong>${escHtml(sesionActiva.nombre_original)}</strong>.`;
-  }
-}
-
-document.getElementById('arch-p4-video').onchange = e => {
-  const f = e.target.files[0];
-  if (!f) return;
-  archivoVideoP4 = f;
-  const v = document.getElementById('p4-video');
-  v.src = URL.createObjectURL(f);
-  v.onloadedmetadata = () => verificarCoincidenciaVideoTranscripcion();
-  document.getElementById('p4-video-nombre').textContent = `🎬 Video cargado para previsualización y sincronización: ${f.name} (${fmtMB(f.size)})`;
-  verificarCoincidenciaVideoTranscripcion();
-};
-
-// Actualizar subtítulo en vivo sobre el video mientras se reproduce
-const videoP4 = document.getElementById('p4-video');
-videoP4.ontimeupdate = () => {
-  if (!sesionActiva) return;
-  const t = videoP4.currentTime;
-  const offset = Number(document.getElementById('p4-offset-seg').value || 0);
-  const incNom = document.getElementById('p4-inc-nom').checked;
-  const incSil = document.getElementById('p4-inc-sil').checked;
-  const { bloques } = construirBloquesSubtitulosSincronizados(sesionActiva, offset, incNom, incSil, false);
-
-  const actual = bloques.find(b => !b.esBloqueCero && t >= b.ini && t <= b.fin);
-  const subEl = document.getElementById('p4-sub-live');
-  if (actual) {
-    subEl.style.whiteSpace = 'pre-line';
-    subEl.textContent = actual.textoSrt || actual.textoPlano;
-    subEl.style.display = 'inline-block';
-  } else {
-    subEl.style.display = 'none';
-  }
-};
-
-window.aplicarDesfaseDesdePaso3 = function(offsetSeg) {
-  if (!sesionActiva) return;
-  sesionActiva.offsetSub = offsetSeg;
-  const inp = document.getElementById('p4-offset-seg');
-  if (inp) inp.value = offsetSeg;
-  irAPaso(4);
-};
-
-document.getElementById('btn-p4-tomar-ancla-video').onclick = () => {
-  const tVid = videoP4.currentTime || 0;
-  document.getElementById('p4-t-video-ancla').value = fmtHMS(tVid);
-};
-
-document.getElementById('btn-p4-sync-video').onclick = () => {
-  if (!sesionActiva) return;
-  const tFraseOrig = Number(document.getElementById('p4-sel-frase-ref').value || 0);
-  const txtAncla = document.getElementById('p4-t-video-ancla').value.trim();
-  let tVideoAncla = null;
-
-  if (txtAncla) {
-    tVideoAncla = parseTiempoCliente(txtAncla);
-    if (tVideoAncla === null) {
-      alert('Formato de minuto:segundo inválido. Ejemplo válido: 02:35 o 01:05:20');
-      return;
-    }
-  } else {
-    tVideoAncla = videoP4.currentTime || 0;
-    if (tVideoAncla === 0 && tFraseOrig > 0) {
-      const resp = prompt(
-        `El reproductor de video está en 00:00.\n\nEscribí en qué minuto:segundo del VIDEO se escucha la frase seleccionada (ej. 02:30):`,
-        fmtHMS(tFraseOrig)
-      );
-      if (resp === null) return;
-      tVideoAncla = parseTiempoCliente(resp.trim());
-      if (tVideoAncla === null) {
-        alert('Formato inválido. Usá min:seg (ej. 02:30).');
-        return;
-      }
-    }
-    document.getElementById('p4-t-video-ancla').value = fmtHMS(tVideoAncla);
-  }
-
-  // Fórmula universal hacia atrás y hacia adelante:
-  // T_video(i) = T_transcripcion(i) + (T_video_ancla - T_transcripcion_ancla)
-  const nuevoOffset = Math.round((tVideoAncla - tFraseOrig) * 10) / 10;
-  document.getElementById('p4-offset-seg').value = nuevoOffset;
-  sesionActiva.offsetSub = nuevoOffset;
-  actualizarPreviewSincroPaso4();
-};
-
-window.invertirSignoOffsetSub = function() {
-  const inp = document.getElementById('p4-offset-seg');
-  const val = -Number(inp.value || 0);
-  inp.value = val;
-  if (sesionActiva) sesionActiva.offsetSub = val;
-  actualizarPreviewSincroPaso4();
-};
-
-window.ajustarOffsetSub = function(delta, reset = false) {
-  const inp = document.getElementById('p4-offset-seg');
-  const val = reset ? 0 : Math.round((Number(inp.value || 0) + delta) * 10) / 10;
-  inp.value = val;
-  if (sesionActiva) sesionActiva.offsetSub = val;
-  actualizarPreviewSincroPaso4();
-};
-
-document.getElementById('p4-offset-seg').oninput = () => {
-  if (sesionActiva) sesionActiva.offsetSub = Number(document.getElementById('p4-offset-seg').value || 0);
-  actualizarPreviewSincroPaso4();
-};
-document.getElementById('p4-chk-bloque-00').onchange = () => actualizarPreviewSincroPaso4();
-document.getElementById('p4-inc-nom').onchange = () => actualizarPreviewSincroPaso4();
-document.getElementById('p4-inc-sil').onchange = () => actualizarPreviewSincroPaso4();
 
 function fmtSrt(seg, sepMs = ',') {
   const msTotal = Math.max(0, Math.round(seg * 1000));
@@ -7641,169 +7557,65 @@ function construirBloquesSubtitulosSincronizados(st, offset, incNom, incSil, agr
   };
 }
 
-function actualizarPreviewSincroPaso4() {
-  const box = document.getElementById('p4-preview-sincro');
-  if (!box || !sesionActiva) return;
-  const offset = Number(document.getElementById('p4-offset-seg').value || 0);
-  const incNom = document.getElementById('p4-inc-nom') ? document.getElementById('p4-inc-nom').checked : true;
-  const incSil = document.getElementById('p4-inc-sil') ? document.getElementById('p4-inc-sil').checked : false;
-  const agregarBloque00 = document.getElementById('p4-chk-bloque-00') ? document.getElementById('p4-chk-bloque-00').checked : true;
-
-  const res = construirBloquesSubtitulosSincronizados(sesionActiva, offset, incNom, incSil, agregarBloque00);
-  let explicacionCaso = '';
-
-  if (offset > 0) {
-    explicacionCaso = `
-      <div style="color:#166534;font-weight:700;margin-bottom:4px">
-        🎬 Caso actual: El VIDEO empezó <strong>${fmtHMS(offset)} (${offset}s) ANTES</strong> que la transcripción.
-      </div>
-      <div style="color:#334155;margin-bottom:6px">
-        • El minuto <code>00:00</code> es el inicio del video.<br>
-        • De <code>00:00</code> hasta <code>${fmtHMS(res.primerInicioVideo)}</code> corre el video antes de que empiece la transcripción ${agregarBloque00 ? '(se agrega la marca inicial <code>00:00 --> ' + fmtHMS(res.primerInicioVideo) + '</code>)' : '(sin subtítulos hasta ese minuto)'}.<br>
-        • La 1.ª frase de la transcripción arranca exactamente en <strong><code>${fmtHMS(res.primerInicioVideo)}</code> del video</strong> y todas las demás avanzan sincronizadas.
-      </div>
-    `;
-  } else if (offset < 0) {
-    const absO = Math.abs(offset);
-    explicacionCaso = `
-      <div style="color:#9a3412;font-weight:700;margin-bottom:4px">
-        📄 Caso actual: La TRANSCRIPCIÓN empezó <strong>${fmtHMS(absO)} (${absO}s) ANTES</strong> que el video (desfase negativo <code>${offset}s</code>).
-      </div>
-      <div style="color:#334155;margin-bottom:6px">
-        • ⚠️ <strong>¿En tu caso el VIDEO empezó antes que la transcripción?</strong> Entonces el desfase debe ser <strong>positivo (+${absO}s)</strong>, no negativo: tocá <button type="button" class="btn-primary btn-xs" onclick="invertirSignoOffsetSub()">🔄 Cambiar a +${absO}s (El video empezó antes)</button>.<br>
-        • Si realmente la transcripción empezó antes que el video: se omiten las <strong>${res.descartadosAntesDeCero} frases</strong> previas al inicio del video y el minuto <code>${fmtHMS(absO)}</code> de la transcripción pasa a ser el <code>00:00</code> del video.
-      </div>
-    `;
-  } else {
-    explicacionCaso = `
-      <div style="color:#1e3a8a;font-weight:700;margin-bottom:4px">
-        ⚡ Sin desfase (<code>0s</code>): El minuto <code>00:00</code> del video coincide con el <code>00:00</code> de la transcripción.
-      </div>
-    `;
-  }
-
-  const badgeCalidad = `
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">
-      <span class="badge badge-verde">✔ 0 superposiciones (${res.bloques.length} subtítulos limpios)</span>
-      <span class="badge badge-azul">📏 Máx. ${res.maxCharsSub} caracteres (máx. 2 líneas)</span>
-      <span class="badge badge-azul">⏱️ Duración controlada: 1.2s a ${res.maxDur}s</span>
-    </div>
-  `;
-
-  const muestra = res.bloques.slice(0, 4).map((b, i) => {
-    const durB = Math.round((b.fin - b.ini) * 10) / 10;
-    const origInfo = b.iniOrig !== null ? ` <span style="color:#64748b">(duración: ${durB}s · ${b.textoPlano.length} chars · orig: ${fmtHMS(b.iniOrig)})</span>` : ` <span style="color:#64748b">(bloque sincronizador inicial)</span>`;
-    return `<div style="font-family:monospace;font-size:0.76rem;background:#f8fafc;padding:5px 8px;border-radius:4px;border:1px solid #e2e8f0;margin-top:4px;white-space:pre-line"><strong>#${i + 1}</strong> <code>${fmtSrt(b.ini, ',')} --> ${fmtSrt(b.fin, ',')}</code>${origInfo}
-${escHtml(b.textoSrt || b.textoPlano)}</div>`;
-  }).join('');
-
-  box.innerHTML = explicacionCaso + badgeCalidad + (muestra ? `<div style="margin-top:4px"><strong>Vista previa de cómo empezará tu archivo .SRT:</strong>${muestra}</div>` : '<div style="color:#dc2626">No quedan fragmentos visibles con este desfase.</div>');
-}
-
-if (document.getElementById('p4-max-chars')) {
-  document.getElementById('p4-max-chars').onchange = () => actualizarPreviewSincroPaso4();
-}
-if (document.getElementById('p4-max-dur')) {
-  document.getElementById('p4-max-dur').onchange = () => actualizarPreviewSincroPaso4();
-}
+function actualizarPreviewSincroPaso4() {}
 
 window.descargarSubtitulosPaso4 = function(formato) {
   if (!sesionActiva) return;
   const st = sesionActiva;
-  const offset = Number(document.getElementById('p4-offset-seg').value || 0);
+  const offset = Number(st.offset) || 0;
   const incNom = document.getElementById('p4-inc-nom').checked;
-  const incSil = document.getElementById('p4-inc-sil').checked;
-  const agregarBloque00 = document.getElementById('p4-chk-bloque-00') ? document.getElementById('p4-chk-bloque-00').checked : true;
-
-  const { bloques } = construirBloquesSubtitulosSincronizados(st, offset, incNom, incSil, agregarBloque00);
-  if (!bloques.length) {
-    alert('No quedan subtítulos dentro del tiempo del video con el desfase actual. Revisá si el signo (+/-) del desfase está invertido.');
-    return;
-  }
-
-  let contenido = '';
-  let ext = '.srt';
-
+  const agregarBloque00 = document.getElementById('p4-chk-bloque-00').checked;
+  const { bloques } = construirBloquesSubtitulosSincronizados(st, offset, incNom, false, agregarBloque00);
+  if (!bloques.length) { alert('No hay subtítulos en ese tramo.'); return; }
+  let contenido = '', ext = '.srt';
   if (formato === 'srt') {
-    contenido = bloques.map((b, i) => {
-      return `${i + 1}\n${fmtSrt(b.ini, ',')} --> ${fmtSrt(b.fin, ',')}\n${b.textoSrt || b.textoPlano}\n`;
-    }).join('\n');
-    ext = '_sincronizado.srt';
+    contenido = bloques.map((b, i) => `${i + 1}\n${fmtSrt(b.ini, ',')} --> ${fmtSrt(b.fin, ',')}\n${b.textoSrt || b.textoPlano}\n`).join('\n');
   } else if (formato === 'vtt') {
-    contenido = 'WEBVTT\n\n' + bloques.map((b) => {
-      return `${fmtSrt(b.ini, '.')} --> ${fmtSrt(b.fin, '.')}\n${b.textoSrt || b.textoPlano}\n`;
-    }).join('\n');
-    ext = '_sincronizado.vtt';
+    contenido = 'WEBVTT\n\n' + bloques.map(b => `${fmtSrt(b.ini, '.')} --> ${fmtSrt(b.fin, '.')}\n${b.textoSrt || b.textoPlano}\n`).join('\n');
+    ext = '.vtt';
   } else {
-    contenido = bloques.map(b => {
-      return `[${fmtHMS(b.ini)} - ${fmtHMS(b.fin)}] ${b.textoPlano}`;
-    }).join('\n');
-    ext = '_marcas_sincronizadas.txt';
+    contenido = bloques.map(b => `[${fmtHMS(b.ini)} - ${fmtHMS(b.fin)}] ${b.textoPlano}`).join('\n');
+    ext = '_tiempos.txt';
   }
-
-  const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
   const a = document.createElement('a');
-  const base = st.nombre_original.replace(/\.[^.]+$/, '');
-  a.href = URL.createObjectURL(blob);
-  a.download = `${base}${ext}`;
+  a.href = URL.createObjectURL(new Blob([contenido], { type: 'text/plain;charset=utf-8' }));
+  a.download = (st.nombre_mp3 || st.nombre_original).replace(/\.[^.]+$/, '') + ext;
   a.click();
 };
 
 document.getElementById('btn-p4-unir-video').onclick = async () => {
-  if (!sesionActiva) return;
-  if (!archivoVideoP4) {
-    alert('Primero elegí el archivo de video con el botón "🎬 Elegir archivo de Video de tu PC" arriba a la izquierda.');
-    return;
-  }
+  const st = sesionActiva;
+  if (!st || !st.nombre_mp3 || !esVideoNombre(st.nombre_mp3)) return;
   const btn = document.getElementById('btn-p4-unir-video');
   const resDiv = document.getElementById('p4-res-unir');
   btn.disabled = true;
-  resDiv.innerHTML = '⏳ Uniendo subtítulos al video con ffmpeg…';
-
+  resDiv.innerHTML = '⏳ Procesando el video…';
   try {
+    await guardarSesionServidor();
     const q = new URLSearchParams({
-      sesion_id: sesionActiva.sesion_id,
-      nombre_video: archivoVideoP4.name,
+      sesion_id: st.sesion_id,
+      nombre_video: st.nombre_mp3,
       modo: document.getElementById('p4-modo-unir').value,
-      offset: document.getElementById('p4-offset-seg').value || '0',
+      offset: String(Number(st.offset) || 0),
       inc_nom: document.getElementById('p4-inc-nom').checked ? '1' : '0',
-      inc_sil: document.getElementById('p4-inc-sil').checked ? '1' : '0',
-      bloque_00: (document.getElementById('p4-chk-bloque-00') && document.getElementById('p4-chk-bloque-00').checked) ? '1' : '0',
-      max_chars: document.getElementById('p4-max-chars') ? document.getElementById('p4-max-chars').value : '84',
-      max_dur: document.getElementById('p4-max-dur') ? document.getElementById('p4-max-dur').value : '6.0',
-      desde: document.getElementById('p4-t-ini').value.trim(),
-      hasta: document.getElementById('p4-t-fin').value.trim()
+      inc_sil: '0',
+      bloque_00: document.getElementById('p4-chk-bloque-00').checked ? '1' : '0',
+      max_chars: document.getElementById('p4-max-chars').value,
+      max_dur: document.getElementById('p4-max-dur').value,
+      desde: document.getElementById('p3-t-ini').value.trim(),
+      hasta: document.getElementById('p3-t-fin').value.trim()
     });
-    const r = await fetch('/api/unir_subtitulos_video?' + q.toString(), {
-      method: 'POST',
-      body: archivoVideoP4
-    });
+    const r = await fetch('/api/unir_subtitulos_video?' + q.toString(), { method: 'POST' });
     if (!r.ok) throw new Error(await r.text());
     const d = await r.json();
-    resDiv.innerHTML = `
-      <div style="padding:10px;border-radius:8px;background:#f0fdf4;border:1px solid #86efac">
-        <strong style="color:var(--ok)">✔ Video con subtítulos creado:</strong> ${escHtml(d.nombre_archivo)}
-        <div style="margin-top:6px">
-          <a class="btn-primary btn-sm" style="text-decoration:none" href="/audios/${encodeURIComponent(d.nombre_archivo)}" download>
-            ⬇ Descargar ${escHtml(d.nombre_archivo)}
-          </a>
-        </div>
-      </div>
-    `;
+    resDiv.innerHTML = `<div class="salida-ok"><strong style="color:var(--ok)">✔ ${escHtml(d.nombre_archivo)}</strong>
+      <div style="margin-top:6px"><a class="btn-primary btn-sm" href="/audios/${encodeURIComponent(d.nombre_archivo)}" download>Descargar</a></div></div>`;
   } catch (e) {
-    resDiv.innerHTML = `<div style="color:var(--danger);font-weight:700">✘ ${escHtml(e.message)}</div>`;
+    resDiv.innerHTML = `<div style="color:var(--danger);font-weight:600">✘ ${escHtml(e.message)}</div>`;
   } finally {
     btn.disabled = false;
   }
 };
-
-document.getElementById('btn-p4-tomar-ini').onclick = () => {
-  document.getElementById('p4-t-ini').value = fmtHMS(videoP4.currentTime || 0);
-};
-document.getElementById('btn-p4-tomar-fin').onclick = () => {
-  document.getElementById('p4-t-fin').value = fmtHMS(videoP4.currentTime || 0);
-};
-
 
 // ==============================================================================
 // PESTAÑA 5: ENTRENAR MODELO ML DE MI ESTILO Y CONVERTIR GUIONES
@@ -8130,6 +7942,8 @@ class Handler(BaseHTTPRequestHandler):
                         "modelo": s.get("modelo", "whisper"),
                         "cantidad_segmentos": len(s.get("segmentos", [])),
                         "cantidad_hablantes": len(s.get("hablantes", [])),
+                        "offset": float(s.get("offset", 0) or 0),
+                        "sincronizado": bool(s.get("sincronizado", False)),
                     })
             return self._send_json(200, lista)
 
@@ -8149,6 +7963,9 @@ class Handler(BaseHTTPRequestHandler):
                 "hablantes": s.get("hablantes", []),
                 "segmentos": s.get("segmentos", []),
                 "rango_detectado": s.get("rango_detectado", {}),
+                "offset": float(s.get("offset", 0) or 0),
+                "sincronizado": bool(s.get("sincronizado", False)),
+                "origen_media": s.get("origen_media", ""),
             })
 
         if p.path == "/api/voces_registradas":
@@ -8477,6 +8294,69 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(target=_worker_publicar, args=(job_id, body), daemon=True).start()
             return self._send_json(200, {"job_id": job_id})
 
+        if p.path == "/api/sesion_guardar":
+            # Guarda las correcciones hechas en la app: hablante de cada línea, texto, líneas excluidas y nombres
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            body = json.loads(self.rfile.read(largo).decode("utf-8")) if largo > 0 else {}
+            sid = body.get("sesion_id", "")
+            with JOBS_LOCK:
+                sesion = SESIONES.get(sid)
+            if not sesion:
+                return self._send_text(404, "Transcripción no encontrada")
+            segs_in = body.get("segmentos")
+            if isinstance(segs_in, list) and len(segs_in) == len(sesion.get("segmentos", [])):
+                for s_srv, s_cli in zip(sesion["segmentos"], segs_in):
+                    if "hablante" in s_cli and s_cli["hablante"]:
+                        s_srv["hablante"] = str(s_cli["hablante"])
+                    if "texto" in s_cli:
+                        s_srv["texto"] = str(s_cli["texto"])
+                    if s_cli.get("override_mute") is True:
+                        s_srv["override_mute"] = True
+                    else:
+                        s_srv.pop("override_mute", None)
+            previos = {h["id"]: h for h in sesion.get("hablantes", [])}
+            for h in body.get("hablantes") or []:
+                if h.get("id") in previos:
+                    previos[h["id"]]["nombre"] = h.get("nombre") or previos[h["id"]]["nombre"]
+                else:
+                    previos[h["id"]] = {"id": h["id"], "nombre": h.get("nombre") or h["id"], "color": h.get("color", "#64748b")}
+            nombres = {k: v.get("nombre") for k, v in previos.items()}
+            colores = {k: v.get("color") for k, v in previos.items()}
+            nuevos = _resumen_hablantes(sesion["segmentos"], nombres_previos=nombres)
+            for h in nuevos:
+                if colores.get(h["id"]):
+                    h["color"] = colores[h["id"]]
+                if previos.get(h["id"], {}).get("auto_etiquetado"):
+                    h["auto_etiquetado"] = True
+            sesion["hablantes"] = nuevos
+            guardar_sesion_disco(sesion)
+            return self._send_json(200, {"ok": True, "hablantes": nuevos})
+
+        if p.path == "/api/sesion_vincular":
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            body = json.loads(self.rfile.read(largo).decode("utf-8")) if largo > 0 else {}
+            sid = body.get("sesion_id", "")
+            with JOBS_LOCK:
+                sesion = SESIONES.get(sid)
+            if not sesion:
+                return self._send_text(404, "Transcripción no encontrada")
+            if "nombre_media" in body:
+                nom = os.path.basename(body.get("nombre_media") or "")
+                if nom and not os.path.isfile(os.path.join(SALIDA, nom)):
+                    return self._send_text(404, f"No está en audios/: {nom}")
+                if nom != sesion.get("nombre_mp3", ""):
+                    sesion["origen_media"] = "vinculado"
+                sesion["nombre_mp3"] = nom
+                sesion["ruta_mp3"] = os.path.join(SALIDA, nom) if nom else ""
+            if "offset" in body:
+                sesion["offset"] = round(float(body.get("offset") or 0), 2)
+            if "sincronizado" in body:
+                sesion["sincronizado"] = bool(body.get("sincronizado"))
+            guardar_sesion_disco(sesion)
+            return self._send_json(200, {"ok": True, "nombre_mp3": sesion.get("nombre_mp3", ""),
+                                         "offset": sesion.get("offset", 0), "sincronizado": sesion.get("sincronizado", False),
+                                         "origen_media": sesion.get("origen_media", "")})
+
         if p.path == "/api/iniciar":
             q = urllib.parse.parse_qs(p.query)
             original = os.path.basename(q.get("nombre", ["video.mp4"])[0])
@@ -8705,19 +8585,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_text(404, "Sesión de transcripción no encontrada")
 
             largo = int(self.headers.get("Content-Length", 0) or 0)
+            video_es_temporal = largo > 0
             if largo <= 0:
-                return self._send_text(400, "Subí el archivo de video primero.")
-
-            ext_v = os.path.splitext(nombre_vid)[1].lower() or ".mp4"
-            with tempfile.NamedTemporaryFile(suffix=ext_v, delete=False, dir=TEMP_DIR) as tmp_v:
-                restante = largo
-                while restante > 0:
-                    trozo = self.rfile.read(min(1 << 20, restante))
-                    if not trozo:
-                        break
-                    tmp_v.write(trozo)
-                    restante -= len(trozo)
-                ruta_video_in = tmp_v.name
+                ruta_video_in = os.path.join(SALIDA, nombre_vid)
+                if not os.path.isfile(ruta_video_in):
+                    return self._send_text(400, "No se encontró el video en audios/. Vinculalo en Transcripción.")
+            else:
+                ext_v = os.path.splitext(nombre_vid)[1].lower() or ".mp4"
+                with tempfile.NamedTemporaryFile(suffix=ext_v, delete=False, dir=TEMP_DIR) as tmp_v:
+                    restante = largo
+                    while restante > 0:
+                        trozo = self.rfile.read(min(1 << 20, restante))
+                        if not trozo:
+                            break
+                        tmp_v.write(trozo)
+                        restante -= len(trozo)
+                    ruta_video_in = tmp_v.name
 
             base_v = os.path.splitext(nombre_vid)[0]
             suf_t = ""
@@ -8732,7 +8615,7 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     return self._send_text(500, str(e))
                 finally:
-                    if os.path.exists(ruta_video_in):
+                    if video_es_temporal and os.path.exists(ruta_video_in):
                         try:
                             os.remove(ruta_video_in)
                         except OSError:
@@ -8785,12 +8668,13 @@ class Handler(BaseHTTPRequestHandler):
                     ruta_esc = ruta_srt_tmp.replace("\\", "/").replace(":", "\\:")
                     cmd = ["ffmpeg", "-y", "-i", ruta_vid_base, "-vf", f"subtitles='{ruta_esc}'", "-c:a", "copy", ruta_out]
                 else:
-                    cmd = ["ffmpeg", "-y", "-i", ruta_vid_base, "-i", ruta_srt_tmp, "-c:v", "copy", "-c:a", "copy", "-c:s", "mov_text", ruta_out]
+                    cmd = ["ffmpeg", "-y", "-i", ruta_vid_base, "-i", ruta_srt_tmp, "-map", "0:v:0", "-map", "0:a?", "-map", "1:0",
+                           "-c:v", "copy", "-c:a", "copy", "-c:s", "mov_text", "-metadata:s:s:0", "language=spa", ruta_out]
                 r_ff = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
                 if r_ff.returncode != 0:
                     return self._send_text(500, f"Error de ffmpeg: {r_ff.stderr[-300:]}")
             finally:
-                for rp in (ruta_video_in, ruta_vid_rec_tmp, ruta_srt_tmp):
+                for rp in ((ruta_video_in if video_es_temporal else ""), ruta_vid_rec_tmp, ruta_srt_tmp):
                     if rp and os.path.exists(rp):
                         try:
                             os.remove(rp)
