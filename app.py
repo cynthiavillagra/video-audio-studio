@@ -3605,6 +3605,9 @@ a.btn-xs { padding: 4px 9px; font-size: 0.75rem; border-radius: 6px; }
 .dropzone .dz-title { font-weight: 600; font-size: 0.95rem; color: var(--text); }
 .dropzone .dz-sub { font-size: 0.8rem; color: var(--muted); }
 
+.dropzone.dz-compacta { flex-direction: row; justify-content: flex-start; gap: 14px; padding: 12px 14px; }
+.dropzone.dz-compacta .dz-icon { margin: 0; width: 38px; height: 38px; flex-shrink: 0; }
+
 /* ---------- Cola y progreso ---------- */
 .cola-lista { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 6px; }
 .cola-item {
@@ -4100,8 +4103,16 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       <p class="sub-desc">Se transcribe en tu PC y separa las voces de los hablantes.</p>
 
       <div class="stack">
+        <div class="dropzone dz-compacta" id="zona-p2-audio" role="button" tabindex="0">
+          <div class="dz-icon"><svg><use href="#i-upload"/></svg></div>
+          <div style="text-align:left">
+            <div class="dz-title" id="lbl-p2-audio">Subí un audio o video</div>
+            <div class="dz-sub">Arrastralo acá o hacé clic · MP3, WAV, M4A, MP4, MKV…</div>
+          </div>
+          <input type="file" id="arch-p2-audio" accept=".mp3,.wav,.m4a,.ogg,.flac,.aac,.mp4,.mkv,.mov,.webm,.avi,audio/*,video/*" hidden>
+        </div>
         <div class="campo">
-          <label for="p2-sel-mp3">Audio o video de <code>audios/</code></label>
+          <label for="p2-sel-mp3">o elegí uno de <code>audios/</code></label>
           <select id="p2-sel-mp3">
             <option value="">Cargando audios…</option>
           </select>
@@ -5645,6 +5656,36 @@ window.abrirSesionGuardada = async function(sid, pasoDestino = 3) {
 };
 
 // Opción A: Transcribir con Whisper
+// Subir un audio o video para transcribir (queda guardado en audios/)
+(function () {
+  const zona = document.getElementById('zona-p2-audio');
+  const inp = document.getElementById('arch-p2-audio');
+  const lbl = document.getElementById('lbl-p2-audio');
+  async function subir(file) {
+    if (!file) return;
+    lbl.textContent = `Subiendo ${file.name}…`;
+    zona.style.pointerEvents = 'none';
+    try {
+      const r = await fetch('/api/subir_medio?nombre=' + encodeURIComponent(file.name), { method: 'POST', body: file });
+      if (!r.ok) throw new Error(await r.text());
+      const d = await r.json();
+      await cargarAudiosDisponibles(d.nombre);
+      lbl.textContent = `✔ ${d.nombre} (elegido abajo)`;
+    } catch (e) {
+      lbl.textContent = 'Subí un audio o video';
+      alert('No se pudo subir: ' + e.message);
+    } finally {
+      zona.style.pointerEvents = '';
+    }
+  }
+  zona.onclick = () => inp.click();
+  zona.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inp.click(); } };
+  zona.ondragover = e => { e.preventDefault(); zona.classList.add('sobre'); };
+  zona.ondragleave = () => zona.classList.remove('sobre');
+  zona.ondrop = e => { e.preventDefault(); zona.classList.remove('sobre'); subir(e.dataTransfer.files[0]); };
+  inp.onchange = () => { subir(inp.files[0]); inp.value = ''; };
+})();
+
 document.getElementById('btn-p2-transcribir').onclick = async () => {
   const nomMp3 = document.getElementById('p2-sel-mp3').value;
   if (!nomMp3) { alert('Elegí primero un archivo MP3 o convertí tu video en el Paso 1.'); return; }
@@ -7381,12 +7422,12 @@ class Handler(BaseHTTPRequestHandler):
             archivos = []
             if os.path.isdir(SALIDA):
                 for f in os.listdir(SALIDA):
-                    if f.lower().endswith((".mp3", ".wav", ".mp4", ".mkv", ".mov", ".webm")):
+                    if f.lower().endswith((".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".mp4", ".mkv", ".mov", ".webm", ".avi")):
                         rp = os.path.join(SALIDA, f)
                         if os.path.isfile(rp):
                             archivos.append({
                                 "nombre": f,
-                                "tipo": "video" if f.lower().endswith((".mp4", ".mkv", ".mov", ".webm")) else "audio",
+                                "tipo": "video" if f.lower().endswith((".mp4", ".mkv", ".mov", ".webm", ".avi")) else "audio",
                                 "bytes": os.path.getsize(rp),
                                 "mtime": os.path.getmtime(rp)
                             })
@@ -7718,11 +7759,14 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self._send_text(400, f"Error al sincronizar con Tactiq: {e}")
 
-        if p.path == "/api/publicar_subir_video":
+        if p.path in ("/api/publicar_subir_video", "/api/subir_medio"):
             q = urllib.parse.parse_qs(p.query)
             original = os.path.basename(q.get("nombre", ["video.mp4"])[0])
             base_v, ext_v = os.path.splitext(original)
-            ext_v = ext_v.lower() if ext_v.lower() in (".mp4", ".mkv", ".mov", ".webm", ".avi") else ".mp4"
+            permitidas = (".mp4", ".mkv", ".mov", ".webm", ".avi", ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac")
+            if ext_v.lower() not in permitidas:
+                return self._send_text(400, "Formato no admitido. Subí un audio (MP3, WAV, M4A, OGG) o un video (MP4, MKV, MOV, WEBM).")
+            ext_v = ext_v.lower()
             largo = int(self.headers.get("Content-Length", 0) or 0)
             if largo <= 0:
                 return self._send_text(400, "No llegó ningún video.")
@@ -7735,7 +7779,7 @@ class Handler(BaseHTTPRequestHandler):
                         break
                     f.write(trozo)
                     restante -= len(trozo)
-            return self._send_json(200, {"nombre_video": nombre_dest})
+            return self._send_json(200, {"nombre_video": nombre_dest, "nombre": nombre_dest})
 
         if p.path == "/api/publicar_render":
             largo = int(self.headers.get("Content-Length", 0) or 0)
