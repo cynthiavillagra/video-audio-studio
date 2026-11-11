@@ -687,6 +687,12 @@ def _worker_publicar(job_id: str, params: dict) -> None:
         if intervalos:
             expr = "+".join(f"between(t,{a:.2f},{b:.2f})" for a, b in intervalos)
             filtros.append(f"volume=enable='{expr}':volume=0")
+        volumen_db = float(params.get("volumen_db", 0) or 0)
+        cortar_silencios = bool(params.get("cortar_silencios", False))
+        if abs(volumen_db) > 0.01 and tiene_audio:
+            filtros.append(f"volume={volumen_db:+.1f}dB")
+        if cortar_silencios and tiene_audio:
+            filtros.append("silenceremove=stop_periods=-1:stop_duration=0.45:stop_threshold=-38dB")
         if igualar and tiene_audio:
             # Normalizador dinámico: sube las voces bajas y baja las altas (sin amplificar el silencio de más)
             filtros.append("dynaudnorm=f=300:g=15:p=0.9:m=8:s=12")
@@ -1496,6 +1502,82 @@ def _decodificar_pcm(ruta_entrada: str, sr: int = 44100, ch: int = 1) -> np.ndar
     return muestras[:n_frames * ch].reshape((n_frames, ch))
 
 
+def aplicar_mejoras_pcm(pcm: np.ndarray, sr: int, ch: int,
+                         cortar_silencios: bool = False,
+                         volumen_db: float = 0.0) -> np.ndarray:
+    """Aplica recorte de silencios de audio (energía RMS por tramos con márgenes de fade)
+    y aumento/disminución de volumen en decibelios (dB) con soft clipping."""
+    if pcm is None or len(pcm) == 0:
+        return pcm
+
+    salida = pcm
+
+    # 1. Cortar silencios
+    if cortar_silencios and len(salida) > int(0.5 * sr):
+        umbral_db = -38.0
+        amp_umbral = 32767.0 * (10.0 ** (umbral_db / 20.0))
+        mono = np.max(np.abs(salida.astype(np.float32)), axis=-1) if salida.ndim > 1 else np.abs(salida.astype(np.float32))
+
+        win_len = int(0.025 * sr)
+        hop = int(0.010 * sr)
+        n_frames = len(mono)
+        n_steps = (n_frames - win_len) // hop
+
+        if n_steps > 0:
+            es_voz = np.zeros(n_steps, dtype=bool)
+            for i in range(n_steps):
+                i0 = i * hop
+                i1 = i0 + win_len
+                if np.max(mono[i0:i1]) >= amp_umbral:
+                    es_voz[i] = True
+
+            margen_steps = int(0.080 / (hop / sr))
+            es_voz_exp = np.copy(es_voz)
+            for i in range(len(es_voz)):
+                if es_voz[i]:
+                    i_start = max(0, i - margen_steps)
+                    i_end = min(len(es_voz), i + margen_steps + 1)
+                    es_voz_exp[i_start:i_end] = True
+
+            tramos = []
+            en_tramo = False
+            i_ini = 0
+            for i, v in enumerate(es_voz_exp):
+                if v and not en_tramo:
+                    en_tramo = True
+                    i_ini = i * hop
+                elif not v and en_tramo:
+                    en_tramo = False
+                    i_fin = min(n_frames, i * hop + win_len)
+                    tramos.append((i_ini, i_fin))
+            if en_tramo:
+                tramos.append((i_ini, n_frames))
+
+            if tramos:
+                fade_len = int(0.008 * sr)
+                trozos = []
+                for a, b in tramos:
+                    if b <= a:
+                        continue
+                    seg = salida[a:b].astype(np.float32)
+                    m = min(fade_len, len(seg) // 3)
+                    if m > 1:
+                        seg[:m] *= np.linspace(0.0, 1.0, m, dtype=np.float32)[:, None]
+                        seg[-m:] *= np.linspace(1.0, 0.0, m, dtype=np.float32)[:, None]
+                    trozos.append(seg.astype(np.int16))
+                if trozos:
+                    salida = np.concatenate(trozos, axis=0)
+
+    # 2. Aumentar volumen
+    if abs(volumen_db) > 0.01:
+        factor = 10.0 ** (volumen_db / 20.0)
+        seg_f = salida.astype(np.float32) * factor
+        np.clip(seg_f, -32767.0, 32767.0, out=seg_f)
+        salida = seg_f.astype(np.int16)
+
+    return salida
+
+
 def _guardar_audio_salida(pcm: np.ndarray, sr: int, ch: int, ruta_salida: str,
                           formato: str = "mp3", cal: str = "192k") -> None:
     if formato == "wav":
@@ -1523,7 +1605,9 @@ def generar_audio_procesado(ruta_entrada: str, ruta_salida: str,
                             max_minutos: float = 0.0, min_dur_seg: float = 0.0,
                             pausa_seg: float = 0.30,
                             rango_inicio: float | None = None,
-                            rango_fin: float | None = None) -> dict:
+                            rango_fin: float | None = None,
+                            cortar_silencios: bool = False,
+                            volumen_db: float = 0.0) -> dict:
     """Genera un archivo de audio procesado según el modo:
     - 'rango_directo': recorta exactamente entre `rango_inicio` y `rango_fin` (detectados por frase o manual)
       sin filtrar hablantes intermedios.
@@ -1673,6 +1757,8 @@ def generar_audio_procesado(ruta_entrada: str, ruta_salida: str,
                 salida_pcm = salida_pcm[r0:r1]
         n_usados = len(unidos)
 
+    if cortar_silencios or abs(volumen_db) > 0.01:
+        salida_pcm = aplicar_mejoras_pcm(salida_pcm, sr, ch, cortar_silencios=cortar_silencios, volumen_db=volumen_db)
     dur_final = len(salida_pcm) / float(sr)
     _guardar_audio_salida(salida_pcm, sr, ch, ruta_salida, formato=formato, cal=cal)
 
@@ -4625,6 +4711,30 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
         <select id="p3-filtro-spk" style="width:200px"><option value="">Todas las voces</option></select>
         <label class="check" style="font-size:0.8rem"><input type="checkbox" id="p3-chk-ocultar-fuera"><span>Solo las líneas del tramo</span></label>
       </div>
+
+      <!-- HERRAMIENTA: QUITAR MULETILLAS Y PALABRAS REPETIDAS -->
+      <details class="plegable" id="p3-muletillas-box" style="margin-bottom:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+        <summary style="font-weight:600;font-size:0.84rem;color:#1e3a8a">
+          ✂️ Quitar muletillas y palabras repetidas de la transcripción
+        </summary>
+        <div class="plegable-body" style="padding:10px">
+          <p style="font-size:0.79rem;color:var(--text-2);margin:0 0 8px">
+            Ingresá las muletillas o frases a buscar (separadas por coma) para eliminarlas del texto de los subtítulos o excluir esas líneas del audio.
+          </p>
+          <div class="row" style="gap:8px;margin-bottom:8px">
+            <input type="text" id="p3-inp-muletillas-buscar" placeholder="ej. eh, este, o sea, viste, nada, bueno chicos" style="flex:1;font-size:0.83rem">
+            <button type="button" class="btn-outline btn-xs" id="btn-p3-muletillas-sugerir" title="Cargar muletillas frecuentes del modelo de estilo">💡 Sugerir muletillas</button>
+          </div>
+          <div class="row-between" style="flex-wrap:wrap;gap:8px">
+            <div class="row" style="gap:12px;font-size:0.8rem">
+              <label><input type="radio" name="p3-modo-muletillas" value="limpiar_texto" checked> <span>Borrar palabra del texto</span></label>
+              <label><input type="radio" name="p3-modo-muletillas" value="excluir_lineas"> <span>Excluir esas líneas del audio</span></label>
+            </div>
+            <button type="button" class="btn-primary btn-xs" id="btn-p3-aplicar-muletillas">✂️ Quitar muletillas ahora</button>
+          </div>
+          <div id="p3-res-muletillas" style="margin-top:6px;font-size:0.8rem"></div>
+        </div>
+      </details>
       <div class="segmentos-wrap" id="p3-seg-wrap"></div>
       <div class="row-between" style="margin-top:12px">
         <span style="font-size:0.78rem;color:var(--muted)">Las correcciones se guardan solas.</span>
@@ -4763,6 +4873,20 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
               </select>
             </div>
           </div>
+          <div class="grid-2" style="gap:8px;margin-bottom:6px">
+            <div class="campo" style="margin:0"><label for="p3-vol-audio" style="font-size:0.78rem">🔊 Volumen</label>
+              <select id="p3-vol-audio" style="font-size:0.8rem">
+                <option value="0" selected>Normal (original)</option>
+                <option value="3">+3 dB (+40% vol)</option>
+                <option value="6">+6 dB (Doble vol)</option>
+                <option value="9">+9 dB (Triple vol)</option>
+                <option value="-3">-3 dB (Más bajo)</option>
+              </select>
+            </div>
+            <div class="campo" style="margin:0;display:flex;align-items:flex-end">
+              <label class="check" style="font-size:0.78rem;margin-bottom:6px"><input type="checkbox" id="p3-cortar-sil"><span>✂️ Cortar silencios</span></label>
+            </div>
+          </div>
           <div id="p3-resumen-audio" class="salida-resumen"></div>
           <button type="button" class="btn-primary btn-block" id="btn-p3-export-audio">Generar mi voz</button>
           <div id="p3-res-audio"></div>
@@ -4787,6 +4911,20 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
             </div>
             <div class="campo"><label for="p3b-fmt">Formato</label>
               <select id="p3b-fmt"><option value="mp3" selected>MP3</option><option value="wav">WAV</option></select>
+            </div>
+          </div>
+          <div class="grid-2" style="gap:8px;margin-bottom:6px">
+            <div class="campo" style="margin:0"><label for="p3b-vol-audio" style="font-size:0.78rem">🔊 Volumen</label>
+              <select id="p3b-vol-audio" style="font-size:0.8rem">
+                <option value="0" selected>Normal (original)</option>
+                <option value="3">+3 dB (+40% vol)</option>
+                <option value="6">+6 dB (Doble vol)</option>
+                <option value="9">+9 dB (Triple vol)</option>
+                <option value="-3">-3 dB (Más bajo)</option>
+              </select>
+            </div>
+            <div class="campo" style="margin:0;display:flex;align-items:flex-end">
+              <label class="check" style="font-size:0.78rem;margin-bottom:6px"><input type="checkbox" id="p3b-cortar-sil"><span>✂️ Cortar silencios</span></label>
             </div>
           </div>
           <div id="p3b-resumen" class="salida-resumen"></div>
@@ -4898,6 +5036,16 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
         <div class="stack" style="gap:10px">
           <label class="check"><input type="checkbox" id="pub-igualar" checked><span><strong>Igualar el volumen entre voces</strong> (sube a quien habla bajo y baja a quien habla alto)</span></label>
           <label class="check"><input type="checkbox" id="pub-nivelar" checked><span><strong>Nivelar el volumen general</strong> (volumen estándar en todo el video)</span></label>
+          <label class="check"><input type="checkbox" id="pub-cortar-sil"><span><strong>✂️ Cortar silencios del audio</strong> (elimina pausas y baches sin voz)</span></label>
+          <div class="row" style="gap:8px;align-items:center">
+            <label for="pub-vol-db" style="font-size:0.82rem;font-weight:600">🔊 Aumentar volumen:</label>
+            <select id="pub-vol-db" style="width:auto;padding:3px 8px;font-size:0.8rem">
+              <option value="0" selected>Original (0 dB)</option>
+              <option value="3">+3 dB (+40% volumen)</option>
+              <option value="6">+6 dB (Doble de volumen)</option>
+              <option value="9">+9 dB (Triple de volumen)</option>
+            </select>
+          </div>
           <label class="check"><input type="checkbox" id="pub-margen" checked><span>Margen de seguridad: silenciar también 0,2 s antes y después</span></label>
         </div>
       </div>
@@ -4913,11 +5061,17 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       <p class="sub-desc">Usa el tramo de arriba (vacío = video entero) y los subtítulos ya sincronizados de esta transcripción.</p>
       <div class="row">
         <input type="hidden" id="p4-t-ini"><input type="hidden" id="p4-t-fin">
-        <select id="p4-modo-unir" style="flex:1;min-width:220px;max-width:420px">
+        <select id="p4-modo-unir" style="flex:1;min-width:200px;max-width:320px">
           <option value="soft" selected>Unir subtítulos como pista (rápido)</option>
           <option value="burn">Subtítulos quemados en la imagen</option>
           <option value="solo_recortar_video">Solo recortar el video</option>
         </select>
+        <select id="p4-vol-db" style="width:auto;font-size:0.8rem" title="Aumento de volumen en el video">
+          <option value="0" selected>Volumen normal</option>
+          <option value="3">+3 dB (+40% vol)</option>
+          <option value="6">+6 dB (Doble vol)</option>
+        </select>
+        <label class="check" style="font-size:0.8rem"><input type="checkbox" id="p4-cortar-sil"><span>✂️ Sin silencios</span></label>
         <button type="button" class="btn-secondary btn-sm" id="btn-p4-unir-video">Procesar MP4</button>
       </div>
       <div id="p4-res-unir" style="margin-top:8px;font-size:0.84rem"></div>
@@ -5651,6 +5805,8 @@ document.getElementById('btn-pub-generar').onclick = async () => {
         prefijo_anon: document.getElementById('pub-prefijo').value.trim() || 'Alumno',
         nivelar: document.getElementById('pub-nivelar').checked,
         igualar: igualarPub,
+        volumen_db: Number(document.getElementById('pub-vol-db').value || 0),
+        cortar_silencios: document.getElementById('pub-cortar-sil').checked,
         margen: document.getElementById('pub-margen').checked ? 0.2 : 0
       })
     });
@@ -6738,6 +6894,66 @@ document.getElementById('p3-buscar').oninput = e => {
   sesionActiva.filtroTexto = e.target.value.toLowerCase();
   renderSegmentosPaso3();
 };
+// Quitar muletillas en la transcripción
+document.getElementById('btn-p3-muletillas-sugerir').onclick = async () => {
+  try {
+    const r = await fetch('/api/estilo_estado');
+    if (r.ok) {
+      const d = await r.json();
+      const sugerencias = [];
+      if (d.top_marcadores && d.top_marcadores.length) {
+        sugerencias.push(...d.top_marcadores.slice(0, 8).map(m => m.frase));
+      }
+      if (d.muletillas_personalizadas && d.muletillas_personalizadas.length) {
+        sugerencias.push(...d.muletillas_personalizadas);
+      }
+      const listaUnica = [...new Set(sugerencias.filter(Boolean))];
+      if (listaUnica.length) {
+        document.getElementById('p3-inp-muletillas-buscar').value = listaUnica.join(', ');
+        return;
+      }
+    }
+  } catch (e) {}
+  document.getElementById('p3-inp-muletillas-buscar').value = 'eh, este, o sea, viste, nada, bueno, tipo';
+};
+
+document.getElementById('btn-p3-aplicar-muletillas').onclick = async () => {
+  if (!sesionActiva) return;
+  const raw = document.getElementById('p3-inp-muletillas-buscar').value.trim();
+  if (!raw) {
+    alert('Ingresá al menos una palabra o muletilla separada por comas.');
+    return;
+  }
+  const btn = document.getElementById('btn-p3-aplicar-muletillas');
+  const resDiv = document.getElementById('p3-res-muletillas');
+  const accion = document.querySelector('input[name="p3-modo-muletillas"]:checked').value;
+  btn.disabled = true;
+  resDiv.innerHTML = '⏳ Procesando muletillas en la transcripción…';
+
+  try {
+    const r = await fetch('/api/quitar_muletillas', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        sesion_id: sesionActiva.sesion_id,
+        patrones: raw,
+        hablante: sesionActiva.filtroSpk || '',
+        accion
+      })
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    sesionActiva.segmentos = d.segmentos;
+    renderSegmentosPaso3();
+    actualizarResumenAudioPaso3();
+    resDiv.innerHTML = `<span style="color:var(--ok);font-weight:600">✔ Se encontraron ${d.coincidencias} apariciones en ${d.modificados} líneas (${accion === 'limpiar_texto' ? 'texto limpiado' : 'líneas excluidas del audio'}).</span>`;
+  } catch (e) {
+    resDiv.innerHTML = `<span style="color:var(--danger);font-weight:600">✘ ${escHtml(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
 document.getElementById('p3-filtro-spk').onchange = e => {
   if (!sesionActiva) return;
   sesionActiva.filtroSpk = e.target.value;
@@ -7067,6 +7283,8 @@ document.getElementById('btn-p3-export-audio').onclick = () => {
     max_minutos: Number(document.getElementById('p3-max-min').value || 0),
     min_dur_seg: Number(document.getElementById('p3-min-seg').value || 0),
     pausa_seg: 0.3, rango_inicio: st.rangoInicio, rango_fin: st.rangoFin,
+    cortar_silencios: document.getElementById('p3-cortar-sil').checked,
+    volumen_db: Number(document.getElementById('p3-vol-audio').value || 0),
     intervalos: [],
     activos: mios.map(s => ({ inicio: Math.max(0, s.inicio + off), fin: s.fin + off, texto: s.texto, confianza: s.confianza || 0.8 })).filter(s => s.fin > 0)
   }, document.getElementById('btn-p3-export-audio'), document.getElementById('p3-res-audio'));
@@ -7089,6 +7307,8 @@ document.getElementById('btn-p3b-export').onclick = () => {
     formato: document.getElementById('p3b-fmt').value,
     max_minutos: 0, min_dur_seg: 0, pausa_seg: 0.3,
     rango_inicio: st.rangoInicio, rango_fin: st.rangoFin,
+    cortar_silencios: document.getElementById('p3b-cortar-sil').checked,
+    volumen_db: Number(document.getElementById('p3b-vol-audio').value || 0),
     intervalos: quitar.map(s => [Math.max(0, s.inicio + off), s.fin + off]).filter(x => x[1] > 0),
     activos: st.segmentos.filter(s => !quitar.includes(s)).map(s => ({ inicio: Math.max(0, s.inicio + off), fin: s.fin + off, texto: s.texto, confianza: s.confianza || 0.8 })).filter(s => s.fin > 0)
   }, document.getElementById('btn-p3b-export'), document.getElementById('p3b-res'));
@@ -7613,6 +7833,8 @@ document.getElementById('btn-p4-unir-video').onclick = async () => {
       bloque_00: document.getElementById('p4-chk-bloque-00').checked ? '1' : '0',
       max_chars: document.getElementById('p4-max-chars').value,
       max_dur: document.getElementById('p4-max-dur').value,
+      volumen_db: document.getElementById('p4-vol-db').value,
+      cortar_silencios: document.getElementById('p4-cortar-sil').checked ? '1' : '0',
       desde: document.getElementById('p3-t-ini').value.trim(),
       hasta: document.getElementById('p3-t-fin').value.trim()
     });
@@ -8526,6 +8748,69 @@ class Handler(BaseHTTPRequestHandler):
             ok = eliminar_voz_perfil(nombre)
             return self._send_json(200, {"ok": ok})
 
+        if p.path == "/api/quitar_muletillas":
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            body = json.loads(self.rfile.read(largo).decode("utf-8")) if largo > 0 else {}
+            sid = body.get("sesion_id", "")
+            with JOBS_LOCK:
+                sesion = SESIONES.get(sid)
+            if not sesion:
+                return self._send_text(404, "Sesión no encontrada")
+
+            patrones_texto = body.get("patrones") or []
+            if isinstance(patrones_texto, str):
+                patrones_texto = [p.strip() for p in patrones_texto.split(",") if p.strip()]
+            hablante_filtro = body.get("hablante") or ""
+            accion = body.get("accion", "limpiar_texto") # "limpiar_texto" o "excluir_lineas"
+
+            if not patrones_texto:
+                return self._send_text(400, "Ingresá al menos una muletilla o palabra a buscar.")
+
+            segs = sesion.get("segmentos", [])
+            modificados = 0
+            coincidencias = 0
+
+            # Compilar expresiones regulares con límites de palabra para cada muletilla
+            regex_list = []
+            for pat in patrones_texto:
+                p_clean = pat.strip()
+                if not p_clean:
+                    continue
+                # Escape pero permitir coincidencias de palabras completas
+                esc = re.escape(p_clean)
+                regex_list.append(re.compile(rf"(?i)\b{esc}\b"))
+
+            for s in segs:
+                if hablante_filtro and s.get("hablante") != hablante_filtro:
+                    continue
+                orig_txt = s.get("texto", "")
+                txt_nuevo = orig_txt
+                seg_match = False
+                for r in regex_list:
+                    if r.search(txt_nuevo):
+                        seg_match = True
+                        coincidencias += len(r.findall(txt_nuevo))
+                        if accion == "limpiar_texto":
+                            txt_nuevo = r.sub("", txt_nuevo)
+
+                if seg_match:
+                    modificados += 1
+                    if accion == "limpiar_texto":
+                        # Limpiar espacios dobles y signos huérfanos
+                        txt_nuevo = re.sub(r"\s+", " ", txt_nuevo).strip()
+                        txt_nuevo = re.sub(r"^[,;.\-–—]\s*", "", txt_nuevo).strip()
+                        s["texto"] = txt_nuevo
+                    elif accion == "excluir_lineas":
+                        s["override_mute"] = True
+
+            guardar_sesion_disco(sesion)
+            return self._send_json(200, {
+                "ok": True,
+                "modificados": modificados,
+                "coincidencias": coincidencias,
+                "segmentos": sesion["segmentos"]
+            })
+
         if p.path == "/api/recortar_transcripcion_sesion":
             largo = int(self.headers.get("Content-Length", 0) or 0)
             body = json.loads(self.rfile.read(largo).decode("utf-8")) if largo > 0 else {}
@@ -8675,12 +8960,23 @@ class Handler(BaseHTTPRequestHandler):
                     recortar_video_ffmpeg(ruta_video_in, ruta_vid_rec_tmp, desde=desde_str, hasta=hasta_str)
                     ruta_vid_base = ruta_vid_rec_tmp
 
+                cortar_sil_v = q.get("cortar_silencios", ["0"])[0] == "1"
+                vol_db_v = float(q.get("volumen_db", ["0"])[0] or 0.0)
+                af_filtros = []
+                if abs(vol_db_v) > 0.01:
+                    af_filtros.append(f"volume={vol_db_v:+.1f}dB")
+                if cortar_sil_v:
+                    af_filtros.append("silenceremove=stop_periods=-1:stop_duration=0.45:stop_threshold=-38dB")
+                audio_reencode = ["-c:a", "aac", "-b:a", "192k", "-af", ",".join(af_filtros)] if af_filtros else ["-c:a", "copy"]
+
                 if modo_sub == "burn":
                     ruta_esc = ruta_srt_tmp.replace("\\", "/").replace(":", "\\:")
-                    cmd = ["ffmpeg", "-y", "-i", ruta_vid_base, "-vf", f"subtitles='{ruta_esc}'", "-c:a", "copy", ruta_out]
+                    cmd = ["ffmpeg", "-y", "-i", ruta_vid_base, "-vf", f"subtitles='{ruta_esc}'"] + audio_reencode + [ruta_out]
+                elif modo_sub == "solo_recortar_video":
+                    cmd = ["ffmpeg", "-y", "-i", ruta_vid_base, "-c:v", "copy"] + audio_reencode + [ruta_out]
                 else:
                     cmd = ["ffmpeg", "-y", "-i", ruta_vid_base, "-i", ruta_srt_tmp, "-map", "0:v:0", "-map", "0:a?", "-map", "1:0",
-                           "-c:v", "copy", "-c:a", "copy", "-c:s", "mov_text", "-metadata:s:s:0", "language=spa", ruta_out]
+                           "-c:v", "copy"] + audio_reencode + ["-c:s", "mov_text", "-metadata:s:s:0", "language=spa", ruta_out]
                 r_ff = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
                 if r_ff.returncode != 0:
                     return self._send_text(500, f"Error de ffmpeg: {r_ff.stderr[-300:]}")
@@ -8802,6 +9098,8 @@ class Handler(BaseHTTPRequestHandler):
                     ext = ".wav" if formato == "wav" else ".mp3"
                     nombre_out = nombre_unico(SALIDA, sesion["nombre_base"] + sufijo, ext)
                     ruta_out = os.path.join(SALIDA, nombre_out)
+                    cortar_sil = bool(body.get("cortar_silencios", False))
+                    vol_db = float(body.get("volumen_db", 0) or 0)
                     info = generar_audio_procesado(
                         sesion["ruta_mp3"], ruta_out,
                         intervalos_silenciados=intervalos,
@@ -8810,7 +9108,8 @@ class Handler(BaseHTTPRequestHandler):
                         cal=sesion["cal"], mono=sesion["mono"],
                         max_minutos=max_minutos, min_dur_seg=min_dur_seg,
                         pausa_seg=pausa_seg,
-                        rango_inicio=rango_inicio, rango_fin=rango_fin
+                        rango_inicio=rango_inicio, rango_fin=rango_fin,
+                        cortar_silencios=cortar_sil, volumen_db=vol_db
                     )
             except Exception as e:
                 return self._send_text(500, str(e))
