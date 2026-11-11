@@ -5165,7 +5165,7 @@ function renderColaP1() {
   }
   box.style.display = 'block';
   btnP1Convertir.disabled = false;
-  tit.textContent = `Archivos seleccionados (${colaP1.length})`;
+  tit.textContent = `Archivos cargados (${colaP1.length}) · podés procesarlos varias veces con distintas opciones`;
   actualizarPreviewSplitP1();
   lista.innerHTML = colaP1.map(it => `
     <li class="cola-item">
@@ -5196,11 +5196,16 @@ btnP1Convertir.onclick = async () => {
     const err = validarSplitP1();
     if (err) { alert(err); return; }
   }
+  // El archivo queda en la lista para poder procesarlo de nuevo con otras opciones
   const lotes = [...colaP1];
-  colaP1 = [];
-  renderColaP1();
-
-  await ejecutarLotePaso1(lotes, false);
+  btnP1Convertir.disabled = true;
+  btnP1Convertir.textContent = 'Procesando…';
+  try {
+    await ejecutarLotePaso1(lotes, false);
+  } finally {
+    actualizarUiCorteP1();
+    btnP1Convertir.disabled = !colaP1.length;
+  }
 };
 
 async function ejecutarLotePaso1(lotes, usarExistente = false) {
@@ -5301,7 +5306,13 @@ document.getElementById('btn-p1-recortar-existente').onclick = async () => {
     const err = validarSplitP1();
     if (err) { alert(err); return; }
   } else if (!d && !h) { alert('Escribí el minuto:segundo en "Desde" y/o "Hasta" arriba para recortar.'); return; }
-  await ejecutarLotePaso1([{ nombre: nom }], true);
+  const btn = document.getElementById('btn-p1-recortar-existente');
+  btn.disabled = true;
+  try {
+    await ejecutarLotePaso1([{ nombre: nom }], true);
+  } finally {
+    btn.disabled = false;
+  }
 };
 
 
