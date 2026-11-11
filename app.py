@@ -590,6 +590,187 @@ def _worker_dividir(job_id: str, ruta_entrada: str, base: str, params: dict) -> 
                     resultado={"modo": "partes", "partes": resultado, "duracion": duracion})
 
 
+# ==============================================================================
+# VIDEO PARA PUBLICAR: SILENCIAR VOCES ELEGIDAS + SUBTÍTULOS DE LO QUE DIJERON
+# ==============================================================================
+def _tiene_pista_audio(ruta: str) -> bool:
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
+                            "stream=index", "-of", "csv=p=0", ruta],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if r.returncode == 0:
+            return bool(r.stdout.strip())
+    except OSError:
+        pass
+    r = subprocess.run(["ffmpeg", "-i", ruta], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    return "Audio:" in (r.stderr or "")
+
+
+def _srt_desde_bloques(bloques: list[dict]) -> str:
+    def ts(seg):
+        ms = int(round(seg * 1000))
+        return f"{ms//3600000:02d}:{(ms%3600000)//60000:02d}:{(ms%60000)//1000:02d},{ms%1000:03d}"
+    return "\n".join(f"{i}\n{ts(b['ini'])} --> {ts(b['fin'])}\n{b['texto_srt']}\n"
+                     for i, b in enumerate(bloques, start=1))
+
+
+def _worker_publicar(job_id: str, params: dict) -> None:
+    """Genera un MP4 donde las voces elegidas quedan en silencio y lo que dijeron aparece
+    como pista de subtítulos (además de un .SRT aparte). Opcionalmente nivela el audio."""
+    ruta_script = ""
+    ruta_srt_tmp = ""
+    try:
+        sid = params["sesion_id"]
+        with JOBS_LOCK:
+            sesion = SESIONES.get(sid)
+        if not sesion:
+            raise ValueError("No se encontró el análisis de voces. Volvé a analizar el video.")
+        nombre_video = os.path.basename(params["nombre_video"])
+        ruta_video = os.path.join(SALIDA, nombre_video)
+        if not os.path.isfile(ruta_video):
+            raise ValueError(f"No se encontró el video en audios/: {nombre_video}")
+        if not _tiene_pista_audio(ruta_video):
+            raise ValueError("El video no tiene pista de audio: no hay voces para silenciar.")
+
+        silenciados = set(params.get("silenciados") or [])
+        margen = max(0.0, min(1.0, float(params.get("margen", 0.2))))
+        nivelar = bool(params.get("nivelar", True))
+        modo_nombre = params.get("modo_nombre", "anon")
+        prefijo = (params.get("prefijo_anon") or "Alumno").strip() or "Alumno"
+        nombres_edit = params.get("nombres") or {}
+
+        segmentos = sesion.get("segmentos", [])
+        a_silenciar = [s for s in segmentos
+                       if s.get("hablante") in silenciados or s.get("silenciado") is True]
+        if not a_silenciar:
+            raise ValueError("Elegí al menos una voz para silenciar.")
+
+        # Nombres que se muestran en los subtítulos
+        orden_spk = []
+        for s in sorted(a_silenciar, key=lambda x: float(x.get("inicio", 0))):
+            if s.get("hablante") not in orden_spk:
+                orden_spk.append(s.get("hablante"))
+        mapa_real = {h["id"]: (nombres_edit.get(h["id"]) or h.get("nombre") or h["id"]) for h in sesion.get("hablantes", [])}
+        if modo_nombre == "real":
+            mapa_nom = {spk: mapa_real.get(spk, spk) for spk in orden_spk}
+        elif modo_nombre == "ninguno":
+            mapa_nom = {spk: "" for spk in orden_spk}
+        else:
+            mapa_nom = {spk: f"{prefijo} {i}" for i, spk in enumerate(orden_spk, start=1)}
+
+        _actualizar_job(job_id, progreso=4, mensaje="Armando los subtítulos de las voces silenciadas…")
+        segs_sub = [{k: v for k, v in s.items() if k != "override_mute"} for s in a_silenciar]
+        bloques = construir_subtitulos_profesionales(
+            segs_sub, mapa_nom=mapa_nom, mapa_sil={}, inc_nom=(modo_nombre != "ninguno"),
+            inc_sil=True, agregar_bloque_00=False,
+            max_chars_sub=int(params.get("max_chars", 84) or 84), min_dur_seg=1.2,
+            max_dur_seg=float(params.get("max_dur", 6.0) or 6.0),
+        )
+        texto_srt = _srt_desde_bloques(bloques)
+        base = os.path.splitext(nombre_video)[0] + "_publicar"
+        nombre_srt = nombre_unico(SALIDA, base, ".srt")
+        with open(os.path.join(SALIDA, nombre_srt), "w", encoding="utf-8") as f:
+            f.write(texto_srt)
+
+        # Filtro de audio: silencio en los tramos + nivelación opcional
+        intervalos = _unir_intervalos(
+            [(max(0.0, float(s["inicio"]) - margen), float(s["fin"]) + margen) for s in a_silenciar],
+            margen_union=0.3)
+        expr = "+".join(f"between(t,{a:.2f},{b:.2f})" for a, b in intervalos)
+        filtros = [f"volume=enable='{expr}':volume=0"]
+        if nivelar:
+            filtros += ["loudnorm=I=-16:TP=-1.5:LRA=11", "aresample=48000"]
+        filtro = ",".join(filtros)
+
+        nombre_out = nombre_unico(SALIDA, base, ".mp4")
+        ruta_out = os.path.join(SALIDA, nombre_out)
+        ruta_srt_tmp = os.path.join(TEMP_DIR, f"pub_{uuid.uuid4().hex[:8]}.srt")
+        with open(ruta_srt_tmp, "w", encoding="utf-8") as f:
+            f.write(texto_srt)
+        ruta_script = os.path.join(TEMP_DIR, f"pub_{uuid.uuid4().hex[:8]}_filtro.txt")
+        with open(ruta_script, "w", encoding="utf-8") as f:
+            f.write(filtro)
+
+        try:
+            duracion = duracion_media(ruta_video)
+        except Exception:
+            duracion = float(sesion.get("duracion") or 0) or 1.0
+
+        def correr(opciones_filtro: list[str], codec_video: list[str]) -> tuple[int, str]:
+            cmd = ["ffmpeg", "-y", "-i", ruta_video, "-i", ruta_srt_tmp,
+                   "-map", "0:v:0", "-map", "0:a:0", "-map", "1:0",
+                   *opciones_filtro, *codec_video,
+                   "-c:a", "aac", "-b:a", "192k",
+                   "-c:s", "mov_text", "-metadata:s:s:0", "language=spa",
+                   "-metadata:s:s:0", "title=Voces silenciadas", "-disposition:s:0", "default",
+                   "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", ruta_out]
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    text=True, encoding="utf-8", errors="replace")
+            err_buf = []
+            hilo_err = threading.Thread(target=lambda: err_buf.append(proc.stderr.read()), daemon=True)
+            hilo_err.start()
+            for linea in proc.stdout:
+                if linea.startswith("out_time_us=") or linea.startswith("out_time_ms="):
+                    try:
+                        seg = int(linea.split("=", 1)[1]) / 1_000_000
+                        _actualizar_job(job_id, progreso=min(97, 8 + int(89 * seg / max(1.0, duracion))),
+                                        mensaje=f"Generando el video… {fmt_hms_simple(seg)} de {fmt_hms_simple(duracion)}")
+                    except ValueError:
+                        pass
+            proc.wait()
+            hilo_err.join(timeout=5)
+            return proc.returncode, "".join(err_buf)
+
+        variantes_filtro = []
+        if len(filtro) < 12000:
+            variantes_filtro.append(["-af", filtro])
+        variantes_filtro += [["-filter_script:a", ruta_script], ["-/af", ruta_script]]
+
+        _actualizar_job(job_id, progreso=8, mensaje="Silenciando voces y uniendo subtítulos…")
+        ultimo_err = ""
+        hecho = False
+        for codec_video in (["-c:v", "copy"], ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]):
+            for vf in variantes_filtro:
+                rc, err = correr(vf, codec_video)
+                if rc == 0 and os.path.exists(ruta_out) and os.path.getsize(ruta_out) > 1024:
+                    hecho = True
+                    break
+                ultimo_err = err
+                # Si el error no es por la opción de filtro, no tiene sentido probar otra variante de filtro
+                if "Unrecognized option" not in err and "Option not found" not in err:
+                    break
+            if hecho:
+                break
+        if not hecho:
+            raise RuntimeError("ffmpeg falló: " + (ultimo_err or "")[-500:])
+
+        dur_sil = sum(b - a for a, b in intervalos)
+        _actualizar_job(job_id, estado="completado", progreso=100, mensaje="Video listo.", resultado={
+            "nombre_video": nombre_out,
+            "nombre_srt": nombre_srt,
+            "tramos_silenciados": len(intervalos),
+            "segundos_silenciados": round(dur_sil, 1),
+            "subtitulos": len(bloques),
+            "etiquetas": mapa_nom,
+            "nivelado": nivelar,
+        })
+    except Exception as e:
+        _actualizar_job(job_id, estado="error", mensaje=str(e), error=str(e))
+    finally:
+        for rp in (ruta_script, ruta_srt_tmp):
+            if rp and os.path.exists(rp):
+                try:
+                    os.remove(rp)
+                except OSError:
+                    pass
+
+
+def fmt_hms_simple(seg: float) -> str:
+    seg = int(max(0, seg))
+    h, m, s = seg // 3600, (seg % 3600) // 60, seg % 60
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+
+
 def _dividir_texto_en_frases_sub(texto: str, max_chars: int = 84) -> list[str]:
     """Divide un texto largo en fragmentos aptos para subtítulos (<= max_chars),
     priorizando cortes en signos de puntuación (. ? ! ; : ,) y nunca cortando palabras."""
@@ -3307,6 +3488,37 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .parte-item .pt { font-family: var(--mono); font-size: 0.8rem; color: var(--text-2); }
 .parte-item a { text-decoration: none; }
 
+/* ---------- Video para publicar ---------- */
+.voz-fila {
+  display: grid; grid-template-columns: 14px minmax(140px, 1.2fr) 1fr auto auto; gap: 12px; align-items: center;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff;
+  transition: border-color 0.12s, background 0.12s;
+}
+.voz-fila.silenciada { border-color: #fecaca; background: #fffafa; }
+.voz-fila .dot { width: 12px; height: 12px; border-radius: 50%; }
+.voz-fila input[type="text"] { padding: 6px 8px; font-weight: 600; }
+.voz-fila .voz-stats { font-size: 0.78rem; color: var(--muted); }
+.voz-fila .voz-stats .etq { color: var(--danger); font-weight: 600; }
+@media (max-width: 760px) { .voz-fila { grid-template-columns: 14px 1fr auto; } .voz-fila .voz-stats { grid-column: 2 / -1; } }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.82rem; font-weight: 600; color: var(--text-2); user-select: none; }
+.switch input { position: absolute; opacity: 0; pointer-events: none; }
+.switch .pista { width: 36px; height: 20px; border-radius: 999px; background: #d1d5db; position: relative; transition: background 0.15s; flex-shrink: 0; }
+.switch .pista::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+.switch input:checked + .pista { background: var(--danger); }
+.switch input:checked + .pista::after { transform: translateX(16px); }
+.switch input:focus-visible + .pista { outline: 2px solid var(--primary); outline-offset: 2px; }
+.pub-resultado video { width: 100%; max-height: 420px; background: #000; border-radius: 10px; }
+
+/* Enlaces con aspecto de botón */
+a[class*="btn-"] {
+  display: inline-flex; align-items: center; gap: 6px; text-decoration: none; cursor: pointer;
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  padding: 8px 14px; font-size: 0.86rem; font-weight: 600; line-height: 1.3;
+}
+a.btn-outline { border-color: var(--border-strong); }
+a.btn-sm { padding: 6px 11px; font-size: 0.8rem; }
+a.btn-xs { padding: 4px 9px; font-size: 0.75rem; border-radius: 6px; }
+
 /* ---------- Badges ---------- */
 .badge {
   font-size: 0.73rem;
@@ -3548,6 +3760,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     <symbol id="i-git" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="9" r="3"/><path d="M6 9v6M18 12c0 3-3 4-9 5"/></symbol>
     <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></symbol>
     <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
   </defs>
 </svg>
@@ -3588,7 +3801,12 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       <span class="step-title">Subtítulos y video</span>
       <span class="step-sub">Sincronizar y exportar</span>
     </button>
-    <div class="nav-group-label" style="margin-top:14px">Herramientas IA</div>
+    <div class="nav-group-label" style="margin-top:14px">Herramientas</div>
+    <button type="button" class="step-btn" data-step="6">
+      <span class="step-num"><svg><use href="#i-mute"/></svg></span>
+      <span class="step-title">Video para publicar</span>
+      <span class="step-sub">Silenciar voces y subtitularlas</span>
+    </button>
     <button type="button" class="step-btn" data-step="5">
       <span class="step-num"><svg><use href="#i-spark"/></svg></span>
       <span class="step-title">Mi estilo y guiones</span>
@@ -3644,6 +3862,11 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
         <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(4)">
           <span class="gnum">4</span>
           <div><strong>Subtítulos y video</strong><span>Para videos que se grabaron sin audio: sincronizás la transcripción con el video y exportás SRT / VTT o el MP4 subtitulado.</span></div>
+          <span class="ir">Ir →</span>
+        </button>
+        <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(6)">
+          <span class="gnum"><svg width="15" height="15"><use href="#i-mute"/></svg></span>
+          <div><strong>Video para publicar</strong><span>Subís un video, reconoce las voces y elegís cuáles silenciar (por ej. las de alumnos). Lo que dijeron queda como subtítulo, con nombre real o anonimizado, y podés nivelar el volumen.</span></div>
           <span class="ir">Ir →</span>
         </button>
         <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(5)">
@@ -4428,6 +4651,123 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
   </div>
 </section>
 
+
+<!-- ====================================================================== -->
+<!-- SECCIÓN 6: VIDEO PARA PUBLICAR (SILENCIAR VOCES + SUBTÍTULOS)          -->
+<!-- ====================================================================== -->
+<section class="step-section" id="step-6">
+  <div class="sec-head">
+    <div>
+      <div class="eyebrow">Herramientas</div>
+      <h1>Video para publicar</h1>
+      <p>Silenciá las voces que no querés que se escuchen (por ejemplo, las de alumnos). Lo que dijeron queda como subtítulo.</p>
+    </div>
+  </div>
+
+  <!-- 1. Video y análisis -->
+  <div class="card">
+    <h2><span class="paso-num">1</span>Elegí el video</h2>
+    <p class="sub-desc">El video queda guardado en <code>audios/</code> para poder reutilizarlo.</p>
+    <div class="grid-2">
+      <div class="dropzone" id="pub-zona" style="padding:22px">
+        <div class="dz-icon"><svg><use href="#i-upload"/></svg></div>
+        <div class="dz-title" id="pub-zona-titulo">Arrastrá o elegí un video</div>
+        <div class="dz-sub">MP4, MKV, MOV, WEBM</div>
+        <input type="file" id="pub-arch" accept=".mp4,.mkv,.mov,.webm,.avi,video/*" hidden>
+      </div>
+      <div class="stack" style="gap:12px">
+        <div class="campo">
+          <label for="pub-sel-video">O uno que ya está en <code>audios/</code></label>
+          <select id="pub-sel-video"></select>
+        </div>
+        <div class="campo">
+          <label>Reconocer las voces</label>
+          <div class="segmentado">
+            <label><input type="radio" name="pub-fuente" value="analizar" checked><span>Analizar este video</span></label>
+            <label><input type="radio" name="pub-fuente" value="guardada"><span>Usar un análisis guardado</span></label>
+          </div>
+        </div>
+        <div id="pub-box-analizar" class="grid-2" style="gap:10px">
+          <div class="campo">
+            <label for="pub-modelo">Modelo</label>
+            <select id="pub-modelo"><option value="base">Base (más rápido)</option><option value="small" selected>Small (más preciso)</option></select>
+          </div>
+          <div class="campo">
+            <label for="pub-hablantes">Hablantes</label>
+            <select id="pub-hablantes">
+              <option value="0" selected>Automático</option>
+              <option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option>
+            </select>
+          </div>
+        </div>
+        <div id="pub-box-guardada" class="campo" style="display:none">
+          <label for="pub-sel-sesion">Análisis guardado <span style="font-weight:400;color:var(--muted)">(tiene que ser de esta misma grabación, desde el inicio)</span></label>
+          <select id="pub-sel-sesion"></select>
+        </div>
+        <button type="button" class="btn-primary btn-block" id="btn-pub-analizar">Reconocer voces</button>
+      </div>
+    </div>
+    <div id="pub-progreso-analisis"></div>
+  </div>
+
+  <div id="pub-paso2" style="display:none">
+    <!-- 2. Voces -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2><span class="paso-num">2</span>Elegí qué voces silenciar</h2>
+          <p>Escuchá cada voz y marcá las que no querés que se escuchen. <span id="pub-resumen-video"></span></p>
+        </div>
+        <div class="row" style="gap:6px">
+          <button type="button" class="btn-outline btn-xs" id="btn-pub-todas-menos">Silenciar todas menos la que más habla</button>
+          <button type="button" class="btn-outline btn-xs" id="btn-pub-ninguna">Ninguna</button>
+        </div>
+      </div>
+      <div class="player-sticky" style="margin-bottom:12px">
+        <audio id="pub-audio" controls preload="none"></audio>
+        <div style="font-size:0.82rem;color:#d1d5db" id="pub-audio-info">Tocá ▶ en una voz para escuchar un ejemplo (cada toque pasa a otro fragmento).</div>
+      </div>
+      <div id="pub-lista-voces" class="stack" style="gap:8px"></div>
+    </div>
+
+    <!-- 3. Opciones -->
+    <div class="card">
+      <h2><span class="paso-num">3</span>Subtítulos y volumen</h2>
+      <p class="sub-desc">Solo se subtitula lo que dicen las voces silenciadas; tu voz se escucha normal.</p>
+      <div class="grid-2" style="align-items:start">
+        <div class="stack" style="gap:12px">
+          <div class="campo">
+            <label>Nombre en los subtítulos</label>
+            <div class="segmentado" style="grid-template-columns:1fr 1fr 1fr">
+              <label><input type="radio" name="pub-nombres" value="anon" checked><span>Anonimizado</span></label>
+              <label><input type="radio" name="pub-nombres" value="real"><span>Nombre real</span></label>
+              <label><input type="radio" name="pub-nombres" value="ninguno"><span>Sin nombre</span></label>
+            </div>
+          </div>
+          <div class="campo" id="pub-box-prefijo">
+            <label for="pub-prefijo">Etiqueta anónima</label>
+            <input type="text" id="pub-prefijo" value="Alumno" placeholder="Alumno" style="max-width:220px">
+            <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Queda "Alumno 1", "Alumno 2"… en el orden en que hablan.</div>
+          </div>
+        </div>
+        <div class="stack" style="gap:10px">
+          <label class="check"><input type="checkbox" id="pub-nivelar" checked><span><strong>Nivelar todo el audio</strong> (volumen parejo en todo el video)</span></label>
+          <label class="check"><input type="checkbox" id="pub-margen" checked><span>Margen de seguridad: silenciar también 0,2 s antes y después de cada intervención</span></label>
+          <div class="panel" style="font-size:0.8rem;color:var(--text-2)">
+            El reconocimiento de voces puede equivocarse. Antes de publicar, mirá el video: si alguna frase de un alumno quedó con audio, marcala en el <a href="#" onclick="irAPaso(3);return false">paso 3</a> (línea por línea) y volvé a generar.
+          </div>
+        </div>
+      </div>
+      <hr class="divider">
+      <div class="row-between">
+        <span id="pub-resumen-sel" style="font-size:0.84rem;color:var(--text-2)"></span>
+        <button type="button" class="btn-primary btn-lg" id="btn-pub-generar">Generar video para publicar</button>
+      </div>
+      <div id="pub-progreso-render"></div>
+    </div>
+  </div>
+</section>
+
 </div><!-- /main-inner -->
 </main>
 </div><!-- /app -->
@@ -4517,6 +4857,9 @@ function irAPaso(num) {
   }
   if (num === 5) {
     cargarEstadoEstiloPaso5();
+  }
+  if (num === 6) {
+    cargarPublicar();
   }
 }
 
@@ -4718,6 +5061,270 @@ document.getElementById('btn-p1-recortar-existente').onclick = async () => {
     if (err) { alert(err); return; }
   } else if (!d && !h) { alert('Escribí el minuto:segundo en "Desde" y/o "Hasta" arriba para recortar.'); return; }
   await ejecutarLotePaso1([{ nombre: nom }], true);
+};
+
+
+// ==============================================================================
+// SECCIÓN 6: VIDEO PARA PUBLICAR (silenciar voces + subtítulos de lo que dijeron)
+// ==============================================================================
+const pub = { video: '', sesion: null, silenciados: new Set(), nombres: {}, idxMuestra: {} };
+
+async function cargarPublicar() {
+  try {
+    const [ra, rs] = await Promise.all([fetch('/api/audios_existentes'), fetch('/api/sesiones_guardadas')]);
+    const archivos = await ra.json();
+    const sesiones = await rs.json();
+    const vids = archivos.filter(a => a.tipo === 'video');
+    const sel = document.getElementById('pub-sel-video');
+    const prev = pub.video || sel.value;
+    sel.innerHTML = '<option value="">— Elegir —</option>' + vids.map(a =>
+      `<option value="${escHtml(a.nombre)}" ${a.nombre === prev ? 'selected' : ''}>${escHtml(a.nombre)} (${fmtMB(a.bytes)})</option>`).join('');
+    const conAudio = sesiones.filter(x => x.nombre_mp3);
+    const ss = document.getElementById('pub-sel-sesion');
+    ss.innerHTML = conAudio.length
+      ? conAudio.map(x => `<option value="${escHtml(x.sesion_id)}">${escHtml(x.nombre_original)} · ${fmtHMS(x.duracion)} · ${x.cantidad_hablantes} voces</option>`).join('')
+      : '<option value="">(No hay análisis con audio: usá "Analizar este video")</option>';
+  } catch (e) {}
+}
+
+function pubFuente() { return document.querySelector('input[name="pub-fuente"]:checked').value; }
+document.querySelectorAll('input[name="pub-fuente"]').forEach(r => r.addEventListener('change', () => {
+  const g = pubFuente() === 'guardada';
+  document.getElementById('pub-box-analizar').style.display = g ? 'none' : 'grid';
+  document.getElementById('pub-box-guardada').style.display = g ? 'block' : 'none';
+  document.getElementById('btn-pub-analizar').textContent = g ? 'Usar este análisis' : 'Reconocer voces';
+}));
+document.querySelectorAll('input[name="pub-nombres"]').forEach(r => r.addEventListener('change', () => {
+  document.getElementById('pub-box-prefijo').style.display = pubModoNombre() === 'anon' ? 'block' : 'none';
+  renderVocesPub();
+}));
+document.getElementById('pub-prefijo').addEventListener('input', renderEtiquetasPub);
+function pubModoNombre() { return document.querySelector('input[name="pub-nombres"]:checked').value; }
+
+// Subir video
+const pubZona = document.getElementById('pub-zona');
+const pubArch = document.getElementById('pub-arch');
+pubZona.onclick = () => pubArch.click();
+pubZona.ondragover = e => { e.preventDefault(); pubZona.classList.add('sobre'); };
+pubZona.ondragleave = () => pubZona.classList.remove('sobre');
+pubZona.ondrop = e => { e.preventDefault(); pubZona.classList.remove('sobre'); if (e.dataTransfer.files[0]) subirVideoPub(e.dataTransfer.files[0]); };
+pubArch.onchange = () => { if (pubArch.files[0]) subirVideoPub(pubArch.files[0]); pubArch.value = ''; };
+
+async function subirVideoPub(file) {
+  const tit = document.getElementById('pub-zona-titulo');
+  tit.textContent = `Subiendo ${file.name}…`;
+  try {
+    const r = await fetch('/api/publicar_subir_video?nombre=' + encodeURIComponent(file.name), { method: 'POST', body: file });
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    pub.video = d.nombre_video;
+    await cargarPublicar();
+    document.getElementById('pub-sel-video').value = d.nombre_video;
+    tit.textContent = `✔ ${d.nombre_video}`;
+  } catch (e) {
+    tit.textContent = 'Arrastrá o elegí un video';
+    alert('No se pudo subir el video: ' + e.message);
+  }
+}
+document.getElementById('pub-sel-video').addEventListener('change', e => { pub.video = e.target.value; });
+
+function barraProgreso(cont, texto) {
+  const box = document.createElement('div');
+  box.className = 'progreso-item';
+  box.innerHTML = `<div style="display:flex;justify-content:space-between;font-weight:600;font-size:0.86rem">
+      <span>${escHtml(texto)} <span class="msg" style="font-weight:400;color:var(--muted)"></span></span><span class="pct">0%</span></div>
+    <div class="barra-fondo"><div class="barra-relleno"></div></div>`;
+  cont.innerHTML = '';
+  cont.appendChild(box);
+  return box;
+}
+async function seguirJob(jobId, box) {
+  while (true) {
+    await new Promise(res => setTimeout(res, 800));
+    const d = await (await fetch('/api/estado?id=' + encodeURIComponent(jobId))).json();
+    box.querySelector('.msg').textContent = d.mensaje || '';
+    box.querySelector('.pct').textContent = (d.progreso || 0) + '%';
+    box.querySelector('.barra-relleno').style.width = (d.progreso || 0) + '%';
+    if (d.estado === 'error') throw new Error(d.error || 'Error');
+    if (d.estado === 'completado') return d.resultado;
+  }
+}
+
+document.getElementById('btn-pub-analizar').onclick = async () => {
+  pub.video = document.getElementById('pub-sel-video').value;
+  if (!pub.video) { alert('Primero subí o elegí un video.'); return; }
+  const cont = document.getElementById('pub-progreso-analisis');
+  const btn = document.getElementById('btn-pub-analizar');
+  btn.disabled = true;
+  try {
+    let sid;
+    if (pubFuente() === 'guardada') {
+      sid = document.getElementById('pub-sel-sesion').value;
+      if (!sid) throw new Error('No hay un análisis guardado para elegir.');
+      cont.innerHTML = '';
+    } else {
+      const box = barraProgreso(cont, 'Reconociendo voces');
+      const q = new URLSearchParams({
+        nombre: pub.video, usar_mp3_existente: '1', solo_extraer: '0',
+        modelo: document.getElementById('pub-modelo').value,
+        hablantes: document.getElementById('pub-hablantes').value, idioma: 'es'
+      });
+      const r = await fetch('/api/iniciar?' + q.toString(), { method: 'POST' });
+      if (!r.ok) throw new Error(await r.text());
+      const res = await seguirJob((await r.json()).job_id, box);
+      sid = res.sesion_id;
+      cont.innerHTML = '';
+    }
+    const rs = await fetch('/api/sesion?id=' + encodeURIComponent(sid));
+    if (!rs.ok) throw new Error(await rs.text());
+    pub.sesion = await rs.json();
+    pub.silenciados = new Set();
+    pub.nombres = {};
+    pub.idxMuestra = {};
+    const audio = document.getElementById('pub-audio');
+    audio.src = '/audios/' + encodeURIComponent(pub.sesion.nombre_mp3 || pub.video);
+    document.getElementById('pub-resumen-video').textContent =
+      `${pub.sesion.hablantes.length} voces en ${fmtHMS(pub.sesion.duracion)}.`;
+    document.getElementById('pub-paso2').style.display = 'block';
+    document.getElementById('pub-progreso-render').innerHTML = '';
+    renderVocesPub();
+    document.getElementById('pub-paso2').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    cont.innerHTML = `<div style="color:var(--danger);font-weight:600;margin-top:10px">✘ ${escHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+function vocesOrdenadas() {
+  return [...(pub.sesion?.hablantes || [])].sort((a, b) => (b.duracion || 0) - (a.duracion || 0));
+}
+function etiquetasPub() {
+  const modo = pubModoNombre();
+  const pref = document.getElementById('pub-prefijo').value.trim() || 'Alumno';
+  const orden = [];
+  [...(pub.sesion?.segmentos || [])].sort((a, b) => a.inicio - b.inicio).forEach(s => {
+    if (pub.silenciados.has(s.hablante) && !orden.includes(s.hablante)) orden.push(s.hablante);
+  });
+  const m = {};
+  orden.forEach((spk, i) => {
+    const h = pub.sesion.hablantes.find(x => x.id === spk);
+    m[spk] = modo === 'anon' ? `${pref} ${i + 1}` : modo === 'real' ? (pub.nombres[spk] || h?.nombre || spk) : '(sin nombre)';
+  });
+  return m;
+}
+function renderEtiquetasPub() {
+  const et = etiquetasPub();
+  document.querySelectorAll('#pub-lista-voces .voz-fila').forEach(f => {
+    const spk = f.dataset.spk;
+    f.classList.toggle('silenciada', pub.silenciados.has(spk));
+    f.querySelector('.etq').textContent = et[spk] ? `→ subtítulo como "${et[spk]}"` : '';
+  });
+  const n = pub.silenciados.size;
+  const seg = (pub.sesion?.segmentos || []).filter(s => pub.silenciados.has(s.hablante));
+  const tot = seg.reduce((acc, s) => acc + Math.max(0, s.fin - s.inicio), 0);
+  document.getElementById('pub-resumen-sel').textContent = n
+    ? `${n} ${n === 1 ? 'voz silenciada' : 'voces silenciadas'} · ${seg.length} intervenciones · ${fmtHMS(tot)} de habla pasan a subtítulo`
+    : 'Todavía no elegiste ninguna voz para silenciar.';
+  document.getElementById('btn-pub-generar').disabled = n === 0;
+}
+function renderVocesPub() {
+  const cont = document.getElementById('pub-lista-voces');
+  if (!pub.sesion) { cont.innerHTML = ''; return; }
+  const voces = vocesOrdenadas();
+  cont.innerHTML = voces.map((h, i) => `
+    <div class="voz-fila" data-spk="${escHtml(h.id)}">
+      <span class="dot" style="background:${escHtml(h.color || '#94a3b8')}"></span>
+      <input type="text" value="${escHtml(pub.nombres[h.id] ?? h.nombre ?? h.id)}" aria-label="Nombre de la voz" data-spk="${escHtml(h.id)}" class="pub-inp-nombre">
+      <div class="voz-stats">${h.cantidad || 0} intervenciones · ${fmtHMS(h.duracion || 0)}${i === 0 ? ' · <strong style="color:var(--text-2)">la que más habla</strong>' : ''}<br><span class="etq"></span></div>
+      <button type="button" class="btn-outline btn-xs" data-play="${escHtml(h.id)}">▶ Escuchar</button>
+      <label class="switch"><input type="checkbox" data-mute="${escHtml(h.id)}" ${pub.silenciados.has(h.id) ? 'checked' : ''}><span class="pista"></span>Silenciar</label>
+    </div>`).join('');
+  cont.querySelectorAll('[data-mute]').forEach(c => c.onchange = () => {
+    c.checked ? pub.silenciados.add(c.dataset.mute) : pub.silenciados.delete(c.dataset.mute);
+    renderEtiquetasPub();
+  });
+  cont.querySelectorAll('.pub-inp-nombre').forEach(inp => inp.oninput = () => { pub.nombres[inp.dataset.spk] = inp.value; renderEtiquetasPub(); });
+  cont.querySelectorAll('[data-play]').forEach(b => b.onclick = () => escucharVozPub(b.dataset.play));
+  renderEtiquetasPub();
+}
+function escucharVozPub(spk) {
+  const segs = (pub.sesion.segmentos || []).filter(s => s.hablante === spk && (s.fin - s.inicio) >= 1.5);
+  const lista = segs.length ? segs : (pub.sesion.segmentos || []).filter(s => s.hablante === spk);
+  if (!lista.length) return;
+  const k = Math.min(lista.length, 8);
+  const i = (pub.idxMuestra[spk] || 0) % k;
+  pub.idxMuestra[spk] = i + 1;
+  const s = lista[Math.floor(i * lista.length / k)];
+  const audio = document.getElementById('pub-audio');
+  const h = pub.sesion.hablantes.find(x => x.id === spk);
+  document.getElementById('pub-audio-info').innerHTML =
+    `<strong>${escHtml(pub.nombres[spk] || h?.nombre || spk)}</strong> · ${fmtHMS(s.inicio)} · “${escHtml((s.texto || '').slice(0, 90))}”`;
+  audio.currentTime = s.inicio;
+  audio.play().catch(() => {});
+  clearTimeout(pub._stop);
+  pub._stop = setTimeout(() => audio.pause(), Math.min(8, s.fin - s.inicio + 0.3) * 1000);
+}
+document.getElementById('btn-pub-todas-menos').onclick = () => {
+  const v = vocesOrdenadas();
+  pub.silenciados = new Set(v.slice(1).map(h => h.id));
+  renderVocesPub();
+};
+document.getElementById('btn-pub-ninguna').onclick = () => { pub.silenciados = new Set(); renderVocesPub(); };
+
+document.getElementById('btn-pub-generar').onclick = async () => {
+  if (!pub.sesion || !pub.silenciados.size) return;
+  const cont = document.getElementById('pub-progreso-render');
+  const btn = document.getElementById('btn-pub-generar');
+  btn.disabled = true;
+  const box = barraProgreso(cont, 'Generando video');
+  try {
+    const r = await fetch('/api/publicar_render', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sesion_id: pub.sesion.sesion_id,
+        nombre_video: pub.video,
+        silenciados: [...pub.silenciados],
+        nombres: pub.nombres,
+        modo_nombre: pubModoNombre(),
+        prefijo_anon: document.getElementById('pub-prefijo').value.trim() || 'Alumno',
+        nivelar: document.getElementById('pub-nivelar').checked,
+        margen: document.getElementById('pub-margen').checked ? 0.2 : 0
+      })
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const res = await seguirJob((await r.json()).job_id, box);
+    const urlV = '/audios/' + encodeURIComponent(res.nombre_video);
+    const urlS = '/audios/' + encodeURIComponent(res.nombre_srt);
+    cont.innerHTML = `<div class="progreso-item pub-resultado">
+      <div class="row-between" style="margin-bottom:10px">
+        <strong style="color:var(--ok)">✔ Video listo: ${escHtml(res.nombre_video)}</strong>
+        <div class="row" style="gap:6px">
+          <a class="btn-primary btn-sm" style="text-decoration:none" href="${urlV}" download>Descargar MP4</a>
+          <a class="btn-outline btn-sm" style="text-decoration:none" href="${urlS}" download>Descargar SRT</a>
+        </div>
+      </div>
+      <video id="pub-video-res" controls preload="metadata" src="${urlV}"></video>
+      <div style="font-size:0.8rem;color:var(--muted);margin-top:8px">
+        ${res.tramos_silenciados} tramos silenciados (${fmtHMS(res.segundos_silenciados)}) · ${res.subtitulos} subtítulos${res.nivelado ? ' · audio nivelado' : ''}.
+        El MP4 lleva los subtítulos como pista interna; si la plataforma no los muestra, subí también el SRT.
+      </div>
+    </div>`;
+    // Vista previa con los subtítulos superpuestos (convierte el SRT a VTT en el navegador)
+    try {
+      const srt = await (await fetch(urlS)).text();
+      const vtt = 'WEBVTT\n\n' + srt.replace(/\r/g, '').replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+      const tr = document.createElement('track');
+      tr.kind = 'subtitles'; tr.label = 'Voces silenciadas'; tr.srclang = 'es'; tr.default = true;
+      tr.src = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
+      document.getElementById('pub-video-res').appendChild(tr);
+    } catch (e) {}
+    cargarAudiosDisponibles();
+  } catch (e) {
+    cont.innerHTML = `<div style="color:var(--danger);font-weight:600;margin-top:10px">✘ ${escHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
 };
 
 // ---------- División en partes (split) ----------
@@ -6607,6 +7214,8 @@ class Handler(BaseHTTPRequestHandler):
             ctype = "video/mp4"
         elif ext == ".webm":
             ctype = "video/webm"
+        elif ext == ".srt":
+            ctype = "application/x-subrip; charset=utf-8"
         else:
             ctype = "audio/mpeg"
         rango = self.headers.get("Range")
@@ -6638,7 +7247,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Length", str(len(datos)))
-        disp = "attachment" if ext == ".zip" else "inline"
+        disp = "attachment" if ext in (".zip", ".srt") else "inline"
         self.send_header("Content-Disposition", f"{disp}; filename*=UTF-8''" + urllib.parse.quote(nombre))
         self.end_headers()
         self.wfile.write(datos)
@@ -6997,6 +7606,37 @@ class Handler(BaseHTTPRequestHandler):
                 })
             except Exception as e:
                 return self._send_text(400, f"Error al sincronizar con Tactiq: {e}")
+
+        if p.path == "/api/publicar_subir_video":
+            q = urllib.parse.parse_qs(p.query)
+            original = os.path.basename(q.get("nombre", ["video.mp4"])[0])
+            base_v, ext_v = os.path.splitext(original)
+            ext_v = ext_v.lower() if ext_v.lower() in (".mp4", ".mkv", ".mov", ".webm", ".avi") else ".mp4"
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            if largo <= 0:
+                return self._send_text(400, "No llegó ningún video.")
+            nombre_dest = nombre_unico(SALIDA, base_v, ext_v)
+            with open(os.path.join(SALIDA, nombre_dest), "wb") as f:
+                restante = largo
+                while restante > 0:
+                    trozo = self.rfile.read(min(1 << 20, restante))
+                    if not trozo:
+                        break
+                    f.write(trozo)
+                    restante -= len(trozo)
+            return self._send_json(200, {"nombre_video": nombre_dest})
+
+        if p.path == "/api/publicar_render":
+            largo = int(self.headers.get("Content-Length", 0) or 0)
+            body = json.loads(self.rfile.read(largo).decode("utf-8")) if largo > 0 else {}
+            if not body.get("sesion_id") or not body.get("nombre_video"):
+                return self._send_text(400, "Falta el video o el análisis de voces.")
+            job_id = uuid.uuid4().hex[:12]
+            with JOBS_LOCK:
+                JOBS[job_id] = {"id": job_id, "estado": "procesando", "progreso": 2,
+                                "mensaje": "Preparando…", "resultado": None, "error": None}
+            threading.Thread(target=_worker_publicar, args=(job_id, body), daemon=True).start()
+            return self._send_json(200, {"job_id": job_id})
 
         if p.path == "/api/iniciar":
             q = urllib.parse.parse_qs(p.query)
