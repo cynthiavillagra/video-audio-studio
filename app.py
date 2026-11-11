@@ -629,25 +629,28 @@ def _worker_publicar(job_id: str, params: dict) -> None:
         ruta_video = os.path.join(SALIDA, nombre_video)
         if not os.path.isfile(ruta_video):
             raise ValueError(f"No se encontró el video en audios/: {nombre_video}")
-        if not _tiene_pista_audio(ruta_video):
-            raise ValueError("El video no tiene pista de audio: no hay voces para silenciar.")
 
         silenciados = set(params.get("silenciados") or [])
+        solo_sub = set(params.get("subtitular") or []) - silenciados
+        offset = float(params.get("offset", 0) or 0)
         margen = max(0.0, min(1.0, float(params.get("margen", 0.2))))
         nivelar = bool(params.get("nivelar", True))
         modo_nombre = params.get("modo_nombre", "anon")
         prefijo = (params.get("prefijo_anon") or "Alumno").strip() or "Alumno"
         nombres_edit = params.get("nombres") or {}
+        tiene_audio = _tiene_pista_audio(ruta_video)
+        if silenciados and not tiene_audio:
+            raise ValueError("El video no tiene audio: no hay voces para silenciar. Usá «Solo subtítulo».")
 
         segmentos = sesion.get("segmentos", [])
-        a_silenciar = [s for s in segmentos
-                       if s.get("hablante") in silenciados or s.get("silenciado") is True]
-        if not a_silenciar:
-            raise ValueError("Elegí al menos una voz para silenciar.")
+        a_silenciar = [s for s in segmentos if s.get("hablante") in silenciados]
+        a_subtitular = [s for s in segmentos if s.get("hablante") in silenciados or s.get("hablante") in solo_sub]
+        if not a_subtitular:
+            raise ValueError("Elegí al menos una voz para silenciar o subtitular.")
 
         # Nombres que se muestran en los subtítulos
         orden_spk = []
-        for s in sorted(a_silenciar, key=lambda x: float(x.get("inicio", 0))):
+        for s in sorted(a_subtitular, key=lambda x: float(x.get("inicio", 0))):
             if s.get("hablante") not in orden_spk:
                 orden_spk.append(s.get("hablante"))
         mapa_real = {h["id"]: (nombres_edit.get(h["id"]) or h.get("nombre") or h["id"]) for h in sesion.get("hablantes", [])}
@@ -659,9 +662,9 @@ def _worker_publicar(job_id: str, params: dict) -> None:
             mapa_nom = {spk: f"{prefijo} {i}" for i, spk in enumerate(orden_spk, start=1)}
 
         _actualizar_job(job_id, progreso=4, mensaje="Armando los subtítulos de las voces silenciadas…")
-        segs_sub = [{k: v for k, v in s.items() if k != "override_mute"} for s in a_silenciar]
+        segs_sub = [{k: v for k, v in s.items() if k != "override_mute"} for s in a_subtitular]
         bloques = construir_subtitulos_profesionales(
-            segs_sub, mapa_nom=mapa_nom, mapa_sil={}, inc_nom=(modo_nombre != "ninguno"),
+            segs_sub, mapa_nom=mapa_nom, mapa_sil={}, offset_seg=offset, inc_nom=(modo_nombre != "ninguno"),
             inc_sil=True, agregar_bloque_00=False,
             max_chars_sub=int(params.get("max_chars", 84) or 84), min_dur_seg=1.2,
             max_dur_seg=float(params.get("max_dur", 6.0) or 6.0),
@@ -674,11 +677,14 @@ def _worker_publicar(job_id: str, params: dict) -> None:
 
         # Filtro de audio: silencio en los tramos + nivelación opcional
         intervalos = _unir_intervalos(
-            [(max(0.0, float(s["inicio"]) - margen), float(s["fin"]) + margen) for s in a_silenciar],
-            margen_union=0.3)
-        expr = "+".join(f"between(t,{a:.2f},{b:.2f})" for a, b in intervalos)
-        filtros = [f"volume=enable='{expr}':volume=0"]
-        if nivelar:
+            [(max(0.0, float(s["inicio"]) + offset - margen), float(s["fin"]) + offset + margen)
+             for s in a_silenciar if float(s["fin"]) + offset > 0],
+            margen_union=0.3) if a_silenciar else []
+        filtros = []
+        if intervalos:
+            expr = "+".join(f"between(t,{a:.2f},{b:.2f})" for a, b in intervalos)
+            filtros.append(f"volume=enable='{expr}':volume=0")
+        if nivelar and tiene_audio:
             filtros += ["loudnorm=I=-16:TP=-1.5:LRA=11", "aresample=48000"]
         filtro = ",".join(filtros)
 
@@ -697,12 +703,12 @@ def _worker_publicar(job_id: str, params: dict) -> None:
             duracion = float(sesion.get("duracion") or 0) or 1.0
 
         def correr(opciones_filtro: list[str], codec_video: list[str]) -> tuple[int, str]:
+            mapa_audio = ["-map", "0:a:0", "-c:a", "aac", "-b:a", "192k"] if tiene_audio else []
             cmd = ["ffmpeg", "-y", "-i", ruta_video, "-i", ruta_srt_tmp,
-                   "-map", "0:v:0", "-map", "0:a:0", "-map", "1:0",
-                   *opciones_filtro, *codec_video,
-                   "-c:a", "aac", "-b:a", "192k",
+                   "-map", "0:v:0", *mapa_audio[:2], "-map", "1:0",
+                   *opciones_filtro, *codec_video, *mapa_audio[2:],
                    "-c:s", "mov_text", "-metadata:s:s:0", "language=spa",
-                   "-metadata:s:s:0", "title=Voces silenciadas", "-disposition:s:0", "default",
+                   "-metadata:s:s:0", "title=Subtitulos", "-disposition:s:0", "default",
                    "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", ruta_out]
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     text=True, encoding="utf-8", errors="replace")
@@ -722,11 +728,14 @@ def _worker_publicar(job_id: str, params: dict) -> None:
             return proc.returncode, "".join(err_buf)
 
         variantes_filtro = []
-        if len(filtro) < 12000:
+        if not filtro:
+            variantes_filtro.append([])
+        elif len(filtro) < 12000:
             variantes_filtro.append(["-af", filtro])
-        variantes_filtro += [["-filter_script:a", ruta_script], ["-/af", ruta_script]]
+        if filtro:
+            variantes_filtro += [["-filter_script:a", ruta_script], ["-/af", ruta_script]]
 
-        _actualizar_job(job_id, progreso=8, mensaje="Silenciando voces y uniendo subtítulos…")
+        _actualizar_job(job_id, progreso=8, mensaje="Silenciando voces y uniendo subtítulos…" if intervalos else "Uniendo subtítulos…")
         ultimo_err = ""
         hecho = False
         for codec_video in (["-c:v", "copy"], ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]):
@@ -752,7 +761,9 @@ def _worker_publicar(job_id: str, params: dict) -> None:
             "segundos_silenciados": round(dur_sil, 1),
             "subtitulos": len(bloques),
             "etiquetas": mapa_nom,
-            "nivelado": nivelar,
+            "nivelado": nivelar and tiene_audio,
+            "voces_silenciadas": len(silenciados),
+            "voces_solo_sub": len(solo_sub),
         })
     except Exception as e:
         _actualizar_job(job_id, estado="error", mensaje=str(e), error=str(e))
@@ -3546,6 +3557,17 @@ a.btn-outline { border-color: var(--border-strong); }
 a.btn-sm { padding: 6px 11px; font-size: 0.8rem; }
 a.btn-xs { padding: 4px 9px; font-size: 0.75rem; border-radius: 6px; }
 
+.seg3 { display: inline-grid; grid-template-columns: repeat(3, auto); gap: 2px; padding: 3px; background: #eef0f3; border-radius: 8px; }
+.seg3 label { margin: 0; cursor: pointer; }
+.seg3 input { position: absolute; opacity: 0; pointer-events: none; }
+.seg3 span { display: block; padding: 5px 9px; border-radius: 6px; font-size: 0.76rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.seg3 input:checked + span { background: #fff; color: var(--text); box-shadow: 0 1px 2px rgba(17,24,39,0.12); }
+.seg3 input[value="silenciar"]:checked + span { background: var(--danger); color: #fff; }
+.seg3 input[value="subtitulo"]:checked + span { background: var(--primary); color: #fff; }
+.seg3 input:focus-visible + span { outline: 2px solid var(--primary); }
+.voz-fila.subtitulo { border-color: var(--primary-border); background: #fafbff; }
+.voz-fila .voz-stats .etq.azul { color: var(--primary); }
+
 /* ---------- Badges ---------- */
 .badge {
   font-size: 0.73rem;
@@ -3832,7 +3854,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     <button type="button" class="step-btn" data-step="6">
       <span class="step-num"><svg><use href="#i-mute"/></svg></span>
       <span class="step-title">Video para publicar</span>
-      <span class="step-sub">Silenciar voces y subtitularlas</span>
+      <span class="step-sub">Silenciar o subtitular voces</span>
     </button>
     <button type="button" class="step-btn" data-step="5">
       <span class="step-num"><svg><use href="#i-spark"/></svg></span>
@@ -3893,7 +3915,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
         </button>
         <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(6)">
           <span class="gnum"><svg width="15" height="15"><use href="#i-mute"/></svg></span>
-          <div><strong>Video para publicar</strong><span>Subís un video, reconoce las voces y elegís cuáles silenciar (por ej. las de alumnos). Lo que dijeron queda como subtítulo, con nombre real o anonimizado, y podés nivelar el volumen.</span></div>
+          <div><strong>Video para publicar</strong><span>Con el video y su transcripción (analizada acá o de Tactiq, con nombres), elegís por cada voz si se escucha, se silencia con subtítulo o solo se subtitula. Nombres reales o anonimizados, y volumen nivelado.</span></div>
           <span class="ir">Ir →</span>
         </button>
         <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(5)">
@@ -4704,10 +4726,10 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     <div>
       <div class="eyebrow">Herramientas</div>
       <h1>Video para publicar</h1>
-      <p>Silenciá las voces que no querés que se escuchen (por ejemplo, las de alumnos). Lo que dijeron queda como subtítulo.</p>
+      <p>Elegí, voz por voz, si se escucha, si se silencia y queda como subtítulo, o si solo se le agregan subtítulos.</p>
     </div>
   </div>
-  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Publicar o compartir una clase sin que se escuchen las voces de los alumnos</li><li>Que lo que dijeron quede como subtítulo, con nombre anonimizado o real</li><li>Dejar el volumen parejo en todo el video</li></ul></div>
+  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Publicar una clase sin que se escuchen las voces de los alumnos (o de nadie)</li><li>Que lo que dijeron quede como subtítulo, con nombre anonimizado o real</li><li>Agregar subtítulos solo de los alumnos cuando en la grabación no se los escucha</li><li>Usar una transcripción con nombres (por ejemplo, de Tactiq) o analizar las voces del video</li><li>Dejar el volumen parejo en todo el video</li></ul></div>
 
   <!-- 1. Video y análisis -->
   <div class="card">
@@ -4729,7 +4751,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
           <label>Reconocer las voces</label>
           <div class="segmentado">
             <label><input type="radio" name="pub-fuente" value="analizar" checked><span>Analizar este video</span></label>
-            <label><input type="radio" name="pub-fuente" value="guardada"><span>Usar un análisis guardado</span></label>
+            <label><input type="radio" name="pub-fuente" value="guardada"><span>Usar una transcripción guardada</span></label>
           </div>
         </div>
         <div id="pub-box-analizar" class="grid-2" style="gap:10px">
@@ -4746,7 +4768,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
           </div>
         </div>
         <div id="pub-box-guardada" class="campo" style="display:none">
-          <label for="pub-sel-sesion">Análisis guardado <span style="font-weight:400;color:var(--muted)">(tiene que ser de esta misma grabación, desde el inicio)</span></label>
+          <label for="pub-sel-sesion">Transcripción guardada <span style="font-weight:400;color:var(--muted)">(de esta misma clase; si de Tactiq, ya trae los nombres)</span></label>
           <select id="pub-sel-sesion"></select>
         </div>
         <button type="button" class="btn-primary btn-block" id="btn-pub-analizar">Reconocer voces</button>
@@ -4760,25 +4782,29 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     <div class="card">
       <div class="card-head">
         <div>
-          <h2><span class="paso-num">2</span>Elegí qué voces silenciar</h2>
-          <p>Escuchá cada voz y marcá las que no querés que se escuchen. <span id="pub-resumen-video"></span></p>
+          <h2><span class="paso-num">2</span>Qué hacer con cada voz</h2>
+          <p>Escuchá cada voz y elegí: <strong>se escucha</strong>, <strong>silenciar</strong> (queda como subtítulo) o <strong>solo subtítulo</strong> (el audio no se toca). <span id="pub-resumen-video"></span></p>
         </div>
         <div class="row" style="gap:6px">
-          <button type="button" class="btn-outline btn-xs" id="btn-pub-todas-menos">Silenciar todas menos la que más habla</button>
-          <button type="button" class="btn-outline btn-xs" id="btn-pub-ninguna">Ninguna</button>
+          <span style="font-size:0.75rem;color:var(--muted)">A los demás (todas menos la que más habla):</span>
+          <button type="button" class="btn-outline btn-xs" data-bulk="demas:silenciar">Silenciar</button>
+          <button type="button" class="btn-outline btn-xs" data-bulk="demas:subtitulo">Solo subtítulo</button>
+          <span style="width:1px;height:18px;background:var(--border)"></span>
+          <button type="button" class="btn-outline btn-xs" data-bulk="todos:silenciar">Silenciar a todos</button>
+          <button type="button" class="btn-outline btn-xs" data-bulk="todos:normal">Reiniciar</button>
         </div>
       </div>
       <div class="player-sticky" style="margin-bottom:12px">
         <audio id="pub-audio" controls preload="none"></audio>
-        <div style="font-size:0.82rem;color:#d1d5db" id="pub-audio-info">Tocá ▶ en una voz para escuchar un ejemplo (cada toque pasa a otro fragmento).</div>
+        <div style="font-size:0.82rem;color:#d1d5db" id="pub-audio-info">Tocá ▶ en una voz para escuchar un ejemplo en el video (cada toque pasa a otro fragmento).</div>
       </div>
       <div id="pub-lista-voces" class="stack" style="gap:8px"></div>
     </div>
 
     <!-- 3. Opciones -->
     <div class="card">
-      <h2><span class="paso-num">3</span>Subtítulos y volumen</h2>
-      <p class="sub-desc">Solo se subtitula lo que dicen las voces silenciadas; tu voz se escucha normal.</p>
+      <h2><span class="paso-num">3</span>Subtítulos, sincronización y volumen</h2>
+      <p class="sub-desc">Se subtitula solo lo que dicen las voces marcadas como «silenciar» o «solo subtítulo».</p>
       <div class="grid-2" style="align-items:start">
         <div class="stack" style="gap:12px">
           <div class="campo">
@@ -4792,21 +4818,31 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
           <div class="campo" id="pub-box-prefijo">
             <label for="pub-prefijo">Etiqueta anónima</label>
             <input type="text" id="pub-prefijo" value="Alumno" placeholder="Alumno" style="max-width:220px">
-            <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Queda "Alumno 1", "Alumno 2"… en el orden en que hablan.</div>
+            <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Queda "Alumno 1", "Alumno 2"… en el orden en que hablan. Si querés otro nombre para alguien (por ej. "Profe"), usá «Nombre real» y cambialo en su fila.</div>
+          </div>
+          <div class="campo" id="pub-box-offset">
+            <label for="pub-offset">Desfase de la transcripción respecto del video (seg)</label>
+            <div class="row" style="gap:6px">
+              <input type="number" id="pub-offset" class="tiempo" step="0.5" value="0" style="width:100px">
+              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetPub(-1)">−1 s</button>
+              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetPub(1)">+1 s</button>
+              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetPub(0)">0</button>
+            </div>
+            <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Si la transcripción es de Tactiq, suele estar corrida. Calculalo en <a href="#" onclick="irAPaso(4);return false">Subtítulos y video</a> (frase de referencia) y copialo acá; si la abriste ahí, se completa solo. Probalo con ▶ Escuchar.</div>
           </div>
         </div>
         <div class="stack" style="gap:10px">
           <label class="check"><input type="checkbox" id="pub-nivelar" checked><span><strong>Nivelar todo el audio</strong> (volumen parejo en todo el video)</span></label>
           <label class="check"><input type="checkbox" id="pub-margen" checked><span>Margen de seguridad: silenciar también 0,2 s antes y después de cada intervención</span></label>
           <div class="panel" style="font-size:0.8rem;color:var(--text-2)">
-            El reconocimiento de voces puede equivocarse. Antes de publicar, mirá el video: si alguna frase de un alumno quedó con audio, marcala en el <a href="#" onclick="irAPaso(3);return false">paso 3</a> (línea por línea) y volvé a generar.
+            El reconocimiento de voces y los tiempos de la transcripción pueden fallar (sobre todo con Tactiq, que marca solo el inicio de cada frase). Antes de publicar, mirá el video: si se escucha algo que debía silenciarse, corregí el desfase o el hablante de esa línea en el <a href="#" onclick="irAPaso(3);return false">paso 3</a> y volvé a generar.
           </div>
         </div>
       </div>
       <hr class="divider">
       <div class="row-between">
         <span id="pub-resumen-sel" style="font-size:0.84rem;color:var(--text-2)"></span>
-        <button type="button" class="btn-primary btn-lg" id="btn-pub-generar">Generar video para publicar</button>
+        <button type="button" class="btn-primary btn-lg" id="btn-pub-generar">Generar video</button>
       </div>
       <div id="pub-progreso-render"></div>
     </div>
@@ -5112,7 +5148,7 @@ document.getElementById('btn-p1-recortar-existente').onclick = async () => {
 // ==============================================================================
 // SECCIÓN 6: VIDEO PARA PUBLICAR (silenciar voces + subtítulos de lo que dijeron)
 // ==============================================================================
-const pub = { video: '', sesion: null, silenciados: new Set(), nombres: {}, idxMuestra: {} };
+const pub = { video: '', sesion: null, modo: {}, nombres: {}, idxMuestra: {} };
 
 async function cargarPublicar() {
   try {
@@ -5124,11 +5160,10 @@ async function cargarPublicar() {
     const prev = pub.video || sel.value;
     sel.innerHTML = '<option value="">— Elegir —</option>' + vids.map(a =>
       `<option value="${escHtml(a.nombre)}" ${a.nombre === prev ? 'selected' : ''}>${escHtml(a.nombre)} (${fmtMB(a.bytes)})</option>`).join('');
-    const conAudio = sesiones.filter(x => x.nombre_mp3);
     const ss = document.getElementById('pub-sel-sesion');
-    ss.innerHTML = conAudio.length
-      ? conAudio.map(x => `<option value="${escHtml(x.sesion_id)}">${escHtml(x.nombre_original)} · ${fmtHMS(x.duracion)} · ${x.cantidad_hablantes} voces</option>`).join('')
-      : '<option value="">(No hay análisis con audio: usá "Analizar este video")</option>';
+    ss.innerHTML = sesiones.length
+      ? sesiones.map(x => `<option value="${escHtml(x.sesion_id)}">${escHtml(x.nombre_original)} · ${fmtHMS(x.duracion)} · ${x.cantidad_hablantes} voces · ${escHtml(x.modelo || '')}</option>`).join('')
+      : '<option value="">(No hay transcripciones guardadas: usá "Analizar este video")</option>';
   } catch (e) {}
 }
 
@@ -5137,7 +5172,7 @@ document.querySelectorAll('input[name="pub-fuente"]').forEach(r => r.addEventLis
   const g = pubFuente() === 'guardada';
   document.getElementById('pub-box-analizar').style.display = g ? 'none' : 'grid';
   document.getElementById('pub-box-guardada').style.display = g ? 'block' : 'none';
-  document.getElementById('btn-pub-analizar').textContent = g ? 'Usar este análisis' : 'Reconocer voces';
+  document.getElementById('btn-pub-analizar').textContent = g ? 'Usar esta transcripción' : 'Reconocer voces';
 }));
 document.querySelectorAll('input[name="pub-nombres"]').forEach(r => r.addEventListener('change', () => {
   document.getElementById('pub-box-prefijo').style.display = pubModoNombre() === 'anon' ? 'block' : 'none';
@@ -5205,7 +5240,7 @@ document.getElementById('btn-pub-analizar').onclick = async () => {
     let sid;
     if (pubFuente() === 'guardada') {
       sid = document.getElementById('pub-sel-sesion').value;
-      if (!sid) throw new Error('No hay un análisis guardado para elegir.');
+      if (!sid) throw new Error('No hay una transcripción guardada para elegir.');
       cont.innerHTML = '';
     } else {
       const box = barraProgreso(cont, 'Reconociendo voces');
@@ -5223,11 +5258,19 @@ document.getElementById('btn-pub-analizar').onclick = async () => {
     const rs = await fetch('/api/sesion?id=' + encodeURIComponent(sid));
     if (!rs.ok) throw new Error(await rs.text());
     pub.sesion = await rs.json();
-    pub.silenciados = new Set();
+    pub.modo = {};
     pub.nombres = {};
     pub.idxMuestra = {};
+    // Desfase: 0 si se analizó este video; si la transcripción está abierta en el paso 4, se toma el de ahí
+    let off = 0;
+    if (pubFuente() === 'guardada') {
+      const selP4 = document.getElementById('p4-sel-sesion-activa');
+      if (selP4 && selP4.value === sid) off = parseFloat(document.getElementById('p4-offset-seg').value) || 0;
+    }
+    document.getElementById('pub-offset').value = off;
+    document.getElementById('pub-box-offset').style.display = pubFuente() === 'guardada' ? 'block' : 'none';
     const audio = document.getElementById('pub-audio');
-    audio.src = '/audios/' + encodeURIComponent(pub.sesion.nombre_mp3 || pub.video);
+    audio.src = '/audios/' + encodeURIComponent(pub.video);
     document.getElementById('pub-resumen-video').textContent =
       `${pub.sesion.hablantes.length} voces en ${fmtHMS(pub.sesion.duracion)}.`;
     document.getElementById('pub-paso2').style.display = 'block';
@@ -5244,12 +5287,17 @@ document.getElementById('btn-pub-analizar').onclick = async () => {
 function vocesOrdenadas() {
   return [...(pub.sesion?.hablantes || [])].sort((a, b) => (b.duracion || 0) - (a.duracion || 0));
 }
+function modoPub(spk) { return pub.modo[spk] || 'normal'; }
+function subtituladosPub() {
+  return new Set(Object.keys(pub.modo).filter(k => pub.modo[k] === 'silenciar' || pub.modo[k] === 'subtitulo'));
+}
 function etiquetasPub() {
   const modo = pubModoNombre();
   const pref = document.getElementById('pub-prefijo').value.trim() || 'Alumno';
+  const subs = subtituladosPub();
   const orden = [];
   [...(pub.sesion?.segmentos || [])].sort((a, b) => a.inicio - b.inicio).forEach(s => {
-    if (pub.silenciados.has(s.hablante) && !orden.includes(s.hablante)) orden.push(s.hablante);
+    if (subs.has(s.hablante) && !orden.includes(s.hablante)) orden.push(s.hablante);
   });
   const m = {};
   orden.forEach((spk, i) => {
@@ -5261,38 +5309,50 @@ function etiquetasPub() {
 function renderEtiquetasPub() {
   const et = etiquetasPub();
   document.querySelectorAll('#pub-lista-voces .voz-fila').forEach(f => {
-    const spk = f.dataset.spk;
-    f.classList.toggle('silenciada', pub.silenciados.has(spk));
-    f.querySelector('.etq').textContent = et[spk] ? `→ subtítulo como "${et[spk]}"` : '';
+    const spk = f.dataset.spk, m = modoPub(spk);
+    f.classList.toggle('silenciada', m === 'silenciar');
+    f.classList.toggle('subtitulo', m === 'subtitulo');
+    const e = f.querySelector('.etq');
+    e.classList.toggle('azul', m === 'subtitulo');
+    e.textContent = et[spk] ? (m === 'silenciar' ? `→ silenciada, subtítulo como "${et[spk]}"` : `→ se escucha + subtítulo como "${et[spk]}"`) : '';
   });
-  const n = pub.silenciados.size;
-  const seg = (pub.sesion?.segmentos || []).filter(s => pub.silenciados.has(s.hablante));
-  const tot = seg.reduce((acc, s) => acc + Math.max(0, s.fin - s.inicio), 0);
-  document.getElementById('pub-resumen-sel').textContent = n
-    ? `${n} ${n === 1 ? 'voz silenciada' : 'voces silenciadas'} · ${seg.length} intervenciones · ${fmtHMS(tot)} de habla pasan a subtítulo`
-    : 'Todavía no elegiste ninguna voz para silenciar.';
-  document.getElementById('btn-pub-generar').disabled = n === 0;
+  const segs = pub.sesion?.segmentos || [];
+  const nSil = Object.values(pub.modo).filter(x => x === 'silenciar').length;
+  const nSub = Object.values(pub.modo).filter(x => x === 'subtitulo').length;
+  const subs = subtituladosPub();
+  const nLineas = segs.filter(s => subs.has(s.hablante)).length;
+  const partes = [];
+  if (nSil) partes.push(`${nSil} ${nSil === 1 ? 'voz silenciada' : 'voces silenciadas'}`);
+  if (nSub) partes.push(`${nSub} ${nSub === 1 ? 'voz' : 'voces'} solo con subtítulo`);
+  document.getElementById('pub-resumen-sel').textContent = partes.length
+    ? `${partes.join(' · ')} · ${nLineas} intervenciones subtituladas`
+    : 'Todavía no elegiste ninguna voz para silenciar o subtitular.';
+  document.getElementById('btn-pub-generar').disabled = !subs.size;
 }
 function renderVocesPub() {
   const cont = document.getElementById('pub-lista-voces');
   if (!pub.sesion) { cont.innerHTML = ''; return; }
   const voces = vocesOrdenadas();
+  const opciones = [['normal', 'Se escucha'], ['silenciar', 'Silenciar'], ['subtitulo', 'Solo subtítulo']];
   cont.innerHTML = voces.map((h, i) => `
     <div class="voz-fila" data-spk="${escHtml(h.id)}">
       <span class="dot" style="background:${escHtml(h.color || '#94a3b8')}"></span>
       <input type="text" value="${escHtml(pub.nombres[h.id] ?? h.nombre ?? h.id)}" aria-label="Nombre de la voz" data-spk="${escHtml(h.id)}" class="pub-inp-nombre">
       <div class="voz-stats">${h.cantidad || 0} intervenciones · ${fmtHMS(h.duracion || 0)}${i === 0 ? ' · <strong style="color:var(--text-2)">la que más habla</strong>' : ''}<br><span class="etq"></span></div>
       <button type="button" class="btn-outline btn-xs" data-play="${escHtml(h.id)}">▶ Escuchar</button>
-      <label class="switch"><input type="checkbox" data-mute="${escHtml(h.id)}" ${pub.silenciados.has(h.id) ? 'checked' : ''}><span class="pista"></span>Silenciar</label>
+      <div class="seg3" role="radiogroup" aria-label="Qué hacer con esta voz">
+        ${opciones.map(([v, t]) => `<label><input type="radio" name="pubm-${escHtml(h.id)}" value="${v}" data-spk="${escHtml(h.id)}" ${modoPub(h.id) === v ? 'checked' : ''}><span>${t}</span></label>`).join('')}
+      </div>
     </div>`).join('');
-  cont.querySelectorAll('[data-mute]').forEach(c => c.onchange = () => {
-    c.checked ? pub.silenciados.add(c.dataset.mute) : pub.silenciados.delete(c.dataset.mute);
-    renderEtiquetasPub();
-  });
+  cont.querySelectorAll('.seg3 input').forEach(r => r.onchange = () => { pub.modo[r.dataset.spk] = r.value; renderEtiquetasPub(); });
   cont.querySelectorAll('.pub-inp-nombre').forEach(inp => inp.oninput = () => { pub.nombres[inp.dataset.spk] = inp.value; renderEtiquetasPub(); });
   cont.querySelectorAll('[data-play]').forEach(b => b.onclick = () => escucharVozPub(b.dataset.play));
   renderEtiquetasPub();
 }
+window.ajustarOffsetPub = function(d) {
+  const inp = document.getElementById('pub-offset');
+  inp.value = d === 0 ? 0 : Math.round(((parseFloat(inp.value) || 0) + d) * 10) / 10;
+};
 function escucharVozPub(spk) {
   const segs = (pub.sesion.segmentos || []).filter(s => s.hablante === spk && (s.fin - s.inicio) >= 1.5);
   const lista = segs.length ? segs : (pub.sesion.segmentos || []).filter(s => s.hablante === spk);
@@ -5305,20 +5365,22 @@ function escucharVozPub(spk) {
   const h = pub.sesion.hablantes.find(x => x.id === spk);
   document.getElementById('pub-audio-info').innerHTML =
     `<strong>${escHtml(pub.nombres[spk] || h?.nombre || spk)}</strong> · ${fmtHMS(s.inicio)} · “${escHtml((s.texto || '').slice(0, 90))}”`;
-  audio.currentTime = s.inicio;
+  audio.currentTime = Math.max(0, s.inicio + (parseFloat(document.getElementById('pub-offset').value) || 0));
   audio.play().catch(() => {});
   clearTimeout(pub._stop);
   pub._stop = setTimeout(() => audio.pause(), Math.min(8, s.fin - s.inicio + 0.3) * 1000);
 }
-document.getElementById('btn-pub-todas-menos').onclick = () => {
+document.querySelectorAll('[data-bulk]').forEach(b => b.onclick = () => {
+  const [quien, accion] = b.dataset.bulk.split(':');
   const v = vocesOrdenadas();
-  pub.silenciados = new Set(v.slice(1).map(h => h.id));
+  const objetivo = quien === 'demas' ? v.slice(1) : v;
+  if (quien === 'demas' && v[0]) pub.modo[v[0].id] = 'normal';
+  objetivo.forEach(h => { pub.modo[h.id] = accion; });
   renderVocesPub();
-};
-document.getElementById('btn-pub-ninguna').onclick = () => { pub.silenciados = new Set(); renderVocesPub(); };
+});
 
 document.getElementById('btn-pub-generar').onclick = async () => {
-  if (!pub.sesion || !pub.silenciados.size) return;
+  if (!pub.sesion || !subtituladosPub().size) return;
   const cont = document.getElementById('pub-progreso-render');
   const btn = document.getElementById('btn-pub-generar');
   btn.disabled = true;
@@ -5329,7 +5391,9 @@ document.getElementById('btn-pub-generar').onclick = async () => {
       body: JSON.stringify({
         sesion_id: pub.sesion.sesion_id,
         nombre_video: pub.video,
-        silenciados: [...pub.silenciados],
+        silenciados: Object.keys(pub.modo).filter(k => pub.modo[k] === 'silenciar'),
+        subtitular: Object.keys(pub.modo).filter(k => pub.modo[k] === 'subtitulo'),
+        offset: parseFloat(document.getElementById('pub-offset').value) || 0,
         nombres: pub.nombres,
         modo_nombre: pubModoNombre(),
         prefijo_anon: document.getElementById('pub-prefijo').value.trim() || 'Alumno',
@@ -5351,7 +5415,7 @@ document.getElementById('btn-pub-generar').onclick = async () => {
       </div>
       <video id="pub-video-res" controls preload="metadata" src="${urlV}"></video>
       <div style="font-size:0.8rem;color:var(--muted);margin-top:8px">
-        ${res.tramos_silenciados} tramos silenciados (${fmtHMS(res.segundos_silenciados)}) · ${res.subtitulos} subtítulos${res.nivelado ? ' · audio nivelado' : ''}.
+        ${res.tramos_silenciados ? `${res.tramos_silenciados} tramos silenciados (${fmtHMS(res.segundos_silenciados)}) · ` : ''}${res.subtitulos} subtítulos${res.nivelado ? ' · audio nivelado' : ''}.
         El MP4 lleva los subtítulos como pista interna; si la plataforma no los muestra, subí también el SRT.
       </div>
     </div>`;
@@ -5360,7 +5424,7 @@ document.getElementById('btn-pub-generar').onclick = async () => {
       const srt = await (await fetch(urlS)).text();
       const vtt = 'WEBVTT\n\n' + srt.replace(/\r/g, '').replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
       const tr = document.createElement('track');
-      tr.kind = 'subtitles'; tr.label = 'Voces silenciadas'; tr.srclang = 'es'; tr.default = true;
+      tr.kind = 'subtitles'; tr.label = 'Subtítulos'; tr.srclang = 'es'; tr.default = true;
       tr.src = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
       document.getElementById('pub-video-res').appendChild(tr);
     } catch (e) {}
