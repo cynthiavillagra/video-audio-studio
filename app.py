@@ -487,6 +487,109 @@ def recortar_video_ffmpeg(entrada: str, salida_mp4: str,
         raise RuntimeError("ffmpeg (recortar video) falló: " + r2.stderr[-400:])
 
 
+def duracion_media(ruta: str) -> float:
+    """Duración en segundos de un audio o video (ffprobe, o ffmpeg -i como respaldo)."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", ruta],
+            capture_output=True, text=True, encoding="utf-8", errors="replace"
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return float(r.stdout.strip().splitlines()[0])
+    except (OSError, ValueError):
+        pass
+    r = subprocess.run(["ffmpeg", "-i", ruta], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", r.stderr or "")
+    if not m:
+        raise RuntimeError("No se pudo leer la duración del archivo.")
+    return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+
+
+def _fmt_tiempo_archivo(seg: float) -> str:
+    seg = int(round(seg))
+    h, m, s = seg // 3600, (seg % 3600) // 60, seg % 60
+    return f"{h:02d}-{m:02d}-{s:02d}" if h else f"{m:02d}-{s:02d}"
+
+
+def calcular_partes_split(duracion: float, modo: str, puntos_txt: str = "", dur_txt: str = "",
+                          desde: str = "", hasta: str = "") -> list[tuple[float, float]]:
+    """Devuelve la lista de partes (inicio, fin) en segundos.
+    modo 'puntos': cortes en los minuto:segundo indicados (separados por coma, espacio o renglón).
+    modo 'duracion': partes de duración fija (la última puede ser más corta).
+    Si se indican desde/hasta, se divide solo ese tramo."""
+    ini = parsear_tiempo(desde) or 0.0
+    fin = parsear_tiempo(hasta) if hasta else None
+    if fin is None or fin > duracion:
+        fin = duracion
+    if fin - ini <= 0.5:
+        raise ValueError("El tramo a dividir es demasiado corto.")
+
+    if modo == "puntos":
+        crudos = [t for t in re.split(r"[\s,;]+", puntos_txt or "") if t]
+        if not crudos:
+            raise ValueError("Escribí al menos un punto de corte (ej. 10:00, 25:30).")
+        puntos = sorted({parsear_tiempo(t) for t in crudos})
+        puntos = [t for t in puntos if ini + 0.5 < t < fin - 0.5]
+        if not puntos:
+            raise ValueError("Ningún punto de corte cae dentro del archivo / tramo.")
+        bordes = [ini] + puntos + [fin]
+    elif modo == "duracion":
+        paso = parsear_tiempo(dur_txt)
+        if not paso or paso < 1:
+            raise ValueError("Escribí la duración de cada parte (ej. 10:00 o 05:30).")
+        if (fin - ini) / paso > 500:
+            raise ValueError("Saldrían más de 500 partes: elegí una duración mayor.")
+        bordes = [ini]
+        while bordes[-1] + paso < fin - 0.5:
+            bordes.append(bordes[-1] + paso)
+        bordes.append(fin)
+    else:
+        raise ValueError("Modo de división inválido.")
+    return [(bordes[i], bordes[i + 1]) for i in range(len(bordes) - 1)]
+
+
+def _worker_dividir(job_id: str, ruta_entrada: str, base: str, params: dict) -> None:
+    """Divide un video y/o audio en varias partes (por puntos de corte o duración fija)."""
+    cal = params.get("cal", "192k")
+    if cal not in ("64k", "128k", "192k", "320k"):
+        cal = "192k"
+    mono = bool(params.get("mono", False))
+    modo_p1 = params.get("modo_p1", "mp3")
+    exacto = bool(params.get("split_exacto", False))
+    _actualizar_job(job_id, progreso=5, mensaje="Leyendo la duración del archivo…")
+    duracion = duracion_media(ruta_entrada)
+    partes = calcular_partes_split(
+        duracion, params.get("split_modo", ""),
+        puntos_txt=params.get("split_puntos", ""), dur_txt=params.get("split_duracion", ""),
+        desde=params.get("desde", ""), hasta=params.get("hasta", "")
+    )
+    hacer_video = modo_p1 in ("video_mp4", "ambos")
+    hacer_mp3 = modo_p1 in ("mp3", "ambos")
+    total = len(partes)
+    ancho = max(2, len(str(total)))
+    resultado = []
+    for i, (a, b) in enumerate(partes, start=1):
+        _actualizar_job(job_id, progreso=5 + int(90 * (i - 1) / total),
+                        mensaje=f"Parte {i} de {total} ({_fmt_tiempo_archivo(a).replace('-', ':')} → {_fmt_tiempo_archivo(b).replace('-', ':')})…")
+        etiqueta = f"{base}_parte_{i:0{ancho}d}_{_fmt_tiempo_archivo(a)}_a_{_fmt_tiempo_archivo(b)}"
+        item = {"n": i, "inicio": a, "fin": b, "nombre_video": "", "nombre_mp3": ""}
+        if hacer_video:
+            nv = nombre_unico(SALIDA, etiqueta, ".mp4")
+            recortar_video_ffmpeg(ruta_entrada, os.path.join(SALIDA, nv),
+                                  desde=f"{a:.2f}", hasta=f"{b:.2f}", recodificar=exacto)
+            item["nombre_video"] = nv
+        if hacer_mp3:
+            na = nombre_unico(SALIDA, etiqueta, ".mp3")
+            extraer_mp3_ffmpeg(ruta_entrada, os.path.join(SALIDA, na), cal=cal,
+                               desde=f"{a:.2f}", hasta=f"{b:.2f}", mono=mono)
+            item["nombre_mp3"] = na
+        resultado.append(item)
+    _actualizar_job(job_id, estado="completado", progreso=100,
+                    mensaje=f"Listo: {total} partes.",
+                    resultado={"modo": "partes", "partes": resultado, "duracion": duracion})
+
+
 def _dividir_texto_en_frases_sub(texto: str, max_chars: int = 84) -> list[str]:
     """Divide un texto largo en fragmentos aptos para subtítulos (<= max_chars),
     priorizando cortes en signos de puntuación (. ? ! ; : ,) y nunca cortando palabras."""
@@ -1497,6 +1600,10 @@ def _worker_analizar(job_id: str, ruta_entrada: str, es_temporal: bool,
         nombre_video_out = ""
         nombre_mp3 = ""
         ruta_mp3 = ""
+
+        if solo_extraer and params.get("split_modo") in ("puntos", "duracion"):
+            _worker_dividir(job_id, ruta_entrada, base, params)
+            return
 
         if solo_extraer and modo_p1 in ("video_mp4", "ambos"):
             _actualizar_job(job_id, progreso=15, mensaje="Recortando video MP4 en el minuto y segundo indicados…")
@@ -3181,6 +3288,25 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-block { width: 100%; justify-content: center; }
 .btn-lg { padding: 11px 16px; font-size: 0.92rem; }
 
+/* ---------- Control segmentado ---------- */
+.segmentado { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: #eef0f3; border-radius: 10px; }
+.segmentado label { margin: 0; cursor: pointer; }
+.segmentado input { position: absolute; opacity: 0; pointer-events: none; }
+.segmentado span {
+  display: block; text-align: center; padding: 7px 10px; border-radius: 7px;
+  font-size: 0.85rem; font-weight: 600; color: var(--muted); transition: background 0.12s, color 0.12s;
+}
+.segmentado input:checked + span { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(17,24,39,0.12); }
+.segmentado input:focus-visible + span { outline: 2px solid var(--primary); }
+.partes-lista { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; max-height: 360px; overflow-y: auto; }
+.parte-item {
+  display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center;
+  padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); font-size: 0.84rem;
+}
+.parte-item .pn { font-weight: 700; color: var(--primary); font-family: var(--mono); }
+.parte-item .pt { font-family: var(--mono); font-size: 0.8rem; color: var(--text-2); }
+.parte-item a { text-decoration: none; }
+
 /* ---------- Badges ---------- */
 .badge {
   font-size: 0.73rem;
@@ -3445,7 +3571,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     <button type="button" class="step-btn activo" data-step="1">
       <span class="step-num">1</span>
       <span class="step-title">Video / Audio</span>
-      <span class="step-sub">Extraer MP3 y recortar</span>
+      <span class="step-sub">Extraer, recortar, dividir</span>
     </button>
     <button type="button" class="step-btn" data-step="2">
       <span class="step-num">2</span>
@@ -3501,7 +3627,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     <div class="guia-lista">
       <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(1)">
         <span class="gnum">1</span>
-        <div><strong>Video / Audio</strong><span>Subís un video o audio y obtenés el MP3, o recortás el video o el audio por minuto:segundo.</span></div>
+        <div><strong>Video / Audio</strong><span>Subís un video o audio y obtenés el MP3, recortás un tramo por minuto:segundo o lo dividís en partes (en varios puntos o cada X minutos).</span></div>
         <span class="ir">Ir →</span>
       </button>
       <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(2)">
@@ -3545,7 +3671,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     <div>
       <div class="eyebrow">Paso 1</div>
       <h1>Video / Audio</h1>
-      <p>Extraé el MP3 de un video o audio, o recortalo por minuto y segundo.</p>
+      <p>Extraé el MP3 de un video o audio, recortá un tramo o dividilo en varias partes.</p>
     </div>
     <button type="button" class="btn-ghost btn-sm" onclick="irAPaso(2)">Ya tengo el audio: ir a Transcripción →</button>
   </div>
@@ -3571,8 +3697,33 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
           </select>
         </div>
 
+        <div class="campo">
+          <label>Cómo cortar</label>
+          <div class="segmentado" role="radiogroup" aria-label="Cómo cortar">
+            <label><input type="radio" name="p1-tipo-corte" value="tramo" checked><span>Un tramo</span></label>
+            <label><input type="radio" name="p1-tipo-corte" value="partes"><span>Dividir en partes</span></label>
+          </div>
+        </div>
+
+        <div id="p1-split-box" class="panel" style="display:none">
+          <div class="stack" style="gap:10px">
+            <label class="check" style="align-items:center">
+              <input type="radio" name="p1-split-modo" value="puntos" checked>
+              <span style="flex-shrink:0;font-weight:600">En estos puntos</span>
+            </label>
+            <input type="text" id="p1-split-puntos" class="tiempo" placeholder="10:00, 25:30, 1:02:15" aria-label="Puntos de corte">
+            <label class="check" style="align-items:center">
+              <input type="radio" name="p1-split-modo" value="duracion">
+              <span style="font-weight:600">Partes de duración fija, cada</span>
+              <input type="text" id="p1-split-duracion" class="tiempo" placeholder="10:00" style="width:96px" aria-label="Duración de cada parte">
+            </label>
+            <label class="check" id="p1-split-exacto-box"><input type="checkbox" id="p1-split-exacto"><span>Cortes exactos al segundo en el video <span style="color:var(--muted)">(recodifica, más lento; si no, corta en el fotograma clave más cercano)</span></span></label>
+            <div id="p1-split-preview" style="font-size:0.8rem;color:var(--primary-hover)"></div>
+          </div>
+        </div>
+
         <div>
-          <label class="lbl">Recorte <span style="font-weight:400;color:var(--muted)">(opcional · vacío = archivo completo)</span></label>
+          <label class="lbl" id="p1-lbl-tramo">Recorte <span style="font-weight:400;color:var(--muted)">(opcional · vacío = archivo completo)</span></label>
           <div class="grid-2" style="gap:10px">
             <div class="campo">
               <input id="p1-desde" class="tiempo" type="text" placeholder="Desde · 02:15" aria-label="Desde (minuto:segundo)">
@@ -4439,7 +4590,8 @@ function renderColaP1() {
   }
   box.style.display = 'block';
   btnP1Convertir.disabled = false;
-  tit.textContent = `Archivos listos para extraer/convertir a MP3 (${colaP1.length})`;
+  tit.textContent = `Archivos seleccionados (${colaP1.length})`;
+  actualizarPreviewSplitP1();
   lista.innerHTML = colaP1.map(it => `
     <li class="cola-item">
       <span><strong>${escHtml(it.nombre)}</strong> <small style="color:var(--muted)">(${fmtMB(it.bytes)})</small></span>
@@ -4456,6 +4608,10 @@ document.getElementById('btn-p1-limpiar').onclick = () => { colaP1 = []; renderC
 
 btnP1Convertir.onclick = async () => {
   if (!colaP1.length) return;
+  if (tipoCorteP1() === 'partes') {
+    const err = validarSplitP1();
+    if (err) { alert(err); return; }
+  }
   const lotes = [...colaP1];
   colaP1 = [];
   renderColaP1();
@@ -4473,6 +4629,13 @@ async function ejecutarLotePaso1(lotes, usarExistente = false) {
     modo_p1: document.getElementById('p1-modo-salida').value,
     solo_extraer: '1'
   };
+  if (tipoCorteP1() === 'partes') {
+    const sp = leerSplitP1();
+    params.split_modo = sp.modo;
+    params.split_puntos = sp.puntos;
+    params.split_duracion = sp.duracion;
+    params.split_exacto = document.getElementById('p1-split-exacto').checked ? '1' : '0';
+  }
 
   for (const item of lotes) {
     const pBox = document.createElement('div');
@@ -4500,6 +4663,11 @@ async function ejecutarLotePaso1(lotes, usarExistente = false) {
         pBox.querySelector('.pct').textContent = (d.progreso || 0) + '%';
         pBox.querySelector('.barra-relleno').style.width = (d.progreso || 0) + '%';
         if (d.estado === 'error') throw new Error(d.error || 'Error');
+        if (d.estado === 'completado' && d.resultado && d.resultado.modo === 'partes') {
+          await cargarAudiosDisponibles();
+          pBox.innerHTML = renderPartesP1(item.nombre, d.resultado.partes || []);
+          break;
+        }
         if (d.estado === 'completado') {
           const nomMp3 = d.resultado.nombre_mp3 || '';
           const nomVid = d.resultado.nombre_video || '';
@@ -4545,9 +4713,146 @@ document.getElementById('btn-p1-recortar-existente').onclick = async () => {
   if (!nom) { alert('Elegí un archivo de la lista.'); return; }
   const d = document.getElementById('p1-desde').value.trim();
   const h = document.getElementById('p1-hasta').value.trim();
-  if (!d && !h) { alert('Escribí el minuto:segundo en "Desde" y/o "Hasta" arriba para recortar.'); return; }
+  if (tipoCorteP1() === 'partes') {
+    const err = validarSplitP1();
+    if (err) { alert(err); return; }
+  } else if (!d && !h) { alert('Escribí el minuto:segundo en "Desde" y/o "Hasta" arriba para recortar.'); return; }
   await ejecutarLotePaso1([{ nombre: nom }], true);
 };
+
+// ---------- División en partes (split) ----------
+function tipoCorteP1() {
+  const r = document.querySelector('input[name="p1-tipo-corte"]:checked');
+  return r ? r.value : 'tramo';
+}
+function leerSplitP1() {
+  const r = document.querySelector('input[name="p1-split-modo"]:checked');
+  return {
+    modo: r ? r.value : 'puntos',
+    puntos: document.getElementById('p1-split-puntos').value.trim(),
+    duracion: document.getElementById('p1-split-duracion').value.trim()
+  };
+}
+function validarSplitP1() {
+  const sp = leerSplitP1();
+  if (sp.modo === 'puntos') {
+    const pts = sp.puntos.split(/[\s,;]+/).filter(Boolean);
+    if (!pts.length) return 'Escribí al menos un punto de corte, por ejemplo: 10:00, 25:30';
+    const malo = pts.find(t => parseTiempoCliente(t) === null || isNaN(parseTiempoCliente(t)));
+    if (malo) return `"${malo}" no es un tiempo válido (usá mm:ss o hh:mm:ss).`;
+  } else {
+    const dur = parseTiempoCliente(sp.duracion);
+    if (!dur || dur < 1) return 'Escribí la duración de cada parte, por ejemplo: 10:00';
+  }
+  return '';
+}
+
+// Cálculo local de las partes, igual al del servidor, para la vista previa
+function calcularPartesCliente(duracion) {
+  const sp = leerSplitP1();
+  let ini = parseTiempoCliente(document.getElementById('p1-desde').value) || 0;
+  let fin = parseTiempoCliente(document.getElementById('p1-hasta').value);
+  if (fin === null || isNaN(fin) || fin > duracion) fin = duracion;
+  if (fin - ini <= 0.5) return [];
+  let bordes;
+  if (sp.modo === 'puntos') {
+    const pts = [...new Set(sp.puntos.split(/[\s,;]+/).filter(Boolean).map(parseTiempoCliente))]
+      .filter(t => t !== null && !isNaN(t) && t > ini + 0.5 && t < fin - 0.5).sort((a, b) => a - b);
+    if (!pts.length) return [];
+    bordes = [ini, ...pts, fin];
+  } else {
+    const paso = parseTiempoCliente(sp.duracion);
+    if (!paso || paso < 1 || (fin - ini) / paso > 500) return [];
+    bordes = [ini];
+    while (bordes[bordes.length - 1] + paso < fin - 0.5) bordes.push(bordes[bordes.length - 1] + paso);
+    bordes.push(fin);
+  }
+  return bordes.slice(0, -1).map((a, i) => [a, bordes[i + 1]]);
+}
+
+const cacheDuracionP1 = new Map();
+function duracionLocal(src, clave) {
+  if (cacheDuracionP1.has(clave)) return Promise.resolve(cacheDuracionP1.get(clave));
+  return new Promise(res => {
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    const fin = val => { cacheDuracionP1.set(clave, val); res(val); };
+    v.onloadedmetadata = () => fin(isFinite(v.duration) ? v.duration : null);
+    v.onerror = () => fin(null);
+    v.src = src;
+    setTimeout(() => res(cacheDuracionP1.get(clave) ?? null), 6000);
+  });
+}
+
+let _previewTimerP1 = null;
+function actualizarPreviewSplitP1() {
+  clearTimeout(_previewTimerP1);
+  _previewTimerP1 = setTimeout(async () => {
+    const box = document.getElementById('p1-split-preview');
+    if (!box || tipoCorteP1() !== 'partes') return;
+    let dur = null, nombre = '';
+    if (colaP1.length) {
+      const it = colaP1[0];
+      nombre = it.nombre;
+      if (!it.url) it.url = URL.createObjectURL(it.file);
+      dur = await duracionLocal(it.url, 'f:' + it.id);
+    } else {
+      const sel = document.getElementById('p1-sel-existente');
+      if (sel && sel.value) {
+        nombre = sel.value;
+        dur = await duracionLocal('/audios/' + encodeURIComponent(sel.value), 'a:' + sel.value);
+      }
+    }
+    if (!dur) { box.textContent = ''; return; }
+    const partes = calcularPartesCliente(dur);
+    if (!partes.length) { box.textContent = `${nombre} dura ${fmtHMS(dur)}.`; return; }
+    const muestra = partes.slice(0, 4).map(([a, b]) => `${fmtHMS(a)}–${fmtHMS(b)}`).join(' · ');
+    box.textContent = `${nombre} (${fmtHMS(dur)}) → ${partes.length} ${partes.length === 1 ? 'parte' : 'partes'}: ${muestra}${partes.length > 4 ? ' · …' : ''}`;
+  }, 250);
+}
+
+function actualizarUiCorteP1() {
+  const partes = tipoCorteP1() === 'partes';
+  document.getElementById('p1-split-box').style.display = partes ? 'block' : 'none';
+  document.getElementById('p1-lbl-tramo').innerHTML = partes
+    ? 'Dividir solo un tramo <span style="font-weight:400;color:var(--muted)">(opcional · vacío = archivo completo)</span>'
+    : 'Recorte <span style="font-weight:400;color:var(--muted)">(opcional · vacío = archivo completo)</span>';
+  const modo = document.getElementById('p1-modo-salida').value;
+  document.getElementById('p1-split-exacto-box').style.display = (partes && modo !== 'mp3') ? 'flex' : 'none';
+  btnP1Convertir.textContent = partes ? 'Dividir en partes' : 'Procesar archivo(s)';
+  document.getElementById('btn-p1-recortar-existente').textContent = partes ? 'Dividir este archivo' : 'Recortar este archivo';
+  actualizarPreviewSplitP1();
+}
+document.querySelectorAll('input[name="p1-tipo-corte"], input[name="p1-split-modo"]').forEach(r => r.addEventListener('change', actualizarUiCorteP1));
+['p1-split-puntos', 'p1-split-duracion', 'p1-desde', 'p1-hasta'].forEach(id =>
+  document.getElementById(id).addEventListener('input', actualizarPreviewSplitP1));
+document.getElementById('p1-split-puntos').addEventListener('focus', () => { document.querySelector('input[name="p1-split-modo"][value="puntos"]').checked = true; actualizarPreviewSplitP1(); });
+document.getElementById('p1-split-duracion').addEventListener('focus', () => { document.querySelector('input[name="p1-split-modo"][value="duracion"]').checked = true; actualizarPreviewSplitP1(); });
+document.getElementById('p1-modo-salida').addEventListener('change', actualizarUiCorteP1);
+document.getElementById('p1-sel-existente').addEventListener('change', actualizarPreviewSplitP1);
+
+function renderPartesP1(nombreOrigen, partes) {
+  const todos = [];
+  const filas = partes.map(pt => {
+    const links = [];
+    if (pt.nombre_video) { todos.push(pt.nombre_video); links.push(`<a class="btn-outline btn-xs" href="/audios/${encodeURIComponent(pt.nombre_video)}" download>MP4</a>`); }
+    if (pt.nombre_mp3) { todos.push(pt.nombre_mp3); links.push(`<a class="btn-outline btn-xs" href="/audios/${encodeURIComponent(pt.nombre_mp3)}" download>MP3</a>`); }
+    const nom = pt.nombre_mp3 || pt.nombre_video;
+    return `<div class="parte-item">
+      <span class="pn">${String(pt.n).padStart(2, '0')}</span>
+      <div><div class="pt">${fmtHMS(pt.inicio)} → ${fmtHMS(pt.fin)} <span style="color:var(--muted)">(${fmtHMS(pt.fin - pt.inicio)})</span></div>
+      <div style="font-size:0.76rem;color:var(--muted);overflow-wrap:anywhere">${escHtml(nom)}</div></div>
+      <div class="row" style="gap:4px;flex-wrap:nowrap">${links.join('')}</div>
+    </div>`;
+  }).join('');
+  const qs = todos.map(n => 'n=' + encodeURIComponent(n)).join('&');
+  return `<div class="row-between">
+      <strong style="color:var(--ok)">✔ ${escHtml(nombreOrigen)} dividido en ${partes.length} partes</strong>
+      <a class="btn-primary btn-sm" style="text-decoration:none" href="/api/zip_partes?${qs}">Descargar todas (ZIP)</a>
+    </div>
+    <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Quedaron guardadas en <code>audios/</code>: las podés transcribir en el paso 2.</div>
+    <div class="partes-lista">${filas}</div>`;
+}
 
 window.seleccionarMp3EIrAPaso2 = async function(nomMp3) {
   await cargarAudiosDisponibles(nomMp3);
@@ -6443,6 +6748,33 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(raw)
             return
 
+        if p.path == "/api/zip_partes":
+            q = urllib.parse.parse_qs(p.query)
+            nombres = [os.path.basename(n) for n in q.get("n", []) if n]
+            rutas = [os.path.join(SALIDA, n) for n in nombres if os.path.isfile(os.path.join(SALIDA, n))]
+            if not rutas:
+                return self._send_text(404, "No se encontraron las partes.")
+            base_zip = os.path.splitext(nombres[0])[0].split("_parte_")[0] + "_partes.zip"
+            ruta_zip = os.path.join(TEMP_DIR, uuid.uuid4().hex[:8] + "_" + base_zip)
+            with zipfile.ZipFile(ruta_zip, "w", zipfile.ZIP_STORED) as zf:
+                for r in rutas:
+                    zf.write(r, os.path.basename(r))
+            try:
+                tam = os.path.getsize(ruta_zip)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Length", str(tam))
+                self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + urllib.parse.quote(base_zip))
+                self.end_headers()
+                with open(ruta_zip, "rb") as f:
+                    shutil.copyfileobj(f, self.wfile, 1 << 20)
+            finally:
+                try:
+                    os.remove(ruta_zip)
+                except OSError:
+                    pass
+            return
+
         if p.path.startswith("/audios/"):
             nombre = os.path.basename(urllib.parse.unquote(p.path[8:]))
             ruta = os.path.join(SALIDA, nombre)
@@ -6712,6 +7044,10 @@ class Handler(BaseHTTPRequestHandler):
                 "solo_extraer": q.get("solo_extraer", ["0"])[0] == "1",
                 "modo_p1": q.get("modo_p1", ["mp3"])[0],
                 "usar_mp3_existente": usar_existente,
+                "split_modo": q.get("split_modo", [""])[0],
+                "split_puntos": q.get("split_puntos", [""])[0],
+                "split_duracion": q.get("split_duracion", [""])[0],
+                "split_exacto": q.get("split_exacto", ["0"])[0] == "1",
             }
 
             job_id = uuid.uuid4().hex[:12]
