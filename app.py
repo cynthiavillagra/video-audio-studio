@@ -1262,7 +1262,7 @@ def agrupar_hablantes(segmentos: list[dict], X: np.ndarray | None, num_hablantes
         mejor_labels_anc = np.ones(len(X_anc), dtype=int)
         Z = linkage(X_anc, method="ward")
         min_tam = max(2, int(len(X_anc) * 0.03))
-        for k in range(2, min(7, len(X_anc))):
+        for k in range(2, min(31, len(X_anc))):
             lbl = fcluster(Z, t=k, criterion="maxclust")
             conteos = [int(np.sum(lbl == c)) for c in np.unique(lbl)]
             if len(X_anc) >= 20 and min(conteos) < min_tam:
@@ -4135,22 +4135,10 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     <div>
       <div class="eyebrow">Paso 2</div>
       <h1>Transcripción</h1>
-      <p>Abrí una que ya procesaste, transcribí un audio o video con Whisper o subí una hecha en otro lado.</p>
+      <p>Transcribí un audio o video con Whisper, subí una transcripción hecha en otro lado o abrí una que ya procesaste (al final).</p>
     </div>
   </div>
   <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Transcribir un video o un audio con Whisper, separando a los hablantes</li><li>Subir una transcripción hecha con otra herramienta (Tactiq, YouTube…)</li><li>Vincular una transcripción con su audio o video</li><li>Recortar una transcripción (por ejemplo, las partes que quedaron fuera del video)</li></ul></div>
-
-  <div class="card" id="card-sesiones-previas">
-    <div class="card-head" style="margin-bottom:10px">
-      <div>
-        <h2>Transcripciones guardadas</h2>
-        <p>Hacé clic en una para abrirla al instante en el paso 3 o 4.</p>
-      </div>
-    </div>
-    <div id="lista-sesiones-guardadas" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto">
-      <span style="font-size:0.85rem;color:var(--muted)">Cargando transcripciones guardadas…</span>
-    </div>
-  </div>
 
   <div class="grid-2">
     <!-- OPCIÓN A -->
@@ -4186,13 +4174,37 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
           <div class="campo">
             <label for="p2-hablantes">Hablantes</label>
             <select id="p2-hablantes">
-              <option value="0" selected>Automático (2 a 6)</option>
+              <option value="0" selected>Automático</option>
               <option value="1">1 solo hablante</option>
               <option value="2">2 hablantes</option>
               <option value="3">3 hablantes</option>
               <option value="4">4 hablantes</option>
               <option value="5">5 hablantes</option>
               <option value="6">6 hablantes</option>
+              <option value="7">7 hablantes</option>
+              <option value="8">8 hablantes</option>
+              <option value="9">9 hablantes</option>
+              <option value="10">10 hablantes</option>
+              <option value="11">11 hablantes</option>
+              <option value="12">12 hablantes</option>
+              <option value="13">13 hablantes</option>
+              <option value="14">14 hablantes</option>
+              <option value="15">15 hablantes</option>
+              <option value="16">16 hablantes</option>
+              <option value="17">17 hablantes</option>
+              <option value="18">18 hablantes</option>
+              <option value="19">19 hablantes</option>
+              <option value="20">20 hablantes</option>
+              <option value="21">21 hablantes</option>
+              <option value="22">22 hablantes</option>
+              <option value="23">23 hablantes</option>
+              <option value="24">24 hablantes</option>
+              <option value="25">25 hablantes</option>
+              <option value="26">26 hablantes</option>
+              <option value="27">27 hablantes</option>
+              <option value="28">28 hablantes</option>
+              <option value="29">29 hablantes</option>
+              <option value="30">30 hablantes</option>
             </select>
           </div>
         </div>
@@ -4257,6 +4269,18 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       <div id="p2-res-import"></div>
     </div>
   </div>
+  <div class="card" id="card-sesiones-previas" style="margin-top:16px">
+    <div class="card-head" style="margin-bottom:10px">
+      <div>
+        <h2>Transcripciones guardadas</h2>
+        <p>Hacé clic en una para abrirla al instante en el paso 3 o 4.</p>
+      </div>
+    </div>
+    <div id="lista-sesiones-guardadas" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto">
+      <span style="font-size:0.85rem;color:var(--muted)">Cargando transcripciones guardadas…</span>
+    </div>
+  </div>
+
 </section>
 
 <!-- ====================================================================== -->
@@ -4304,7 +4328,34 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
           <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="3">3</button>
           <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="4">4</button>
           <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="5">5</button>
-          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="6">6</button>
+          <select id="p3-k-otro" aria-label="Otra cantidad de hablantes" style="width:auto;padding:3px 6px;font-size:0.76rem">
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+            <option value="10">10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+            <option value="13">13</option>
+            <option value="14">14</option>
+            <option value="15">15</option>
+            <option value="16">16</option>
+            <option value="17">17</option>
+            <option value="18">18</option>
+            <option value="19">19</option>
+            <option value="20">20</option>
+            <option value="21">21</option>
+            <option value="22">22</option>
+            <option value="23">23</option>
+            <option value="24">24</option>
+            <option value="25">25</option>
+            <option value="26">26</option>
+            <option value="27">27</option>
+            <option value="28">28</option>
+            <option value="29">29</option>
+            <option value="30">30</option>
+          </select>
+          <button type="button" class="btn-outline btn-xs btn-recluster-k" id="btn-p3-k-otro" data-k="6">Separar</button>
         </div>
       </div>
       <div class="diag-box" id="diag-mivoz-box">
@@ -4831,7 +4882,35 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
             <label for="pub-hablantes">Hablantes</label>
             <select id="pub-hablantes">
               <option value="0" selected>Automático</option>
-              <option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="7">7</option>
+              <option value="8">8</option>
+              <option value="9">9</option>
+              <option value="10">10</option>
+              <option value="11">11</option>
+              <option value="12">12</option>
+              <option value="13">13</option>
+              <option value="14">14</option>
+              <option value="15">15</option>
+              <option value="16">16</option>
+              <option value="17">17</option>
+              <option value="18">18</option>
+              <option value="19">19</option>
+              <option value="20">20</option>
+              <option value="21">21</option>
+              <option value="22">22</option>
+              <option value="23">23</option>
+              <option value="24">24</option>
+              <option value="25">25</option>
+              <option value="26">26</option>
+              <option value="27">27</option>
+              <option value="28">28</option>
+              <option value="29">29</option>
+              <option value="30">30</option>
             </select>
           </div>
         </div>
@@ -6409,7 +6488,8 @@ function renderHablantesPaso3() {
   selFiltro.value = filtroActual;
 }
 
-// Botones rápidos para separar en 2, 3, 4, 5, 6 hablantes
+// Botones rápidos para separar en 2 a 30 hablantes
+document.getElementById('p3-k-otro').onchange = e => { document.getElementById('btn-p3-k-otro').dataset.k = e.target.value; };
 document.querySelectorAll('.btn-recluster-k').forEach(btn => {
   btn.onclick = async () => {
     if (!sesionActiva) return;
