@@ -2852,17 +2852,26 @@ HTML = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Estudio de Audio, Hablantes y Subtítulos · Paso a Paso</title>
+<title>Estudio de Audio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
+/* ==========================================================================
+   SISTEMA VISUAL · claro, sobrio, con barra lateral
+   ========================================================================== */
 :root {
-  --bg: #f8fafc;
+  --bg: #f5f6f8;
   --card: #ffffff;
-  --text: #0f172a;
-  --muted: #64748b;
-  --border: #e2e8f0;
+  --surface-2: #f8f9fb;
+  --text: #111827;
+  --text-2: #374151;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
-  --primary-light: #eff6ff;
+  --primary-light: #eff4ff;
+  --primary-border: #c7d7fe;
   --secondary: #0f766e;
   --secondary-hover: #115e59;
   --danger: #dc2626;
@@ -2872,649 +2881,734 @@ HTML = r"""<!doctype html>
   --warn: #d97706;
   --warn-bg: #fffbeb;
   --radius: 12px;
+  --radius-sm: 8px;
+  --shadow-sm: 0 1px 2px rgba(17,24,39,0.04);
+  --shadow-md: 0 4px 16px rgba(17,24,39,0.08);
+  --sidebar-w: 248px;
+  --font: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
 * { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 20px 16px 80px;
+  margin: 0;
+  font-family: var(--font);
+  font-size: 14.5px;
   background: var(--bg);
   color: var(--text);
-  line-height: 1.48;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
-header {
+code {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  background: #f1f3f6;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--text-2);
+}
+
+/* ---------- Estructura general ---------- */
+.app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  min-height: 100vh;
+}
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  background: #fbfbfc;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px;
+  gap: 18px;
+  overflow-y: auto;
+}
+.brand {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 18px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
+  gap: 10px;
+  padding: 2px 6px 4px;
 }
-header h1 {
-  font-size: 1.45rem;
-  margin: 0;
-  font-weight: 800;
-  color: #0f172a;
+.brand-logo {
+  width: 34px; height: 34px;
+  border-radius: 9px;
+  background: var(--primary);
+  color: #fff;
+  display: grid; place-items: center;
+  flex-shrink: 0;
 }
-header p {
-  margin: 4px 0 0;
+.brand-logo svg { width: 18px; height: 18px; }
+.brand-name { font-weight: 700; font-size: 0.98rem; line-height: 1.2; }
+.brand-sub { font-size: 0.74rem; color: var(--muted); }
+
+.nav-group-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #9ca3af;
+  padding: 0 10px;
+  margin: 4px 0 6px;
+}
+.pasos-stepper { display: flex; flex-direction: column; gap: 2px; }
+.step-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  align-items: center;
+  gap: 4px 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-2);
+  transition: background 0.12s, color 0.12s;
+  position: relative;
+}
+.step-btn:hover { background: #f0f2f5; }
+.step-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.step-btn .step-num {
+  width: 24px; height: 24px;
+  border-radius: 7px;
+  display: grid; place-items: center;
+  font-size: 0.74rem; font-weight: 700;
+  background: #eceff3;
   color: var(--muted);
-  font-size: 0.88rem;
+  grid-row: span 2;
 }
+.step-btn .step-num svg { width: 14px; height: 14px; }
+.step-btn .step-title { font-size: 0.88rem; font-weight: 600; line-height: 1.25; }
+.step-btn .step-sub { font-size: 0.74rem; color: var(--muted); line-height: 1.3; }
+.step-btn.activo { background: var(--primary-light); color: var(--primary-hover); }
+.step-btn.activo .step-num { background: var(--primary); color: #fff; }
+.step-btn.activo::before {
+  content: ""; position: absolute; left: -14px; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 0 3px 3px 0; background: var(--primary);
+}
+
+.sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+.side-link {
+  all: unset; box-sizing: border-box;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 8px;
+  font-size: 0.84rem; font-weight: 500; color: var(--text-2);
+  cursor: pointer;
+}
+.side-link:hover { background: #f0f2f5; }
+.side-link svg { width: 16px; height: 16px; color: var(--muted); }
 #git-bar {
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 7px 12px;
-  font-size: 0.82rem;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-/* Navegador Principal de 5 Pestañas */
-.pasos-stepper {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
-  margin-bottom: 20px;
-}
-@media (max-width: 860px) {
-  .pasos-stepper { grid-template-columns: 1fr 1fr; }
-}
-@media (max-width: 520px) {
-  .pasos-stepper { grid-template-columns: 1fr; }
-}
-.step-btn {
-  background: #ffffff;
-  border: 2px solid var(--border);
-  border-radius: 12px;
-  padding: 12px 14px;
-  text-align: left;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  padding: 10px;
+  font-size: 0.78rem;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 8px;
 }
-.step-btn:hover {
-  border-color: #93c5fd;
-  background: #f8fafc;
-}
-.step-btn.activo {
-  border-color: var(--primary);
-  background: var(--primary-light);
-  box-shadow: 0 2px 8px rgba(37,99,235,0.12);
-}
-.step-btn .step-num {
-  font-size: 0.75rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  color: var(--primary);
-  letter-spacing: 0.03em;
-}
-.step-btn .step-title {
-  font-size: 0.96rem;
-  font-weight: 700;
-  color: #0f172a;
-}
-.step-btn .step-sub {
-  font-size: 0.78rem;
-  color: var(--muted);
-}
+#git-bar .git-head { display: flex; align-items: center; gap: 6px; color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+#git-bar .git-head svg { width: 13px; height: 13px; }
+#git-estado-txt { font-weight: 600; font-size: 0.8rem; color: var(--text-2); }
+#git-bar .git-acciones { display: flex; gap: 6px; }
+#git-bar .git-acciones button { flex: 1; justify-content: center; }
 
-.step-section {
-  display: none;
+.main {
+  min-width: 0;
+  padding: 28px 32px 80px;
 }
-.step-section.activo {
-  display: block;
-}
+.main-inner { max-width: 1160px; margin: 0 auto; }
 
+/* ---------- Encabezado de cada sección ---------- */
+.sec-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.sec-head .eyebrow {
+  font-size: 0.74rem; font-weight: 600; color: var(--primary);
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;
+}
+.sec-head h1 { margin: 0; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.015em; }
+.sec-head p { margin: 4px 0 0; color: var(--muted); font-size: 0.92rem; max-width: 720px; }
+
+.step-section { display: none; animation: aparecer 0.18s ease; }
+.step-section.activo { display: block; }
+@keyframes aparecer { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Tarjetas ---------- */
 .card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
-  margin-bottom: 18px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  padding: 20px 22px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
 }
-.card h2 {
-  font-size: 1.15rem;
-  margin: 0 0 8px;
-  color: #0f172a;
+.card h2 { font-size: 1.05rem; font-weight: 650; margin: 0 0 4px; color: var(--text); }
+.card h3 { font-size: 0.98rem; font-weight: 650; margin: 0 0 4px; color: var(--text); }
+.card-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
 }
-.card h3 {
-  font-size: 1rem;
-  margin: 0 0 10px;
-  color: #1e293b;
+.card-head p, .sub-desc { font-size: 0.86rem; color: var(--muted); margin: 2px 0 0; }
+.sub-desc { margin-bottom: 14px; }
+.card-tag {
+  display: inline-block; font-size: 0.7rem; font-weight: 600;
+  color: var(--muted); background: #f1f3f6; border-radius: 5px;
+  padding: 1px 7px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;
 }
-.sub-desc {
-  font-size: 0.88rem;
-  color: var(--muted);
-  margin: 0 0 16px;
+.card.destacada { border-color: var(--primary-border); background: linear-gradient(180deg, #f7f9ff 0%, #fff 100%); }
+
+.panel {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+.panel-titulo { font-size: 0.86rem; font-weight: 650; display: block; margin-bottom: 4px; color: var(--text); }
+.panel-desc { font-size: 0.8rem; color: var(--muted); margin: 0 0 10px; }
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row-between { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.divider { border: 0; border-top: 1px solid var(--border); margin: 16px 0; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.grid-2-60 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 900px) {
+  .grid-2, .grid-2-60 { grid-template-columns: 1fr; }
 }
 
-.grid-2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+/* ---------- Plegables (opciones avanzadas) ---------- */
+details.plegable {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  margin: 12px 0;
 }
-.grid-3 {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-}
-@media (max-width: 780px) {
-  .grid-2 { grid-template-columns: 1fr; }
-}
-
-.dropzone {
-  border: 2px dashed #94a3b8;
-  border-radius: var(--radius);
-  padding: 26px 18px;
-  text-align: center;
-  background: #f8fafc;
+details.plegable > summary {
+  list-style: none;
   cursor: pointer;
-  transition: all 0.15s;
+  padding: 10px 14px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-2);
+  display: flex; align-items: center; gap: 8px;
+  user-select: none;
 }
-.dropzone:hover, .dropzone.sobre {
-  border-color: var(--primary);
-  background: #eff6ff;
+details.plegable > summary::-webkit-details-marker { display: none; }
+details.plegable > summary::before {
+  content: ""; width: 7px; height: 7px;
+  border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg); transition: transform 0.15s; margin-right: 2px;
 }
+details.plegable[open] > summary::before { transform: rotate(45deg); }
+details.plegable > summary .hint { font-weight: 400; color: var(--muted); font-size: 0.8rem; }
+details.plegable > .plegable-body { padding: 2px 14px 14px; }
 
-.campo label {
+/* ---------- Formularios ---------- */
+.campo label, label.lbl {
   display: block;
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: #334155;
-  margin-bottom: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 5px;
 }
 input[type="text"], input[type="number"], select, textarea {
   width: 100%;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   padding: 8px 10px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   background: #fff;
   color: var(--text);
   font-family: inherit;
+  transition: border-color 0.12s, box-shadow 0.12s;
 }
-button {
+input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.14);
+}
+input.tiempo { font-family: var(--mono); font-weight: 600; letter-spacing: 0.02em; }
+input[type="checkbox"] { accent-color: var(--primary); width: 15px; height: 15px; }
+label.check {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 0.84rem; color: var(--text-2); cursor: pointer; font-weight: 400;
+}
+label.check input { margin-top: 2px; flex-shrink: 0; }
+.input-con-btn { display: flex; gap: 6px; }
+.input-con-btn input { flex: 1; min-width: 0; }
+
+/* ---------- Botones ---------- */
+button, .btn-link {
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: 0.86rem;
   font-weight: 600;
-  padding: 9px 14px;
-  border-radius: 8px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
   border: 1px solid transparent;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: all 0.15s;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+  line-height: 1.3;
 }
-button:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-primary { background: var(--primary); color: #fff; }
+button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: #fff; box-shadow: 0 1px 2px rgba(37,99,235,0.25); }
 .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
 .btn-secondary { background: var(--secondary); color: #fff; }
 .btn-secondary:hover:not(:disabled) { background: var(--secondary-hover); }
-.btn-outline { background: #fff; color: #334155; border-color: #cbd5e1; }
-.btn-outline:hover:not(:disabled) { background: #f1f5f9; }
+.btn-outline { background: #fff; color: var(--text-2); border-color: var(--border-strong); }
+.btn-outline:hover:not(:disabled) { background: #f3f4f6; border-color: #c4c8cf; }
+.btn-ghost { background: transparent; color: var(--primary); border-color: transparent; }
+.btn-ghost:hover:not(:disabled) { background: var(--primary-light); }
 .btn-gold { background: var(--warn-bg); color: #b45309; border-color: #fde68a; }
 .btn-gold.activo { background: var(--ok); color: #fff; border-color: var(--ok); }
 .btn-danger-soft { background: var(--danger-bg); color: var(--danger); border-color: #fecaca; }
-.btn-sm { padding: 6px 10px; font-size: 0.82rem; }
-.btn-xs { padding: 4px 8px; font-size: 0.76rem; border-radius: 6px; }
+.btn-danger-soft:hover:not(:disabled) { background: #fee2e2; }
+.btn-sm { padding: 6px 11px; font-size: 0.8rem; }
+.btn-xs { padding: 4px 9px; font-size: 0.75rem; border-radius: 6px; }
+.btn-block { width: 100%; justify-content: center; }
+.btn-lg { padding: 11px 16px; font-size: 0.92rem; }
 
+/* ---------- Badges ---------- */
 .badge {
-  font-size: 0.74rem;
-  padding: 2px 8px;
+  font-size: 0.73rem;
+  padding: 3px 9px;
   border-radius: 999px;
-  background: #e2e8f0;
-  color: #334155;
-  font-weight: 700;
+  background: #eef0f3;
+  color: var(--text-2);
+  font-weight: 600;
   white-space: nowrap;
+  display: inline-block;
 }
-.badge-azul { background: #dbeafe; color: #1e40af; }
+.badge-azul { background: #e0e9ff; color: #1e40af; }
 .badge-verde { background: #dcfce7; color: #15803d; }
 .badge-ambar { background: #fef3c7; color: #b45309; }
 
-.cola-lista {
-  list-style: none;
-  padding: 0;
-  margin: 10px 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+/* ---------- Zona de archivos ---------- */
+.dropzone {
+  border: 1.5px dashed #b8bfca;
+  border-radius: var(--radius);
+  padding: 28px 18px;
+  text-align: center;
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px;
 }
+.dropzone:hover, .dropzone.sobre { border-color: var(--primary); background: var(--primary-light); }
+.dropzone .dz-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: #fff; border: 1px solid var(--border);
+  display: grid; place-items: center; color: var(--primary); margin-bottom: 6px;
+}
+.dropzone .dz-icon svg { width: 22px; height: 22px; }
+.dropzone .dz-title { font-weight: 600; font-size: 0.95rem; color: var(--text); }
+.dropzone .dz-sub { font-size: 0.8rem; color: var(--muted); }
+
+/* ---------- Cola y progreso ---------- */
+.cola-lista { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 6px; }
 .cola-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: #f8fafc;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.88rem;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 8px; font-size: 0.86rem;
 }
-
 .progreso-item {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px 14px;
-  margin-top: 12px;
-  background: #ffffff;
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 14px; margin-top: 12px; background: #fff;
 }
-.barra-fondo {
-  height: 9px;
-  background: #e2e8f0;
-  border-radius: 999px;
-  overflow: hidden;
-  margin-top: 6px;
-}
-.barra-relleno {
-  height: 100%;
-  background: linear-gradient(90deg, #2563eb, #0d9488);
-  width: 0%;
-  transition: width 0.25s;
-}
+.barra-fondo { height: 7px; background: #e9ecf1; border-radius: 999px; overflow: hidden; margin-top: 6px; }
+.barra-relleno { height: 100%; background: var(--primary); width: 0%; transition: width 0.25s; }
 
-/* Diagnóstico claro en Paso 3 */
-.diagnostico-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-bottom: 16px;
+/* ---------- Paso 3 ---------- */
+.grupo-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; flex-wrap: wrap;
 }
-@media (max-width: 780px) {
-  .diagnostico-grid { grid-template-columns: 1fr; }
-}
+.grupo-bar select { width: auto; min-width: 200px; font-weight: 600; }
+.diagnostico-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+@media (max-width: 900px) { .diagnostico-grid { grid-template-columns: 1fr; } }
 .diag-box {
-  border: 2px solid var(--border);
-  border-radius: 10px;
-  padding: 14px;
-  background: #f8fafc;
-}
-.diag-box.ok {
-  border-color: #86efac;
-  background: #f0fdf4;
-}
-.diag-box.warn {
-  border-color: #fde68a;
-  background: #fffbeb;
-}
-.diag-box h4 {
-  margin: 0 0 6px;
-  font-size: 0.95rem;
-}
-.diag-box p {
-  margin: 0;
-  font-size: 0.85rem;
-  color: #334155;
-}
-
-/* Reproductor sticky Paso 3 */
-.player-sticky {
-  position: sticky;
-  top: 8px;
-  z-index: 25;
-  background: #0f172a;
-  color: #f8fafc;
-  padding: 10px 14px;
-  border-radius: 10px;
-  margin-bottom: 16px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.2);
-}
-.player-sticky audio {
-  flex: 1;
-  min-width: 240px;
-  height: 36px;
-}
-
-/* Tarjetas de hablantes en Paso 3 */
-.hablantes-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
-  gap: 14px;
-  margin-bottom: 18px;
-}
-.spk-card {
-  border: 2px solid var(--border);
-  border-radius: 10px;
-  padding: 14px;
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.spk-card.es-mi-voz {
-  border-color: #16a34a;
-  background: #f0fdf4;
-}
-.spk-card.silenciado {
-  border-color: #fca5a5;
-  background: #fef2f2;
-  opacity: 0.82;
-}
-.spk-frases-preview {
-  font-size: 0.8rem;
-  color: #475569;
-  background: #f8fafc;
-  border-left: 3px solid #cbd5e1;
-  padding: 6px 8px;
-  border-radius: 4px;
-  font-style: italic;
-}
-
-/* Tabla de segmentos */
-.segmentos-wrap {
-  max-height: 430px;
-  overflow-y: auto;
   border: 1px solid var(--border);
+  border-left: 4px solid var(--border-strong);
   border-radius: 10px;
-  background: #f8fafc;
-  padding: 8px;
+  padding: 14px 16px;
+  background: #fff;
+}
+.diag-box.ok { border-left-color: var(--ok); background: #fbfefc; }
+.diag-box.warn { border-left-color: var(--warn); background: #fffdf7; }
+.diag-box h4 { margin: 0 0 6px; font-size: 0.88rem; font-weight: 650; }
+.diag-box p { margin: 0; font-size: 0.85rem; color: var(--text-2); }
+
+.player-sticky {
+  position: sticky; top: 10px; z-index: 25;
+  background: #111827; color: #f9fafb;
+  padding: 10px 14px; border-radius: 12px; margin-bottom: 16px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  box-shadow: 0 8px 24px rgba(17,24,39,0.22);
+}
+.player-sticky audio { flex: 1; min-width: 240px; height: 36px; }
+
+.hablantes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.spk-card {
+  border: 1px solid var(--border); border-radius: 12px; padding: 14px;
+  background: #fff; display: flex; flex-direction: column; gap: 10px;
+  box-shadow: var(--shadow-sm);
+}
+.spk-card.es-mi-voz { border-color: #86efac; box-shadow: 0 0 0 3px rgba(22,163,74,0.12); background: #fbfefc; }
+.spk-card.silenciado { border-color: #fecaca; background: #fffafa; opacity: 0.8; }
+.spk-frases-preview {
+  font-size: 0.8rem; color: #4b5563; background: var(--surface-2);
+  border-left: 3px solid var(--border-strong); padding: 6px 9px; border-radius: 4px; font-style: italic;
+}
+
+.segmentos-wrap {
+  max-height: 460px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-2); padding: 8px;
 }
 .seg-row {
-  display: grid;
-  grid-template-columns: auto 155px 1fr auto;
-  gap: 8px;
-  align-items: start;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  margin-bottom: 6px;
+  display: grid; grid-template-columns: auto 155px 1fr auto; gap: 8px; align-items: start;
+  padding: 8px 10px; border-radius: 8px; background: #fff;
+  border: 1px solid #eceef1; margin-bottom: 6px;
 }
-@media (max-width: 720px) {
-  .seg-row { grid-template-columns: 1fr; }
-}
-.seg-row.seg-silenciado { opacity: 0.45; background: #fef2f2; }
+@media (max-width: 720px) { .seg-row { grid-template-columns: 1fr; } }
+.seg-row.seg-silenciado { opacity: 0.45; background: #fffafa; }
 .seg-row.seg-silenciado .seg-texto { text-decoration: line-through; }
-.seg-row.fuera-de-rango { opacity: 0.35; background: #f1f5f9; }
-.seg-row.marca-inicio { border-left: 5px solid #16a34a; }
-.seg-row.marca-fin { border-right: 5px solid #dc2626; }
+.seg-row.fuera-de-rango { opacity: 0.35; background: #f3f4f6; }
+.seg-row.marca-inicio { border-left: 4px solid var(--ok); }
+.seg-row.marca-fin { border-right: 4px solid var(--danger); }
 .seg-time-btn {
-  font-family: monospace;
-  font-size: 0.78rem;
-  padding: 5px 8px;
-  background: #f1f5f9;
-  color: #334155;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
+  font-family: var(--mono); font-size: 0.76rem; padding: 4px 8px;
+  background: #f3f4f6; color: var(--text-2); border: 1px solid var(--border-strong); border-radius: 6px;
 }
 
-/* Paso 4: Video + Subtítulos superpuestos */
+/* ---------- Paso 4 ---------- */
+.vinculo-bar {
+  display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: end;
+}
+@media (max-width: 900px) { .vinculo-bar { grid-template-columns: 1fr; } .vinculo-bar .vinculo-flecha { display: none; } }
+.vinculo-flecha { color: var(--muted); padding-bottom: 8px; }
+.vinculo-flecha svg { width: 20px; height: 20px; }
+.video-col { position: sticky; top: 16px; }
 .video-stage {
-  position: relative;
-  background: #000;
-  border-radius: 12px;
-  overflow: hidden;
-  max-width: 780px;
-  margin: 0 auto 14px;
-  aspect-ratio: 16 / 9;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative; background: #000; border-radius: 12px; overflow: hidden;
+  margin: 0 0 8px; aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center;
 }
-.video-stage video {
-  width: 100%;
-  height: 100%;
-}
-.sub-overlay {
-  position: absolute;
-  bottom: 48px;
-  left: 6%;
-  right: 6%;
-  text-align: center;
-  pointer-events: none;
-  z-index: 10;
-}
+.video-stage video { width: 100%; height: 100%; }
+.sub-overlay { position: absolute; bottom: 48px; left: 6%; right: 6%; text-align: center; pointer-events: none; z-index: 10; }
 .sub-overlay span {
-  display: inline-block;
-  background: rgba(0, 0, 0, 0.82);
-  color: #fff;
-  font-size: 1.08rem;
-  font-weight: 600;
-  padding: 6px 14px;
-  border-radius: 6px;
-  line-height: 1.35;
-  text-shadow: 0 1px 2px #000;
+  display: inline-block; background: rgba(0,0,0,0.82); color: #fff;
+  font-size: 1.05rem; font-weight: 600; padding: 6px 14px; border-radius: 6px;
+  line-height: 1.35; text-shadow: 0 1px 2px #000;
+}
+.paso-num {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px;
+  background: var(--primary-light); color: var(--primary); font-size: 0.75rem; font-weight: 700;
+  margin-right: 6px; vertical-align: 1px;
+}
+
+/* ---------- Paso 5 ---------- */
+.metricas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.metrica { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px; text-align: center; }
+.metrica .valor { font-size: 1.25rem; font-weight: 700; color: var(--text); }
+.metrica .lbl { font-size: 0.72rem; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+
+/* ---------- Estado vacío ---------- */
+.vacio {
+  text-align: center; padding: 56px 24px;
+  border-style: dashed; background: transparent; box-shadow: none;
+}
+.vacio .vacio-icon {
+  width: 52px; height: 52px; margin: 0 auto 12px; border-radius: 14px;
+  background: #fff; border: 1px solid var(--border); display: grid; place-items: center; color: var(--muted);
+}
+.vacio .vacio-icon svg { width: 24px; height: 24px; }
+.vacio h3 { font-size: 1.05rem; margin-bottom: 4px; }
+.vacio p { color: var(--muted); font-size: 0.9rem; margin: 0 auto 16px; max-width: 460px; }
+
+/* ---------- Ayuda (modal) ---------- */
+.modal {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(17,24,39,0.45);
+  display: none; align-items: flex-start; justify-content: center;
+  padding: 5vh 16px; overflow-y: auto;
+}
+.modal.abierto { display: flex; }
+.modal-box {
+  background: #fff; border-radius: 16px; max-width: 860px; width: 100%;
+  box-shadow: 0 24px 60px rgba(17,24,39,0.28); padding: 26px 28px;
+  animation: aparecer 0.18s ease;
+}
+.modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+.modal-head h2 { margin: 0; font-size: 1.25rem; }
+.modal-head p { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+.btn-cerrar { background: transparent; border: 0; color: var(--muted); padding: 6px; border-radius: 8px; }
+.btn-cerrar:hover { background: #f3f4f6; color: var(--text); }
+.btn-cerrar svg { width: 18px; height: 18px; }
+.guia-lista { display: flex; flex-direction: column; gap: 8px; }
+.guia-item {
+  all: unset; box-sizing: border-box; cursor: pointer;
+  display: grid; grid-template-columns: 32px 1fr auto; gap: 12px; align-items: center;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px;
+  transition: border-color 0.12s, background 0.12s;
+}
+.guia-item:hover { border-color: var(--primary-border); background: #fafbff; }
+.guia-item .gnum {
+  width: 30px; height: 30px; border-radius: 8px; background: var(--primary-light);
+  color: var(--primary); display: grid; place-items: center; font-weight: 700; font-size: 0.85rem;
+}
+.guia-item strong { display: block; font-size: 0.92rem; }
+.guia-item span { font-size: 0.82rem; color: var(--muted); }
+.guia-item .ir { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
+.guia-rama { margin-left: 22px; padding-left: 20px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.guia-nota {
+  margin-top: 16px; font-size: 0.82rem; color: var(--text-2);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+}
+
+input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-spacing: 0; }
+#p3-resumen-audio:empty, #p4-preview-sincro:empty, #p4-match-diagnostico:empty { display: none; }
+.badge { max-width: 100%; white-space: normal; }
+.app { background: linear-gradient(to right, #fbfbfc var(--sidebar-w), var(--bg) var(--sidebar-w)); }
+
+/* ---------- Responsive: barra lateral a barra superior ---------- */
+@media (max-width: 860px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar {
+    position: sticky; top: 0; z-index: 50; height: auto;
+    flex-direction: row; align-items: center; gap: 10px;
+    padding: 10px 12px; border-right: 0; border-bottom: 1px solid var(--border);
+    overflow-x: auto; overflow-y: hidden;
+  }
+  .brand-name, .brand-sub, .nav-group-label, .step-btn .step-sub, #git-bar { display: none; }
+  .brand { padding: 0; }
+  .sidebar nav { display: contents; }
+  .pasos-stepper { flex-direction: row; }
+  .step-btn { grid-template-columns: 24px auto; white-space: nowrap; padding: 7px 10px; }
+  .step-btn.activo::before { display: none; }
+  .sidebar-foot { margin: 0; flex-direction: row; }
+  .side-link span { display: none; }
+  .main { padding: 20px 16px 60px; }
+  .app { background: var(--bg); }
 }
 </style>
 </head>
 <body>
 
-<header>
-  <div>
-    <h1>🎙️ Estudio de Audio, Hablantes por Grupo, Subtítulos y Estilo ML</h1>
-    <p>Recorte por minuto:segundo · Transcripción IA o Tactiq/YouTube · Reconocimiento de Hablantes · Subtítulos para videos sin audio · Guiones a tu Estilo</p>
+<!-- Íconos reutilizables -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 7.5h4M3 12h18M3 16.5h4M17 7.5h4M17 16.5h4"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-cc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M10 10.5a2 2 0 1 0 0 3M17 10.5a2 2 0 1 0 0 3"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></symbol>
+    <symbol id="i-git" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="9" r="3"/><path d="M6 9v6M18 12c0 3-3 4-9 5"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+
+<!-- ====================================================================== -->
+<!-- BARRA LATERAL                                                          -->
+<!-- ====================================================================== -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-logo"><svg><use href="#i-wave"/></svg></div>
+    <div>
+      <div class="brand-name">Estudio de Audio</div>
+      <div class="brand-sub">100% local en tu PC</div>
+    </div>
   </div>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <button type="button" class="btn-outline btn-xs" id="btn-toggle-guia" onclick="toggleGuiaBienvenida()" style="background:#eff6ff;border-color:#93c5fd;color:#1d4ed8">
-      ❓ ¿Qué hace esta app? (Ocultar / Ver guía)
+
+  <nav class="pasos-stepper" id="stepper-nav" aria-label="Secciones">
+    <div class="nav-group-label">Flujo de trabajo</div>
+    <button type="button" class="step-btn activo" data-step="1">
+      <span class="step-num">1</span>
+      <span class="step-title">Video / Audio</span>
+      <span class="step-sub">Extraer MP3 y recortar</span>
+    </button>
+    <button type="button" class="step-btn" data-step="2">
+      <span class="step-num">2</span>
+      <span class="step-title">Transcripción</span>
+      <span class="step-sub">Whisper o subir archivo</span>
+    </button>
+    <button type="button" class="step-btn" data-step="3">
+      <span class="step-num">3</span>
+      <span class="step-title">Hablantes y mi voz</span>
+      <span class="step-sub">Etiquetar, silenciar, aislar</span>
+    </button>
+    <button type="button" class="step-btn" data-step="4">
+      <span class="step-num">4</span>
+      <span class="step-title">Subtítulos y video</span>
+      <span class="step-sub">Sincronizar y exportar</span>
+    </button>
+    <div class="nav-group-label" style="margin-top:14px">Herramientas IA</div>
+    <button type="button" class="step-btn" data-step="5">
+      <span class="step-num"><svg><use href="#i-spark"/></svg></span>
+      <span class="step-title">Mi estilo y guiones</span>
+      <span class="step-sub">Entrenar y convertir textos</span>
+    </button>
+  </nav>
+
+  <div class="sidebar-foot">
+    <button type="button" class="side-link" id="btn-toggle-guia" onclick="toggleGuiaBienvenida()">
+      <svg><use href="#i-help"/></svg><span>Cómo funciona</span>
     </button>
     <div id="git-bar">
-      <span>🐙</span>
-      <strong id="git-estado-txt">GitHub: Verificando…</strong>
-      <button type="button" class="btn-outline btn-xs" id="btn-git-sinc">🔄 Sincronizar</button>
-      <button type="button" class="btn-outline btn-xs" id="btn-git-cfg" style="display:none">⚙️ Configurar</button>
+      <div class="git-head"><svg><use href="#i-git"/></svg> GitHub</div>
+      <strong id="git-estado-txt">Verificando…</strong>
+      <div class="git-acciones">
+        <button type="button" class="btn-outline btn-xs" id="btn-git-sinc">Sincronizar</button>
+        <button type="button" class="btn-outline btn-xs" id="btn-git-cfg" style="display:none">Configurar</button>
+      </div>
     </div>
   </div>
-</header>
+</aside>
 
-<!-- RESUMEN DE BIENVENIDA PARA QUIEN INGRESA POR PRIMERA VEZ -->
-<div class="card" id="card-bienvenida-guia" style="background:linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%);border:1.5px solid #bfdbfe;padding:16px 18px;margin-bottom:16px">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-    <div>
-      <h2 style="margin:0;font-size:1.05rem;color:#1e3a8a">👋 ¡Bienvenida/o! ¿Qué hace esta aplicación y cómo empezar?</h2>
-      <p style="margin:4px 0 0;font-size:0.84rem;color:#334155">
-        Esta aplicación procesa <strong>100% en tu PC</strong> tus grabaciones de audio y video. <strong>No es obligatorio empezar por el Paso 1</strong>: hacé clic directo en la pestaña que necesites según lo que quieras hacer hoy:
-      </p>
+<!-- ====================================================================== -->
+<!-- AYUDA: CÓMO FUNCIONA (se abre sola la primera vez)                      -->
+<!-- ====================================================================== -->
+<div class="modal" id="card-bienvenida-guia" role="dialog" aria-modal="true" aria-labelledby="guia-titulo" onclick="if(event.target===this) toggleGuiaBienvenida(false)">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div>
+        <h2 id="guia-titulo">Cómo funciona</h2>
+        <p>Todo se procesa en tu PC. No hace falta empezar por el paso 1: entrá directo a la sección que necesites según el archivo que tengas.</p>
+      </div>
+      <button type="button" class="btn-cerrar" onclick="toggleGuiaBienvenida(false)" aria-label="Cerrar"><svg><use href="#i-x"/></svg></button>
     </div>
-    <button type="button" class="btn-outline btn-xs" onclick="toggleGuiaBienvenida()">▲ Ocultar resumen</button>
-  </div>
 
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:10px;font-size:0.81rem">
-    <div style="background:#fff;border:1px solid #dbeafe;border-radius:10px;padding:10px;cursor:pointer" onclick="irAPaso(1)">
-      <strong style="color:#1d4ed8;display:block;margin-bottom:3px">1️⃣ Video/Audio a MP3 y Recorte</strong>
-      Convertí videos o audios a <code>.MP3</code>, o <strong>recortá Videos (<code>.MP4</code>) y Audios</strong> indicando el <strong>minuto y segundo</strong> exacto de inicio y fin.
-    </div>
-    <div style="background:#fff;border:1px solid #dbeafe;border-radius:10px;padding:10px;cursor:pointer" onclick="irAPaso(2)">
-      <strong style="color:#1d4ed8;display:block;margin-bottom:3px">2️⃣ Transcribir o Subir Texto</strong>
-      Transcribí un MP3 con IA (Whisper) <strong>o subí una transcripción ya hecha</strong> (detecta sola si viene de <strong>Tactiq, YouTube, Whisper o SRT</strong>).
-    </div>
-    <div style="background:#fff;border:1px solid #dbeafe;border-radius:10px;padding:10px;cursor:pointer" onclick="irAPaso(3)">
-      <strong style="color:#1d4ed8;display:block;margin-bottom:3px">3️⃣ Hablantes, Mi Voz y Recorte</strong>
-      Organizá hablantes en <strong>Grupos</strong> (subiendo lista en Excel), etiquetá automático por <strong>presentación de voz o Tactiq</strong>, silenciá hablantes, recortá por <code>mm:ss</code> y aislá <strong>tu voz limpia</strong>.
-    </div>
-    <div style="background:#fff;border:1px solid #dbeafe;border-radius:10px;padding:10px;cursor:pointer" onclick="irAPaso(4)">
-      <strong style="color:#1d4ed8;display:block;margin-bottom:3px">4️⃣ Subtítulos y Video sin Audio</strong>
-      ¿Un video de Drive se grabó sin audio pero tenés la transcripción? Sincronizá el texto con el video y descargá los subtítulos <code>.SRT</code> o el <code>.MP4</code> subtitulado.
-    </div>
-    <div style="background:#fff;border:1px solid #dbeafe;border-radius:10px;padding:10px;cursor:pointer" onclick="irAPaso(5)">
-      <strong style="color:#1d4ed8;display:block;margin-bottom:3px">5️⃣ Mi Estilo (ML) y Guiones</strong>
-      Entrená un modelo ML con tus transcripciones para que aprenda tus muletillas y forma de explicar, enviale cualquier <strong>guión</strong> y lo reescribe a <strong>tu estilo</strong>.
-    </div>
-  </div>
-  <!-- DIAGRAMA DE FLUJO VERTICAL (DE ARRIBA HACIA ABAJO) -->
-  <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #93c5fd">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-      <strong style="font-size:0.9rem;color:#1e3a8a">📊 Diagrama de Flujo del Trabajo (De arriba hacia abajo — hacé clic en cualquier bloque para ir directo):</strong>
-      <button type="button" class="btn-outline btn-xs" onclick="const el=document.getElementById('wf-diagrama-box'); el.style.display = el.style.display==='none' ? 'flex' : 'none';">
-        ↕ Mostrar / Ocultar diagrama de flujo
+    <div class="guia-lista">
+      <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(1)">
+        <span class="gnum">1</span>
+        <div><strong>Video / Audio</strong><span>Subís un video o audio y obtenés el MP3, o recortás el video o el audio por minuto:segundo.</span></div>
+        <span class="ir">Ir →</span>
       </button>
+      <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(2)">
+        <span class="gnum">2</span>
+        <div><strong>Transcripción</strong><span>A: transcribir un MP3 acá con Whisper (separa las voces). B: subir una ya hecha; detecta sola si es de Tactiq, YouTube, Whisper o SRT.</span></div>
+        <span class="ir">Ir →</span>
+      </button>
+      <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(3)">
+        <span class="gnum">3</span>
+        <div><strong>Hablantes y mi voz</strong><span>Grupos de hablantes (con lista desde Excel), matcheo automático por presentación o por Tactiq, silenciar hablantes, recortar y exportar tu voz limpia (MP3, WAV o dataset ZIP).</span></div>
+        <span class="ir">Ir →</span>
+      </button>
+      <div class="guia-rama">
+        <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(4)">
+          <span class="gnum">4</span>
+          <div><strong>Subtítulos y video</strong><span>Para videos que se grabaron sin audio: sincronizás la transcripción con el video y exportás SRT / VTT o el MP4 subtitulado.</span></div>
+          <span class="ir">Ir →</span>
+        </button>
+        <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(5)">
+          <span class="gnum"><svg width="15" height="15"><use href="#i-spark"/></svg></span>
+          <div><strong>Mi estilo y guiones</strong><span>Entrena un modelo con tus transcripciones (muletillas, conectores, ritmo) y reescribe cualquier guión con tu forma de hablar.</span></div>
+          <span class="ir">Ir →</span>
+        </button>
+      </div>
     </div>
 
-    <div id="wf-diagrama-box" style="display:flex;flex-direction:column;align-items:center;gap:4px;max-width:860px;margin:0 auto;font-size:0.81rem">
-      <!-- NODO 1: PASO 1 -->
-      <div onclick="irAPaso(1)" style="width:100%;max-width:680px;background:#fff;border:2px solid #3b82f6;border-radius:10px;padding:10px 14px;cursor:pointer;box-shadow:0 2px 5px rgba(37,99,235,0.08);text-align:center">
-        <div style="font-weight:800;color:#1d4ed8;font-size:0.88rem">📥 PASO 1 · Cargar Video o Audio · Extraer MP3 o Recortar por Minuto y Segundo (mm:ss)</div>
-        <div style="color:#475569;margin-top:2px">Subís un video o audio → Extrae el <code>.MP3</code> o recorta el <strong>Video (<code>.MP4</code>) / Audio (<code>.MP3</code>)</strong> diciendo <em>Desde (min:seg)</em> y <em>Hasta (min:seg)</em></div>
-      </div>
-
-      <div style="font-size:1.15rem;color:#2563eb;font-weight:900;line-height:1">↓</div>
-
-      <!-- NODO 2: PASO 2 (Bifurcación Opción A / Opción B) -->
-      <div onclick="irAPaso(2)" style="width:100%;max-width:760px;background:#fff;border:2px solid #2563eb;border-radius:10px;padding:10px 14px;cursor:pointer;box-shadow:0 2px 5px rgba(37,99,235,0.08)">
-        <div style="font-weight:800;color:#1d4ed8;font-size:0.88rem;text-align:center;margin-bottom:6px">📝 PASO 2 · Obtener la Transcripción (Elegís uno de los 2 caminos)</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 10px;text-align:center">
-            <strong style="color:#1e40af;display:block">🗣️ Camino A: Transcribir acá con IA (Whisper)</strong>
-            <span>Transcribe el MP3 en tu PC y separa las voces</span>
-          </div>
-          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 10px;text-align:center">
-            <strong style="color:#1e40af;display:block">📄 Camino B: Subir Transcripción ya hecha</strong>
-            <span>Detecta sola si es de <strong>Tactiq, YouTube, Whisper o SRT</strong></span>
-          </div>
-        </div>
-      </div>
-
-      <div style="font-size:1.15rem;color:#2563eb;font-weight:900;line-height:1">↓</div>
-
-      <!-- NODO 3: PASO 3 -->
-      <div onclick="irAPaso(3)" style="width:100%;max-width:760px;background:#fff;border:2px solid #059669;border-radius:10px;padding:10px 14px;cursor:pointer;box-shadow:0 2px 5px rgba(5,150,105,0.1);text-align:center">
-        <div style="font-weight:800;color:#047857;font-size:0.88rem">👥 PASO 3 · Hablantes por Grupo, Auto-Matcheo Inicial, Recorte (mm:ss) y Aislar Mi Voz</div>
-        <div style="color:#334155;margin-top:3px">
-          • <strong>Grupos de Hablantes</strong> + Lista desde <strong>Excel (<code>.xlsx</code>)</strong> ·
-          • <strong>Auto-Matcheo Inicial</strong> (detecta <em>"mi nombre es..."</em> en el audio o sincroniza con <strong>Tactiq</strong>) y guarda las huellas de voz ·<br>
-          • <strong>Silenciar hablantes</strong> · <strong>Recortar Voz y Transcripción por minuto:segundo o frase</strong> ·
-          • <strong>Aislar solo tu voz limpia</strong> (<code>.MP3</code> / <code>.WAV</code> / <code>Dataset .ZIP</code>)
-        </div>
-      </div>
-
-      <!-- FLECHAS DE RAMIFICACIÓN HACIA PASO 4 Y PESTAÑA 5 -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;width:100%;max-width:760px;text-align:center;font-size:1.1rem;color:#4f46e5;font-weight:900;line-height:1.1">
-        <div>↙</div>
-        <div>↘</div>
-      </div>
-
-      <!-- NODOS 4 Y 5 EN PARALELO AL FINAL DEL FLUJO -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:760px">
-        <div onclick="irAPaso(4)" style="background:#fff;border:2px solid #7c3aed;border-radius:10px;padding:10px 12px;cursor:pointer;box-shadow:0 2px 5px rgba(124,58,237,0.1);text-align:center">
-          <div style="font-weight:800;color:#6d28d9;font-size:0.86rem">🎬 PASO 4 · Subtítulos y Video sin Audio (Drive)</div>
-          <div style="color:#475569;margin-top:3px">
-            Sincroniza la transcripción con un video grabado sin audio, recorta el video por <code>mm:ss</code> y exporta los subtítulos <strong><code>.SRT / .VTT</code></strong> o el <strong><code>.MP4</code> subtitulado</strong>.
-          </div>
-        </div>
-
-        <div onclick="irAPaso(5)" style="background:#fff;border:2px solid #4f46e5;border-radius:10px;padding:10px 12px;cursor:pointer;box-shadow:0 2px 5px rgba(79,70,229,0.1);text-align:center">
-          <div style="font-weight:800;color:#4338ca;font-size:0.86rem">🧠 PESTAÑA 5 · Modelo ML de Mi Estilo y Guiones</div>
-          <div style="color:#475569;margin-top:3px">
-            Entrena un modelo ML con tus transcripciones (aprende tus muletillas y forma de hablar) y convierte cualquier <strong>guión neutro a tu estilo</strong>.
-            <div style="margin-top:4px;font-size:0.74rem;color:#6b21a8;background:#faf5ff;border:1px dashed #c084fc;border-radius:5px;padding:2px 6px">
-              🚀 <em>A futuro: pasar el guión convertido a audio hablado con tu voz clonada</em>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div class="guia-nota">
+      <strong>Próximas etapas:</strong> clonar tu voz (XTTS / F5-TTS / RVC) con el dataset del paso 3 para pasar el guión convertido directo a audio con tu voz, y organizar los grupos de hablantes en niveles (categoría → área → subgrupo).
     </div>
   </div>
 </div>
 
-<!-- BARRA DE 4 PASOS CLAROS -->
-<nav class="pasos-stepper" id="stepper-nav">
-  <button type="button" class="step-btn activo" data-step="1">
-    <span class="step-num">Paso 1</span>
-    <span class="step-title">🎵 Video / Audio a MP3</span>
-    <span class="step-sub">Extraer o convertir a MP3 con recorte por minuto</span>
-  </button>
-  <button type="button" class="step-btn" data-step="2">
-    <span class="step-num">Paso 2</span>
-    <span class="step-title">📝 Transcripción</span>
-    <span class="step-sub">Transcribir con IA o subir de Tactiq / YouTube / Whisper</span>
-  </button>
-  <button type="button" class="step-btn" data-step="3">
-    <span class="step-num">Paso 3</span>
-    <span class="step-title">👥 Hablantes y Mi Voz</span>
-    <span class="step-sub">Etiquetar por Grupo/Excel, auto-matchear voces y aislar mi voz</span>
-  </button>
-  <button type="button" class="step-btn" data-step="4">
-    <span class="step-num">Paso 4</span>
-    <span class="step-title">🎬 Subtítulos y Video</span>
-    <span class="step-sub">Sincronizar transcripción con video sin audio (Drive)</span>
-  </button>
-  <button type="button" class="step-btn" data-step="5">
-    <span class="step-num">Pestaña 5 · IA</span>
-    <span class="step-title">🧠 Mi Estilo (ML) y Guiones</span>
-    <span class="step-sub">Entrenar modelo con mis transcripciones y convertir guiones</span>
-  </button>
-</nav>
+<main class="main">
+<div class="main-inner">
 
 <!-- ====================================================================== -->
-<!-- PASO 1: CARGAR VIDEO O AUDIO · EXTRAER MP3 O RECORTAR VIDEO (MM:SS)    -->
+<!-- PASO 1: CARGAR VIDEO O AUDIO · EXTRAER MP3 O RECORTAR                  -->
 <!-- ====================================================================== -->
 <section class="step-section activo" id="step-1">
-  <div class="card">
-    <h2>Paso 1: Cargar Video o Audio · Extraer MP3 o Recortar Video por Minuto y Segundo</h2>
-    <p class="sub-desc">
-      Cargá un <strong>video</strong> (MP4, MKV, MOV, AVI) o un <strong>audio</strong> (WAV, M4A, MP3). Podés indicar el <strong>minuto y segundo de inicio y fin</strong> (<code>mm:ss</code> o <code>hh:mm:ss</code>) para obtener el <strong>Audio MP3 recortado</strong>, el <strong>Video MP4 recortado</strong> o ambos.
-    </p>
+  <div class="sec-head">
+    <div>
+      <div class="eyebrow">Paso 1</div>
+      <h1>Video / Audio</h1>
+      <p>Extraé el MP3 de un video o audio, o recortalo por minuto y segundo.</p>
+    </div>
+    <button type="button" class="btn-ghost btn-sm" onclick="irAPaso(2)">Ya tengo el audio: ir a Transcripción →</button>
+  </div>
 
-    <div class="grid-2" style="margin-bottom:16px">
-      <div class="dropzone" id="zona-p1">
-        <div style="font-size:2rem;margin-bottom:6px">📥</div>
-        <div style="font-weight:700;font-size:1rem">Hacé clic o arrastrá acá tu Video o Audio</div>
-        <div style="font-size:0.82rem;color:var(--muted);margin-top:4px">Formatos: MP4, MKV, MOV, AVI, WEBM, WAV, M4A, MP3</div>
-        <input type="file" id="arch-p1" accept=".mkv,.mp4,.mov,.avi,.webm,.mp3,.wav,.m4a,.ogg,video/*,audio/*" multiple hidden>
+  <div class="card">
+    <div class="grid-2-60">
+      <div>
+        <div class="dropzone" id="zona-p1" style="min-height:260px">
+          <div class="dz-icon"><svg><use href="#i-upload"/></svg></div>
+          <div class="dz-title">Arrastrá acá tu video o audio</div>
+          <div class="dz-sub">o hacé clic para elegirlo · MP4, MKV, MOV, AVI, WEBM, WAV, M4A, MP3</div>
+          <input type="file" id="arch-p1" accept=".mkv,.mp4,.mov,.avi,.webm,.mp3,.wav,.m4a,.ogg,video/*,audio/*" multiple hidden>
+        </div>
       </div>
 
-      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;justify-content:space-between;gap:12px">
+      <div class="stack">
+        <div class="campo">
+          <label for="p1-modo-salida">¿Qué querés obtener?</label>
+          <select id="p1-modo-salida">
+            <option value="mp3" selected>Audio MP3</option>
+            <option value="video_mp4">Video MP4 recortado</option>
+            <option value="ambos">Ambos: MP3 + video MP4 recortado</option>
+          </select>
+        </div>
+
         <div>
-          <strong style="font-size:0.95rem;color:#1e3a8a">✂️ Recorte por Minuto y Segundo (Video o Voz/Audio)</strong>
-          <div class="grid-2" style="margin-top:10px;gap:10px">
+          <label class="lbl">Recorte <span style="font-weight:400;color:var(--muted)">(opcional · vacío = archivo completo)</span></label>
+          <div class="grid-2" style="gap:10px">
             <div class="campo">
-              <label for="p1-desde">⏱️ Desde (minuto:segundo)</label>
-              <input id="p1-desde" type="text" placeholder="ej. 02:15 o 00:10:30" style="font-family:monospace;font-weight:700">
+              <input id="p1-desde" class="tiempo" type="text" placeholder="Desde · 02:15" aria-label="Desde (minuto:segundo)">
             </div>
             <div class="campo">
-              <label for="p1-hasta">⏱️ Hasta (minuto:segundo)</label>
-              <input id="p1-hasta" type="text" placeholder="ej. 45:20 o 01:05:00" style="font-family:monospace;font-weight:700">
+              <input id="p1-hasta" class="tiempo" type="text" placeholder="Hasta · 45:20" aria-label="Hasta (minuto:segundo)">
             </div>
+          </div>
+        </div>
+
+        <details class="plegable" style="margin:0">
+          <summary>Opciones del MP3 <span class="hint">· 192 kbps, mono</span></summary>
+          <div class="plegable-body stack" style="gap:10px">
             <div class="campo">
-              <label for="p1-modo-salida">¿Qué querés obtener?</label>
-              <select id="p1-modo-salida" style="font-weight:700">
-                <option value="mp3" selected>🎵 Audio MP3 (extraer / recortar voz)</option>
-                <option value="video_mp4">🎬 Video MP4 recortado (entre Desde y Hasta)</option>
-                <option value="ambos">⚡ Ambos: Audio MP3 + Video MP4 recortado</option>
-              </select>
-            </div>
-            <div class="campo">
-              <label for="p1-cal">Calidad MP3</label>
+              <label for="p1-cal">Calidad</label>
               <select id="p1-cal">
                 <option value="128k">128 kbps</option>
                 <option value="192k" selected>192 kbps (recomendada)</option>
                 <option value="320k">320 kbps (alta calidad)</option>
               </select>
             </div>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:10px">
-            <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;cursor:pointer">
-              <input type="checkbox" id="p1-mono" checked>
-              <span>Canal <strong>Mono</strong> en MP3 (recomendado para voz)</span>
-            </label>
-            <div style="display:flex;align-items:center;gap:6px;font-size:0.82rem">
-              <span>Límite MB:</span>
-              <input id="p1-mb" type="number" min="1" step="0.5" placeholder="sin límite" style="width:90px;padding:5px 8px">
+            <label class="check"><input type="checkbox" id="p1-mono" checked><span>Mono (recomendado para voz)</span></label>
+            <div class="row">
+              <label for="p1-mb" style="font-size:0.82rem;color:var(--text-2)">Tamaño máximo (MB):</label>
+              <input id="p1-mb" type="number" min="1" step="0.5" placeholder="sin límite" style="width:110px">
             </div>
           </div>
-        </div>
+        </details>
 
-        <button type="button" class="btn-primary" id="btn-p1-convertir" disabled style="width:100%;justify-content:center">
-          🚀 Procesar / Recortar Archivo(s)
-        </button>
+        <button type="button" class="btn-primary btn-block btn-lg" id="btn-p1-convertir" disabled>Procesar archivo(s)</button>
       </div>
     </div>
 
-    <div id="p1-cola-box" style="display:none">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <strong id="p1-cola-titulo" style="font-size:0.9rem">Archivos seleccionados (0)</strong>
+    <div id="p1-cola-box" style="display:none;margin-top:16px">
+      <div class="row-between">
+        <strong id="p1-cola-titulo" style="font-size:0.88rem">Archivos seleccionados (0)</strong>
         <button type="button" class="btn-danger-soft btn-xs" id="btn-p1-limpiar">Vaciar lista</button>
       </div>
       <ul class="cola-lista" id="p1-cola-lista"></ul>
@@ -3523,413 +3617,371 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     <div id="p1-progreso"></div>
   </div>
 
-  <!-- Recortar rápido un archivo que ya está en /audios sin volver a subirlo -->
   <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-      <div style="flex:1;min-width:260px">
-        <h3 style="margin:0">📂 Archivos ya guardados en <code>audios/</code> (Recortar por minuto:segundo o ir al Paso 2)</h3>
-        <p style="font-size:0.83rem;color:var(--muted);margin:3px 0 8px">
-          Podés elegir un audio o video que ya esté en tu carpeta <code>audios/</code> y recortarlo por minuto y segundo (arriba) sin volver a subirlo, o pasar directo al Paso 2.
-        </p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <select id="p1-sel-existente" style="max-width:340px"></select>
-          <button type="button" class="btn-outline btn-sm" id="btn-p1-recortar-existente">
-            ✂️ Recortar este archivo con el Desde / Hasta de arriba
-          </button>
-        </div>
+    <div class="card-head" style="margin-bottom:10px">
+      <div>
+        <h3>Archivos ya guardados en <code>audios/</code></h3>
+        <p>Recortá uno que ya tengas sin volver a subirlo (usa el Desde / Hasta de arriba).</p>
       </div>
-      <button type="button" class="btn-secondary btn-sm" onclick="irAPaso(2)">👉 Ir directo al Paso 2: Transcripción</button>
+    </div>
+    <div class="row">
+      <select id="p1-sel-existente" style="flex:1;min-width:220px;max-width:460px"></select>
+      <button type="button" class="btn-outline btn-sm" id="btn-p1-recortar-existente">Recortar este archivo</button>
     </div>
   </div>
 </section>
 
 <!-- ====================================================================== -->
-<!-- PASO 2: TRANSCRIBIR CON IA O SUBIR TRANSCRIPCIÓN (TACTIQ/YOUTUBE/ETC) -->
+<!-- PASO 2: TRANSCRIBIR CON IA O SUBIR TRANSCRIPCIÓN                       -->
 <!-- ====================================================================== -->
 <section class="step-section" id="step-2">
-  <!-- Sesiones ya guardadas para abrir sin esperar -->
+  <div class="sec-head">
+    <div>
+      <div class="eyebrow">Paso 2</div>
+      <h1>Transcripción</h1>
+      <p>Abrí una que ya procesaste, transcribí un audio con Whisper o subí una hecha en otro lado.</p>
+    </div>
+  </div>
+
   <div class="card" id="card-sesiones-previas">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+    <div class="card-head" style="margin-bottom:10px">
       <div>
-        <h2 style="margin:0">⚡ Transcripciones ya procesadas (Abrir al instante)</h2>
-        <p style="font-size:0.84rem;color:var(--muted);margin:2px 0 0">
-          Tus transcripciones se guardan automáticamente en disco. Hacé clic en cualquiera para abrirla en el Paso 3 o Paso 4 sin volver a esperar.
-        </p>
+        <h2>Transcripciones guardadas</h2>
+        <p>Hacé clic en una para abrirla al instante en el paso 3 o 4.</p>
       </div>
     </div>
-    <div id="lista-sesiones-guardadas" style="display:flex;flex-direction:column;gap:8px">
+    <div id="lista-sesiones-guardadas" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto">
       <span style="font-size:0.85rem;color:var(--muted)">Cargando transcripciones guardadas…</span>
     </div>
   </div>
 
   <div class="grid-2">
-    <!-- OPCIÓN A: TRANSCRIBIR CON WHISPER -->
-    <div class="card">
-      <h2>Opción A: 🗣️ Transcribir un audio MP3 acá (con Whisper)</h2>
-      <p class="sub-desc">Elegí el MP3 que extrajiste en el Paso 1 (o cualquier audio de tu carpeta <code>audios/</code>) para transcribirlo y separar las voces de los hablantes.</p>
+    <!-- OPCIÓN A -->
+    <div class="card" style="margin-bottom:0">
+      <span class="card-tag">Opción A</span>
+      <h2>Transcribir un audio con Whisper</h2>
+      <p class="sub-desc">Se transcribe en tu PC y separa las voces de los hablantes.</p>
 
-      <div class="campo" style="margin-bottom:12px">
-        <label for="p2-sel-mp3">1. Elegí el archivo de audio MP3:</label>
-        <select id="p2-sel-mp3">
-          <option value="">Cargando audios…</option>
-        </select>
-      </div>
-
-      <div class="grid-2" style="margin-bottom:12px">
+      <div class="stack">
         <div class="campo">
-          <label for="p2-modelo">2. Modelo de IA:</label>
-          <select id="p2-modelo">
-            <option value="base">Whisper Base (más rápido)</option>
-            <option value="small" selected>Whisper Small (más preciso)</option>
+          <label for="p2-sel-mp3">Audio de <code>audios/</code></label>
+          <select id="p2-sel-mp3">
+            <option value="">Cargando audios…</option>
           </select>
         </div>
-        <div class="campo">
-          <label for="p2-hablantes">3. Cantidad de hablantes a separar:</label>
-          <select id="p2-hablantes">
-            <option value="0" selected>Automático (detectar entre 2 y 6)</option>
-            <option value="1">1 solo hablante</option>
-            <option value="2">2 hablantes</option>
-            <option value="3">3 hablantes</option>
-            <option value="4">4 hablantes</option>
-            <option value="5">5 hablantes</option>
-            <option value="6">6 hablantes</option>
-          </select>
-        </div>
-      </div>
 
-      <!-- Recorte opcional de audio antes de transcribir -->
-      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:12px">
-        <strong style="font-size:0.82rem;display:block;margin-bottom:6px">✂️ Opcional: Transcribir solo un tramo por minuto y segundo</strong>
-        <div class="grid-2" style="gap:8px">
+        <div class="grid-2" style="gap:10px">
           <div class="campo">
-            <label for="p2-desde" style="font-size:0.78rem">⏱️ Desde (min:seg)</label>
-            <input type="text" id="p2-desde" placeholder="ej. 03:15 (vacío = desde 00:00)" style="font-family:monospace">
+            <label for="p2-modelo">Modelo</label>
+            <select id="p2-modelo">
+              <option value="base">Base (más rápido)</option>
+              <option value="small" selected>Small (más preciso)</option>
+            </select>
           </div>
           <div class="campo">
-            <label for="p2-hasta" style="font-size:0.78rem">⏱️ Hasta (min:seg)</label>
-            <input type="text" id="p2-hasta" placeholder="ej. 28:40 (vacío = hasta el final)" style="font-family:monospace">
+            <label for="p2-hablantes">Hablantes</label>
+            <select id="p2-hablantes">
+              <option value="0" selected>Automático (2 a 6)</option>
+              <option value="1">1 solo hablante</option>
+              <option value="2">2 hablantes</option>
+              <option value="3">3 hablantes</option>
+              <option value="4">4 hablantes</option>
+              <option value="5">5 hablantes</option>
+              <option value="6">6 hablantes</option>
+            </select>
           </div>
         </div>
       </div>
 
-      <button type="button" class="btn-primary" id="btn-p2-transcribir" style="width:100%;justify-content:center">
-        🚀 Transcribir Audio y Pasar al Paso 3
-      </button>
+      <details class="plegable">
+        <summary>Transcribir solo un tramo <span class="hint">· opcional</span></summary>
+        <div class="plegable-body grid-2" style="gap:10px">
+          <div class="campo">
+            <label for="p2-desde">Desde</label>
+            <input type="text" id="p2-desde" class="tiempo" placeholder="03:15 (vacío = inicio)">
+          </div>
+          <div class="campo">
+            <label for="p2-hasta">Hasta</label>
+            <input type="text" id="p2-hasta" class="tiempo" placeholder="28:40 (vacío = final)">
+          </div>
+        </div>
+      </details>
+
+      <button type="button" class="btn-primary btn-block btn-lg" id="btn-p2-transcribir">Transcribir y pasar al paso 3</button>
       <div id="p2-progreso-whisper"></div>
     </div>
 
-    <!-- OPCIÓN B: SUBIR TRANSCRIPCIÓN YA HECHA -->
-    <div class="card">
-      <h2>Opción B: 📄 Subir una Transcripción ya hecha</h2>
-      <p class="sub-desc">
-        Si ya tenés la transcripción, subila acá para seguir directo al etiquetado de hablantes o armado de subtítulos.
-        <strong>Detecta automáticamente si el formato es de Tactiq, de YouTube, de Whisper o SRT.</strong>
-      </p>
+    <!-- OPCIÓN B -->
+    <div class="card" style="margin-bottom:0">
+      <span class="card-tag">Opción B</span>
+      <h2>Subir una transcripción ya hecha</h2>
+      <p class="sub-desc">Detecta sola si es de Tactiq, YouTube, Whisper o SRT.</p>
 
-      <div class="dropzone" id="zona-p2-trans" style="padding:20px;margin-bottom:12px">
-        <div style="font-size:1.7rem;margin-bottom:4px">📄</div>
-        <div style="font-weight:700;font-size:0.95rem" id="lbl-arch-trans">Hacé clic o arrastrá tu archivo de transcripción (.TXT, .SRT, .VTT, .DOCX, .PDF)</div>
-        <div style="font-size:0.8rem;color:var(--muted);margin-top:3px">Soporta exportaciones de Tactiq, YouTube, Whisper y subtítulos</div>
+      <div class="dropzone" id="zona-p2-trans" style="padding:20px">
+        <div class="dz-icon"><svg><use href="#i-text"/></svg></div>
+        <div class="dz-title" id="lbl-arch-trans">Arrastrá o elegí el archivo</div>
+        <div class="dz-sub">TXT, SRT, VTT, DOCX o PDF</div>
         <input type="file" id="arch-p2-trans" accept=".txt,.srt,.vtt,.sbv,.docx,.pdf,.json" hidden>
       </div>
 
-      <div class="campo" style="margin-bottom:10px">
-        <label for="p2-trans-mp3">Opcional: Vincular con un audio MP3 de <code>audios/</code> (si querés escuchar las voces)</label>
+      <div class="campo" style="margin-top:14px">
+        <label for="p2-trans-mp3">Vincular con un audio <span style="font-weight:400;color:var(--muted)">(opcional, para escuchar las voces)</span></label>
         <select id="p2-trans-mp3">
-          <option value="">— Sin audio (solo trabajar con la transcripción y subtítulos) —</option>
+          <option value="">Sin audio (solo transcripción y subtítulos)</option>
         </select>
       </div>
 
-      <!-- Recorte opcional de transcripción al subir -->
-      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:12px">
-        <strong style="font-size:0.82rem;display:block;margin-bottom:6px">✂️ Opcional: Recortar la transcripción al subirla por minuto y segundo</strong>
-        <div class="grid-2" style="gap:8px;margin-bottom:6px">
-          <div class="campo">
-            <label for="p2-trans-desde" style="font-size:0.78rem">⏱️ Desde (min:seg)</label>
-            <input type="text" id="p2-trans-desde" placeholder="ej. 05:00" style="font-family:monospace">
+      <details class="plegable">
+        <summary>Recortar la transcripción al subirla <span class="hint">· opcional</span></summary>
+        <div class="plegable-body">
+          <div class="grid-2" style="gap:10px;margin-bottom:10px">
+            <div class="campo">
+              <label for="p2-trans-desde">Desde</label>
+              <input type="text" id="p2-trans-desde" class="tiempo" placeholder="05:00">
+            </div>
+            <div class="campo">
+              <label for="p2-trans-hasta">Hasta</label>
+              <input type="text" id="p2-trans-hasta" class="tiempo" placeholder="40:00">
+            </div>
           </div>
-          <div class="campo">
-            <label for="p2-trans-hasta" style="font-size:0.78rem">⏱️ Hasta (min:seg)</label>
-            <input type="text" id="p2-trans-hasta" placeholder="ej. 40:00" style="font-family:monospace">
-          </div>
+          <label class="check"><input type="checkbox" id="p2-trans-reset"><span>Reiniciar los tiempos a <code>00:00</code> desde el inicio del recorte</span></label>
         </div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:0.8rem;cursor:pointer">
-          <input type="checkbox" id="p2-trans-reset">
-          <span>Reiniciar tiempos a <code>00:00</code> desde el minuto de inicio</span>
-        </label>
-      </div>
+      </details>
 
-      <button type="button" class="btn-secondary" id="btn-p2-subir-trans" disabled style="width:100%;justify-content:center">
-        📂 Cargar Transcripción y Pasar al Paso 3
-      </button>
+      <button type="button" class="btn-secondary btn-block btn-lg" id="btn-p2-subir-trans" disabled>Cargar y pasar al paso 3</button>
       <div id="p2-res-import"></div>
     </div>
   </div>
 </section>
 
 <!-- ====================================================================== -->
-<!-- PASO 3: ETIQUETAR HABLANTES POR GRUPO, AUTO-MATCHEO Y AISLAR MI VOZ    -->
+<!-- PASO 3: HABLANTES POR GRUPO, AUTO-MATCHEO Y MI VOZ                     -->
 <!-- ====================================================================== -->
 <section class="step-section" id="step-3">
-  <div id="p3-vacio" class="card" style="text-align:center;padding:40px 20px">
-    <h3>Todavía no seleccionaste ninguna transcripción activa</h3>
-    <p style="color:var(--muted);font-size:0.9rem">Elegí o abrí una transcripción en el <strong>Paso 2</strong> para etiquetar a los hablantes, matchear voces o extraer tu voz limpia.</p>
-    <button type="button" class="btn-primary" onclick="irAPaso(2)">👈 Ir al Paso 2 para abrir o crear una transcripción</button>
+  <div class="sec-head">
+    <div>
+      <div class="eyebrow">Paso 3</div>
+      <h1>Hablantes y mi voz</h1>
+      <p>Poné nombre a cada voz, silenciá a quien no quieras y exportá el audio o la transcripción recortada.</p>
+    </div>
+  </div>
+
+  <div id="p3-vacio" class="card vacio">
+    <div class="vacio-icon"><svg><use href="#i-users"/></svg></div>
+    <h3>No hay ninguna transcripción abierta</h3>
+    <p>Abrí o creá una en el paso 2 para etiquetar hablantes, matchear voces o extraer tu voz.</p>
+    <button type="button" class="btn-primary" onclick="irAPaso(2)">Ir a Transcripción</button>
   </div>
 
   <div id="p3-contenido" style="display:none">
-    <!-- BARRA DE GRUPO DE HABLANTES -->
-    <div class="card" style="background:#f0f7ff;border-color:#bfdbfe">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-        <div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <strong style="font-size:1.02rem;color:#1e3a8a">🗂️ Grupo de Hablantes activo:</strong>
-            <select id="p3-sel-grupo" style="width:auto;min-width:200px;font-weight:700"></select>
-            <button type="button" class="btn-outline btn-sm" id="btn-nuevo-grupo">➕ Crear nuevo grupo</button>
-          </div>
-          <div style="font-size:0.8rem;color:#475569;margin-top:4px">
-            Los nombres y las huellas de voz quedan guardados dentro de este grupo para reutilizarlos automáticamente en futuras grabaciones (preparado a futuro para organizar por Categoría / Área / Subgrupo).
-          </div>
+    <!-- Grupo activo -->
+    <div class="card" style="padding:14px 18px">
+      <div class="grupo-bar">
+        <div class="row">
+          <label for="p3-sel-grupo" style="font-weight:600;font-size:0.88rem">Grupo de hablantes</label>
+          <select id="p3-sel-grupo"></select>
+          <button type="button" class="btn-outline btn-sm" id="btn-nuevo-grupo">+ Nuevo grupo</button>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <span class="badge badge-azul" id="badge-info-grupo">0 nombres · 0 voces guardadas</span>
-        </div>
+        <span class="badge badge-azul" id="badge-info-grupo">0 nombres · 0 voces guardadas</span>
       </div>
+      <p style="font-size:0.78rem;color:var(--muted);margin:8px 0 0">Los nombres y huellas de voz quedan guardados en el grupo y se reconocen solos en próximas grabaciones.</p>
     </div>
 
-    <!-- CUADRO DE DIAGNÓSTICO CLARO: ¿QUÉ DETECTÓ EL SISTEMA? -->
+    <!-- Diagnóstico -->
     <div class="diagnostico-grid">
       <div class="diag-box" id="diag-hablantes-box">
-        <h4>👥 1. ¿Cuántos hablantes se detectaron?</h4>
+        <h4>Hablantes detectados</h4>
         <p id="diag-hablantes-txt">Analizando…</p>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px">
-          <span style="font-size:0.8rem;font-weight:700">¿Querés separar en otra cantidad?:</span>
-          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="2">2 hablantes</button>
-          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="3">3 hablantes</button>
-          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="4">4 hablantes</button>
-          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="5">5 hablantes</button>
-          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="6">6 hablantes</button>
+        <div class="row" style="margin-top:10px;gap:6px">
+          <span style="font-size:0.78rem;color:var(--muted)">Separar en:</span>
+          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="2">2</button>
+          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="3">3</button>
+          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="4">4</button>
+          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="5">5</button>
+          <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="6">6</button>
         </div>
       </div>
-
       <div class="diag-box" id="diag-mivoz-box">
-        <h4>🎙️ 2. ¿Se detectó tu voz o voces guardadas del grupo?</h4>
+        <h4>Tu voz y voces del grupo</h4>
         <p id="diag-mivoz-txt">Analizando…</p>
       </div>
     </div>
 
-    <!-- REPRODUCTOR STICKY -->
+    <!-- Reproductor -->
     <div class="player-sticky" id="p3-player-bar">
       <audio id="p3-audio" controls preload="metadata"></audio>
-      <div style="font-size:0.84rem;color:#cbd5e1" id="p3-player-info">
-        Usá el botón <strong>"▶ Escuchar ejemplo"</strong> en cada tarjeta abajo para oír la voz de cada hablante.
+      <div style="font-size:0.82rem;color:#d1d5db" id="p3-player-info">
+        Tocá <strong>▶ Escuchar</strong> en cada hablante para oír su voz.
       </div>
     </div>
 
-    <!-- PANEL ESPECIAL: PRIMER MATCHEO DE VOCES (PRESENTACIONES EN AUDIO / EXCEL / TACTIQ) -->
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
-        <div>
-          <h3 style="margin:0;color:#1e3a8a">🪄 Herramientas para Etiquetar Hablantes (Listado Excel + Auto-Matcheo Inicial)</h3>
-          <p style="font-size:0.83rem;color:var(--muted);margin:3px 0 0">
-            Cargá el listado de nombres del grupo y usá el matcheo automático cuando los hablantes dicen su nombre en el audio o si tenés la transcripción de Tactiq.
-          </p>
-        </div>
-      </div>
-
-      <div class="grid-3">
-        <!-- 1. Subir Excel / Listado de nombres -->
-        <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:12px">
-          <strong style="font-size:0.88rem;display:block;margin-bottom:4px">📋 A. Subir Excel o Lista de Nombres</strong>
-          <p style="font-size:0.79rem;color:var(--muted);margin:0 0 8px">
-            Subí un Excel (<code>.xlsx</code>), <code>.csv</code> o <code>.txt</code> con los nombres de los hablantes del grupo para elegirlos de una lista desplegable sin escribir a mano.
-          </p>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <input type="file" id="arch-listado-nombres" accept=".xlsx,.csv,.txt" hidden>
-            <button type="button" class="btn-outline btn-sm" onclick="document.getElementById('arch-listado-nombres').click()">📤 Subir Excel / CSV / TXT</button>
-            <button type="button" class="btn-outline btn-sm" id="btn-pegar-nombres">✍️ Pegar nombres</button>
+    <!-- Etiquetado automático -->
+    <details class="plegable card" style="padding:0" open>
+      <summary style="padding:14px 18px;font-size:0.95rem">Etiquetar automáticamente <span class="hint">· lista de nombres, presentaciones o Tactiq</span></summary>
+      <div class="plegable-body" style="padding:0 18px 18px">
+        <div class="grid-3">
+          <div class="panel">
+            <span class="panel-titulo">A · Lista de nombres</span>
+            <p class="panel-desc">Subí un Excel, CSV o TXT con los nombres del grupo para elegirlos de una lista.</p>
+            <div class="row" style="gap:6px">
+              <input type="file" id="arch-listado-nombres" accept=".xlsx,.csv,.txt" hidden>
+              <button type="button" class="btn-outline btn-sm" onclick="document.getElementById('arch-listado-nombres').click()">Subir archivo</button>
+              <button type="button" class="btn-outline btn-sm" id="btn-pegar-nombres">Pegar nombres</button>
+            </div>
+            <div id="chips-nombres-grupo" class="chips" style="margin-top:8px;max-height:90px;overflow-y:auto"></div>
           </div>
-          <div id="chips-nombres-grupo" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;max-height:90px;overflow-y:auto"></div>
-        </div>
 
-        <!-- 2. Auto-detectar por lo que dicen al presentarse -->
-        <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:12px">
-          <strong style="font-size:0.88rem;display:block;margin-bottom:4px">🗣️ B. Auto-Matchear por Presentación en Audio</strong>
-          <p style="font-size:0.79rem;color:var(--muted);margin:0 0 8px">
-            Ideal para el primer registro: busca cuando cada hablante dice <em>"mi nombre es…"</em>, <em>"yo soy…"</em> o menciona su nombre del listado y lo etiqueta solo.
-          </p>
-          <button type="button" class="btn-primary btn-sm" id="btn-auto-presentacion" style="width:100%;justify-content:center">
-            🪄 Detectar nombres dichos en el audio
-          </button>
-          <div id="res-auto-presentacion" style="font-size:0.79rem;margin-top:6px"></div>
-        </div>
+          <div class="panel">
+            <span class="panel-titulo">B · Por presentación en el audio</span>
+            <p class="panel-desc">Busca cuando alguien dice <em>"mi nombre es…"</em> o <em>"yo soy…"</em> y lo etiqueta.</p>
+            <button type="button" class="btn-primary btn-sm btn-block" id="btn-auto-presentacion">Detectar nombres en el audio</button>
+            <div id="res-auto-presentacion" style="font-size:0.79rem;margin-top:6px"></div>
+          </div>
 
-        <!-- 3. Auto-sincronizar y matchear con Tactiq -->
-        <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:12px">
-          <strong style="font-size:0.88rem;display:block;margin-bottom:4px">🔄 C. Sincronizar y Matchear con Tactiq</strong>
-          <p style="font-size:0.79rem;color:var(--muted);margin:0 0 8px">
-            Subí la transcripción de Tactiq de esta grabación: el sistema <strong>sincroniza solo el desfase de tiempo</strong> con el audio y asigna los nombres de Tactiq a cada voz.
-          </p>
-          <input type="file" id="arch-tactiq-sync" accept=".txt,.docx,.srt,.vtt,.json" hidden>
-          <button type="button" class="btn-secondary btn-sm" onclick="document.getElementById('arch-tactiq-sync').click()" style="width:100%;justify-content:center">
-            📄 Subir Tactiq para sincronizar y etiquetar voces
-          </button>
-          <div id="res-tactiq-sync" style="font-size:0.79rem;margin-top:6px"></div>
+          <div class="panel">
+            <span class="panel-titulo">C · Con la transcripción de Tactiq</span>
+            <p class="panel-desc">Sincroniza el desfase de tiempo y asigna los nombres de Tactiq a cada voz.</p>
+            <input type="file" id="arch-tactiq-sync" accept=".txt,.docx,.srt,.vtt,.json" hidden>
+            <button type="button" class="btn-secondary btn-sm btn-block" onclick="document.getElementById('arch-tactiq-sync').click()">Subir Tactiq y etiquetar</button>
+            <div id="res-tactiq-sync" style="font-size:0.79rem;margin-top:6px"></div>
+          </div>
         </div>
       </div>
-    </div>
+    </details>
 
-    <!-- TARJETAS DE HABLANTES -->
+    <!-- Hablantes -->
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+      <div class="card-head">
         <div>
-          <h2 style="margin:0">👥 Hablantes de esta grabación</h2>
-          <p style="font-size:0.84rem;color:var(--muted);margin:2px 0 0">
-            Escuchá un ejemplo con <strong>▶ Escuchar</strong>, elegí su nombre del listado (o escribilo) y tocá <strong>💾 Guardar en Grupo</strong> para que su voz quede registrada.
-          </p>
+          <h2>Hablantes de esta grabación</h2>
+          <p>Escuchá, elegí el nombre y tocá <strong>Guardar en grupo</strong> para registrar su voz.</p>
         </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button type="button" class="btn-outline btn-xs" id="btn-p3-silenciar-todos">🔇 Silenciar todos</button>
-          <button type="button" class="btn-outline btn-xs" id="btn-p3-activar-todos">🔊 Activar todos</button>
-          <button type="button" class="btn-outline btn-xs" id="btn-p3-nuevo-spk">➕ Agregar hablante</button>
+        <div class="row" style="gap:6px">
+          <button type="button" class="btn-outline btn-xs" id="btn-p3-silenciar-todos">Silenciar todos</button>
+          <button type="button" class="btn-outline btn-xs" id="btn-p3-activar-todos">Activar todos</button>
+          <button type="button" class="btn-outline btn-xs" id="btn-p3-nuevo-spk">+ Agregar hablante</button>
         </div>
       </div>
-
       <div class="hablantes-grid" id="p3-hablantes-grid"></div>
     </div>
 
-    <!-- RECORTE POR MINUTO Y SEGUNDO (VOZ + TRANSCRIPCIÓN) Y EXTRACCIÓN DE AUDIO -->
+    <!-- Recorte + Exportación -->
     <div class="grid-2">
-      <!-- Tarjeta Izquierda: Recorte de Tiempo (Minuto y Segundo + Frases) y Recorte de Transcripción -->
       <div class="card">
-        <h3 style="color:#1e3a8a;margin-bottom:4px">✂️ 1. Recortar Voz y Transcripción por Minuto y Segundo (o por Frase)</h3>
-        <p style="font-size:0.82rem;color:var(--muted);margin-top:0">
-          Escribí el <strong>minuto y segundo</strong> de inicio y fin (ej. <code>04:15</code> a <code>32:40</code> o <code>01:02:10</code>). Este rango recorta tanto el <strong>Audio/Voz</strong> como la <strong>Transcripción</strong>.
-        </p>
+        <span class="card-tag">Tramo</span>
+        <h3>Recortar por minuto y segundo</h3>
+        <p class="sub-desc">El tramo se aplica al audio y a la transcripción.</p>
 
-        <!-- Bloque principal: Minuto y Segundo -->
-        <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px;margin-bottom:12px">
-          <strong style="font-size:0.86rem;color:#1e3a8a;display:block;margin-bottom:8px">⏱️ Indicar Minuto y Segundo exacto de recorte:</strong>
-          <div class="grid-2" style="gap:10px;margin-bottom:8px">
-            <div class="campo">
-              <label for="p3-t-ini">Desde (minuto:segundo):</label>
-              <div style="display:flex;gap:4px">
-                <input type="text" id="p3-t-ini" placeholder="00:00 (ej. 03:25)" style="font-family:monospace;font-weight:700;font-size:0.95rem">
-                <button type="button" class="btn-outline btn-xs" id="btn-p3-tomar-ini-audio" title="Tomar el segundo actual del reproductor de audio">📍 Actual</button>
-              </div>
-            </div>
-            <div class="campo">
-              <label for="p3-t-fin">Hasta (minuto:segundo):</label>
-              <div style="display:flex;gap:4px">
-                <input type="text" id="p3-t-fin" placeholder="fin (ej. 28:50)" style="font-family:monospace;font-weight:700;font-size:0.95rem">
-                <button type="button" class="btn-outline btn-xs" id="btn-p3-tomar-fin-audio" title="Tomar el segundo actual del reproductor de audio">📍 Actual</button>
-              </div>
+        <div class="grid-2" style="gap:10px;margin-bottom:10px">
+          <div class="campo">
+            <label for="p3-t-ini">Desde</label>
+            <div class="input-con-btn">
+              <input type="text" id="p3-t-ini" class="tiempo" placeholder="00:00">
+              <button type="button" class="btn-outline btn-xs" id="btn-p3-tomar-ini-audio" title="Tomar el segundo actual del reproductor">Actual</button>
             </div>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <button type="button" class="btn-primary btn-xs" id="btn-p3-aplicar-rango">✅ Aplicar minuto y segundo</button>
-            <button type="button" class="btn-outline btn-xs" id="btn-p3-limpiar-rango">✕ Quitar recorte (Usar todo)</button>
-            <span id="p3-badge-rango" class="badge badge-azul">Tramo activo: Todo el archivo</span>
+          <div class="campo">
+            <label for="p3-t-fin">Hasta</label>
+            <div class="input-con-btn">
+              <input type="text" id="p3-t-fin" class="tiempo" placeholder="fin">
+              <button type="button" class="btn-outline btn-xs" id="btn-p3-tomar-fin-audio" title="Tomar el segundo actual del reproductor">Actual</button>
+            </div>
           </div>
         </div>
-
-        <!-- Opcional: Buscar por Frase de inicio / fin -->
-        <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:12px">
-          <strong style="font-size:0.82rem;display:block;margin-bottom:6px">🔎 O buscar el minuto y segundo diciendo la Frase de Inicio / Fin:</strong>
-          <div class="grid-2" style="gap:8px;margin-bottom:8px">
-            <div class="campo">
-              <input type="text" id="p3-f-ini" placeholder='⛳ Frase de inicio (ej. "empezamos")' style="font-size:0.83rem;padding:6px 8px">
-              <div id="p3-pill-ini"></div>
-            </div>
-            <div class="campo">
-              <input type="text" id="p3-f-fin" placeholder='🏁 Frase de fin (ej. "hasta acá")' style="font-size:0.83rem;padding:6px 8px">
-              <div id="p3-pill-fin"></div>
-            </div>
-          </div>
-          <button type="button" class="btn-outline btn-xs" id="btn-p3-buscar-frases">🔍 Buscar frases y autocompletar minuto:segundo</button>
+        <div class="row" style="gap:8px">
+          <button type="button" class="btn-primary btn-sm" id="btn-p3-aplicar-rango">Aplicar tramo</button>
+          <button type="button" class="btn-outline btn-sm" id="btn-p3-limpiar-rango">Usar todo</button>
+          <span id="p3-badge-rango" class="badge badge-azul">Tramo activo: Todo el archivo</span>
         </div>
 
-        <!-- Acciones de Recorte sobre la Transcripción -->
-        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px">
-          <strong style="font-size:0.86rem;color:#166534;display:block;margin-bottom:6px">📄 Recortar y Descargar Transcripción en ese Minuto y Segundo:</strong>
-          <label style="display:flex;align-items:center;gap:6px;font-size:0.81rem;margin-bottom:6px;cursor:pointer">
-            <input type="checkbox" id="p3-chk-reset-reloj" checked>
-            <span>Reiniciar reloj a <code>00:00</code> en el minuto "Desde" (ideal si también recortaste el video/audio)</span>
-          </label>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button type="button" class="btn-primary btn-xs" onclick="descargarTranscripcionRecortadaPaso3('txt_ts')">⬇ Descargar .TXT recortado (con tiempos)</button>
-            <button type="button" class="btn-outline btn-xs" onclick="descargarTranscripcionRecortadaPaso3('txt_limpio')">⬇ Descargar .TXT (solo texto)</button>
-            <button type="button" class="btn-outline btn-xs" onclick="descargarTranscripcionRecortadaPaso3('srt')">⬇ Descargar .SRT recortado</button>
-            <button type="button" class="btn-danger-soft btn-xs" id="btn-p3-recortar-sesion-perm" title="Borra de esta sesión lo que está fuera del minuto Desde y Hasta">
-              ✂️ Dejar en la sesión solo este tramo
-            </button>
+        <details class="plegable">
+          <summary>Buscar el tramo por frase <span class="hint">· de inicio y de fin</span></summary>
+          <div class="plegable-body">
+            <div class="grid-2" style="gap:8px;margin-bottom:8px">
+              <div class="campo">
+                <input type="text" id="p3-f-ini" placeholder='Frase de inicio, ej. "empezamos"'>
+                <div id="p3-pill-ini"></div>
+              </div>
+              <div class="campo">
+                <input type="text" id="p3-f-fin" placeholder='Frase de fin, ej. "hasta acá"'>
+                <div id="p3-pill-fin"></div>
+              </div>
+            </div>
+            <button type="button" class="btn-outline btn-xs" id="btn-p3-buscar-frases">Buscar y completar tiempos</button>
           </div>
+        </details>
+
+        <hr class="divider">
+        <span class="panel-titulo">Descargar la transcripción del tramo</span>
+        <label class="check" style="margin:6px 0 10px"><input type="checkbox" id="p3-chk-reset-reloj" checked><span>Reiniciar el reloj a <code>00:00</code> en "Desde" (si también recortaste el audio o video)</span></label>
+        <div class="row" style="gap:6px">
+          <button type="button" class="btn-primary btn-xs" onclick="descargarTranscripcionRecortadaPaso3('txt_ts')">TXT con tiempos</button>
+          <button type="button" class="btn-outline btn-xs" onclick="descargarTranscripcionRecortadaPaso3('txt_limpio')">TXT solo texto</button>
+          <button type="button" class="btn-outline btn-xs" onclick="descargarTranscripcionRecortadaPaso3('srt')">SRT</button>
+          <button type="button" class="btn-danger-soft btn-xs" id="btn-p3-recortar-sesion-perm" title="Borra de esta sesión lo que está fuera del tramo">Dejar solo este tramo en la sesión</button>
         </div>
       </div>
 
-      <!-- Tarjeta Derecha: Extraer Voz / Audio Procesado (respetando el recorte de minuto y segundo) -->
       <div class="card">
-        <h3 style="color:#1e3a8a;margin-bottom:4px">🎙️ 2. Recortar y Extraer Voz / Audio (en el Minuto y Segundo elegido)</h3>
-        <p style="font-size:0.82rem;color:var(--muted);margin-top:0">
-          Extrae tu voz limpia, silencia hablantes o recorta el audio directo entre el minuto <strong>Desde</strong> y <strong>Hasta</strong> indicados a la izquierda.
-        </p>
-        <div class="grid-2" style="gap:10px;margin-bottom:10px">
+        <span class="card-tag">Exportar</span>
+        <h3>Voz / audio procesado</h3>
+        <p class="sub-desc">Usa el tramo de la izquierda y los hablantes activos.</p>
+        <div class="stack" style="gap:10px;margin-bottom:12px">
           <div class="campo">
-            <label for="p3-modo-audio">Qué hacer con la voz / el audio:</label>
+            <label for="p3-modo-audio">Qué hacer</label>
             <select id="p3-modo-audio">
-              <option value="aislar" selected>🎯 Aislar SOLO las voces activas (unir limpio para clonar/entrenar voz)</option>
-              <option value="rango_directo">📏 Recorte directo de Audio por minuto y segundo (Desde → Hasta)</option>
-              <option value="recortar">✂️ Quitar hablantes silenciados (acortar audio en ese tramo)</option>
-              <option value="silenciar">🔇 Poner en mudo (volumen 0) a los hablantes silenciados</option>
+              <option value="aislar" selected>Aislar solo las voces activas (para entrenar / clonar)</option>
+              <option value="rango_directo">Recorte directo del audio (Desde → Hasta)</option>
+              <option value="recortar">Quitar a los hablantes silenciados (acorta el audio)</option>
+              <option value="silenciar">Poner en mudo a los hablantes silenciados</option>
             </select>
           </div>
           <div class="campo">
-            <label for="p3-fmt-audio">Formato de salida:</label>
+            <label for="p3-fmt-audio">Formato</label>
             <select id="p3-fmt-audio">
               <option value="mp3" selected>MP3</option>
-              <option value="wav">WAV 44.1 kHz (alta calidad para entrenar modelo)</option>
-              <option value="zip">📦 Dataset ZIP (clips WAV + metadata.csv)</option>
+              <option value="wav">WAV 44.1 kHz (para entrenar modelo)</option>
+              <option value="zip">Dataset ZIP (clips WAV + metadata.csv)</option>
             </select>
           </div>
-          <div class="campo">
-            <label for="p3-max-min">Duración máxima:</label>
-            <select id="p3-max-min">
-              <option value="0" selected>Todo el tramo seleccionado</option>
-              <option value="2">Los mejores 2 min</option>
-              <option value="5">Los mejores 5 min</option>
-              <option value="10">Los mejores 10 min</option>
-            </select>
-          </div>
-          <div class="campo">
-            <label for="p3-min-seg">Filtro de frases cortas:</label>
-            <select id="p3-min-seg">
-              <option value="0">Conservar todas</option>
-              <option value="1.0" selected>Ignorar &lt; 1 seg ("sí", "claro")</option>
-              <option value="2.0">Ignorar &lt; 2 seg</option>
-            </select>
+          <div class="grid-2" style="gap:10px">
+            <div class="campo">
+              <label for="p3-max-min">Duración máxima</label>
+              <select id="p3-max-min">
+                <option value="0" selected>Todo el tramo</option>
+                <option value="2">Mejores 2 min</option>
+                <option value="5">Mejores 5 min</option>
+                <option value="10">Mejores 10 min</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="p3-min-seg">Frases cortas</label>
+              <select id="p3-min-seg">
+                <option value="0">Conservar todas</option>
+                <option value="1.0" selected>Ignorar &lt; 1 s</option>
+                <option value="2.0">Ignorar &lt; 2 s</option>
+              </select>
+            </div>
           </div>
         </div>
-        <div id="p3-resumen-audio" style="font-size:0.83rem;background:#eff6ff;color:#1e40af;padding:8px 10px;border-radius:8px;margin-bottom:10px"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button type="button" class="btn-primary btn-sm" id="btn-p3-export-audio">💾 Generar Voz / Audio Recortado</button>
-          <button type="button" class="btn-secondary btn-sm" onclick="irAPaso(4)">👉 Ir al Paso 4: Subtítulos y Recorte de Video</button>
+        <div id="p3-resumen-audio" style="font-size:0.82rem;background:var(--primary-light);color:#1e40af;padding:8px 10px;border-radius:8px;margin-bottom:12px"></div>
+        <div class="row">
+          <button type="button" class="btn-primary" id="btn-p3-export-audio">Generar audio</button>
+          <button type="button" class="btn-ghost btn-sm" onclick="irAPaso(4)">Ir a Subtítulos →</button>
         </div>
         <div id="p3-res-audio"></div>
       </div>
     </div>
 
-    <!-- DETALLE DE LA TRANSCRIPCIÓN LÍNEA POR LÍNEA -->
+    <!-- Transcripción línea por línea -->
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+      <div class="card-head">
         <div>
-          <h3 style="margin:0">📝 Transcripción línea por línea (<span id="p3-cont-seg">0</span> fragmentos)</h3>
-          <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.81rem;color:#1e3a8a;margin-top:4px;cursor:pointer">
-            <input type="checkbox" id="p3-chk-ocultar-fuera">
-            <span>👁️ Mostrar únicamente las líneas dentro del minuto y segundo de recorte (ocultar el resto)</span>
-          </label>
+          <h2>Transcripción <span style="font-weight:400;color:var(--muted);font-size:0.88rem">· <span id="p3-cont-seg">0</span> fragmentos</span></h2>
+          <label class="check" style="margin-top:4px;font-size:0.8rem"><input type="checkbox" id="p3-chk-ocultar-fuera"><span>Mostrar solo las líneas dentro del tramo</span></label>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <input type="text" id="p3-buscar" placeholder="🔍 Buscar palabra o frase…" style="width:200px">
+        <div class="row">
+          <input type="text" id="p3-buscar" placeholder="Buscar palabra o frase…" style="width:220px">
           <select id="p3-filtro-spk" style="width:180px">
             <option value="">Todos los hablantes</option>
           </select>
@@ -3941,381 +3993,293 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 </section>
 
 <!-- ====================================================================== -->
-<!-- PASO 4: CONVERTIR A SUBTÍTULOS Y SINCRONIZAR CON VIDEO SIN AUDIO       -->
+<!-- PASO 4: SUBTÍTULOS Y SINCRONIZACIÓN CON VIDEO                          -->
 <!-- ====================================================================== -->
 <section class="step-section" id="step-4">
-  <div id="p4-vacio" class="card" style="text-align:center;padding:40px 20px">
-    <h3>Primero elegí o subí una transcripción en el Paso 2</h3>
-    <p style="color:var(--muted);font-size:0.9rem">Para generar los subtítulos y sincronizarlos con tu video, primero abrí o subí la transcripción en el Paso 2.</p>
-    <button type="button" class="btn-primary" onclick="irAPaso(2)">👈 Ir al Paso 2</button>
+  <div class="sec-head">
+    <div>
+      <div class="eyebrow">Paso 4</div>
+      <h1>Subtítulos y video</h1>
+      <p>Para videos grabados sin audio: sincronizá la transcripción con el video y exportá los subtítulos o el MP4.</p>
+    </div>
+  </div>
+
+  <div id="p4-vacio" class="card vacio">
+    <div class="vacio-icon"><svg><use href="#i-cc"/></svg></div>
+    <h3>Primero abrí una transcripción</h3>
+    <p>Para armar los subtítulos, abrí o subí la transcripción en el paso 2.</p>
+    <button type="button" class="btn-primary" onclick="irAPaso(2)">Ir a Transcripción</button>
   </div>
 
   <div id="p4-contenido" style="display:none">
-    <!-- BARRA DE VINCULACIÓN EXPLÍCITA: ¿QUÉ TRANSCRIPCIÓN VA CON QUÉ VIDEO? -->
-    <div class="card" style="background:#f0f7ff;border:1.5px solid #93c5fd;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-        <div style="flex:1;min-width:260px">
-          <label for="p4-sel-sesion-activa" style="font-size:0.82rem;font-weight:800;color:#1e3a8a;display:block;margin-bottom:4px">
-            📄 1. ¿Qué Transcripción estás usando?:
-          </label>
-          <select id="p4-sel-sesion-activa" style="font-weight:700;background:#fff"></select>
+    <!-- Vinculación transcripción ⟷ video -->
+    <div class="card destacada">
+      <div class="vinculo-bar">
+        <div class="campo">
+          <label for="p4-sel-sesion-activa">Transcripción</label>
+          <select id="p4-sel-sesion-activa"></select>
         </div>
-        <div style="font-size:1.3rem;color:#2563eb;font-weight:900">⟷</div>
-        <div style="flex:1;min-width:260px">
-          <label style="font-size:0.82rem;font-weight:800;color:#1e3a8a;display:block;margin-bottom:4px">
-            🎬 2. ¿Con qué Video la estás uniendo?:
-          </label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <span id="p4-badge-video-par" class="badge badge-ambar" style="font-size:0.83rem;padding:6px 10px">Ningún video elegido todavía (elegilo abajo a la izquierda)</span>
-            <button type="button" class="btn-primary btn-xs" onclick="document.getElementById('arch-p4-video').click()">🎬 Elegir Video</button>
+        <div class="vinculo-flecha"><svg><use href="#i-link"/></svg></div>
+        <div class="campo">
+          <label>Video</label>
+          <div class="row" style="flex-wrap:nowrap">
+            <span id="p4-badge-video-par" class="badge badge-ambar" style="padding:7px 10px;white-space:normal;flex:1">Ningún video elegido todavía</span>
+            <button type="button" class="btn-primary btn-sm" onclick="document.getElementById('arch-p4-video').click()">Elegir video</button>
           </div>
         </div>
       </div>
-      <div id="p4-match-diagnostico" style="margin-top:8px;font-size:0.82rem;color:#334155"></div>
+      <div id="p4-match-diagnostico" style="margin-top:8px;font-size:0.82rem;color:var(--text-2)"></div>
     </div>
 
-    <div class="card">
-      <h2>Paso 4: Convertir Transcripción a Subtítulos y Sincronizar con Video ("Salva-videos sin audio")</h2>
-      <p class="sub-desc">
-        Ideal cuando grabaste un video (por ejemplo el que está en Google Drive), el micrófono o los hablantes no salieron en el audio, pero sí tenés la transcripción. Acá podés <strong>sincronizar el tiempo del video con la transcripción</strong> para que los subtítulos calcen exacto.
-      </p>
+    <div class="grid-2" style="align-items:start">
+      <!-- Video -->
+      <div class="video-col">
+        <div class="video-stage">
+          <video id="p4-video" controls></video>
+          <div class="sub-overlay"><span id="p4-sub-live">Cargá tu video y dale play para ver los subtítulos</span></div>
+        </div>
+        <div class="row-between" style="margin-bottom:16px">
+          <div style="font-size:0.78rem;color:var(--muted)" id="p4-video-nombre">El video se reproduce en tu navegador, no se sube a internet.</div>
+          <input type="file" id="arch-p4-video" accept=".mp4,.mkv,.webm,.mov,video/*" hidden>
+          <button type="button" class="btn-outline btn-xs" onclick="document.getElementById('arch-p4-video').click()">Cambiar video</button>
+        </div>
+      </div>
 
-      <div class="grid-2">
-        <!-- Columna Izquierda: Reproductor de Video con Subtítulos en Vivo -->
-        <div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-            <strong style="font-size:0.92rem">1. Cargar el video local para previsualizar y sincronizar:</strong>
-            <input type="file" id="arch-p4-video" accept=".mp4,.mkv,.webm,.mov,video/*" hidden>
-            <button type="button" class="btn-outline btn-sm" onclick="document.getElementById('arch-p4-video').click()">🎬 Elegir archivo de Video de tu PC</button>
+      <!-- Controles -->
+      <div class="stack" style="gap:16px">
+        <div class="card" style="margin:0">
+          <h3><span class="paso-num">1</span>Sincronizar</h3>
+          <p class="sub-desc">El <code>00:00</code> del subtítulo es el comienzo del video. Elegí una frase y decí en qué momento del video se escucha: se recalculan todas las marcas hacia atrás y hacia adelante.</p>
+
+          <div class="campo" style="margin-bottom:10px">
+            <label for="p4-sel-frase-ref">Frase de referencia</label>
+            <select id="p4-sel-frase-ref"></select>
+          </div>
+          <div class="campo" style="margin-bottom:10px">
+            <label for="p4-t-video-ancla">¿En qué minuto del video se dice?</label>
+            <div class="row" style="gap:6px">
+              <input type="text" id="p4-t-video-ancla" class="tiempo" placeholder="02:35" style="width:110px">
+              <button type="button" class="btn-outline btn-xs" id="btn-p4-tomar-ancla-video" title="Copia el minuto:segundo donde está pausado el video">Tomar del video</button>
+              <button type="button" class="btn-primary btn-sm" id="btn-p4-sync-video">Hacer coincidir</button>
+            </div>
           </div>
 
-          <div class="video-stage">
-            <video id="p4-video" controls></video>
-            <div class="sub-overlay"><span id="p4-sub-live">Cargá tu video o dale Play para ver los subtítulos sincronizados acá</span></div>
+          <div class="panel" style="padding:10px 12px">
+            <div class="row" style="gap:6px">
+              <label for="p4-offset-seg" style="font-size:0.8rem;font-weight:600">Desfase (seg)</label>
+              <input type="number" id="p4-offset-seg" step="0.5" value="0" class="tiempo" style="width:90px">
+              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(-1)">−1 s</button>
+              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(+1)">+1 s</button>
+              <button type="button" class="btn-outline btn-xs" onclick="invertirSignoOffsetSub()" title="Invierte el signo si el video empezó antes que la transcripción">± Invertir</button>
+              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(0, true)">Reset</button>
+            </div>
           </div>
-          <div style="font-size:0.8rem;color:var(--muted);text-align:center" id="p4-video-nombre">
-            (El video se reproduce directo en tu navegador sin gastarte datos ni subirlo a internet)
+          <div id="p4-preview-sincro" style="margin-top:10px;font-size:0.8rem;line-height:1.45"></div>
+        </div>
+
+        <div class="card" style="margin:0">
+          <h3><span class="paso-num">2</span>Descargar subtítulos</h3>
+          <p class="sub-desc">Para Drive, YouTube o VLC.</p>
+          <div class="stack" style="gap:8px;margin-bottom:12px">
+            <label class="check"><input type="checkbox" id="p4-inc-nom" checked><span>Incluir el nombre del hablante (<code>[Nombre]: texto</code>)</span></label>
+            <label class="check"><input type="checkbox" id="p4-chk-bloque-00" checked><span>Si el video empieza antes que la transcripción, agregar un bloque inicial desde <code>00:00:00</code></span></label>
+            <label class="check"><input type="checkbox" id="p4-inc-sil"><span>Incluir hablantes silenciados</span></label>
+          </div>
+          <details class="plegable">
+            <summary>Formato en pantalla <span class="hint">· 84 caracteres, hasta 6 s</span></summary>
+            <div class="plegable-body grid-2" style="gap:10px">
+              <div class="campo">
+                <label for="p4-max-chars">Caracteres por cartel</label>
+                <select id="p4-max-chars">
+                  <option value="70">70 (2 líneas de 35)</option>
+                  <option value="84" selected>84 (estándar, 2 de 42)</option>
+                  <option value="100">100 (2 líneas de 50)</option>
+                </select>
+              </div>
+              <div class="campo">
+                <label for="p4-max-dur">Duración en pantalla</label>
+                <select id="p4-max-dur">
+                  <option value="4.5">1,2 a 4,5 s (dinámico)</option>
+                  <option value="6.0" selected>1,2 a 6 s (estándar)</option>
+                  <option value="8.0">1,2 a 8 s (pausado)</option>
+                </select>
+              </div>
+            </div>
+          </details>
+          <div class="row" style="gap:6px">
+            <button type="button" class="btn-primary btn-sm" onclick="descargarSubtitulosPaso4('srt')">Descargar SRT</button>
+            <button type="button" class="btn-outline btn-sm" onclick="descargarSubtitulosPaso4('vtt')">VTT</button>
+            <button type="button" class="btn-outline btn-sm" onclick="descargarSubtitulosPaso4('txt_ts')">TXT con tiempos</button>
           </div>
         </div>
 
-        <!-- Columna Derecha: Controles de Sincronización y Descarga de Subtítulos -->
-        <div style="display:flex;flex-direction:column;gap:14px">
-          <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px">
-            <strong style="font-size:0.95rem;color:#1e3a8a;display:block;margin-bottom:6px">
-              ⏱️ 2. Sincronizar el Video con la Transcripción (Hacia atrás y hacia adelante)
-            </strong>
-            <p style="font-size:0.82rem;color:#334155;margin:0 0 10px;line-height:1.45">
-              El minuto <code>00:00</code> del subtítulo es <strong>siempre el comienzo del video</strong>. Elegí una frase de la transcripción e indicá en qué <strong>minuto:segundo del video</strong> se dice esa frase: el sistema hará coincidir ese punto y recalculará todas las marcas <strong>de ahí para atrás y de ahí para adelante</strong>.
-            </p>
-
-            <div class="campo" style="margin-bottom:8px">
-              <label for="p4-sel-frase-ref" style="font-size:0.8rem;font-weight:700">A. Elegí una frase de referencia en la transcripción:</label>
-              <select id="p4-sel-frase-ref"></select>
-            </div>
-
-            <div style="background:#fff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;margin-bottom:10px">
-              <label for="p4-t-video-ancla" style="font-size:0.8rem;font-weight:700;color:#1e3a8a;display:block;margin-bottom:6px">
-                B. ¿En qué minuto y segundo del VIDEO se dice esa frase?
-              </label>
-              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-                <input type="text" id="p4-t-video-ancla" placeholder="ej. 02:35" style="width:110px;font-family:monospace;font-weight:700;padding:6px 8px">
-                <button type="button" class="btn-outline btn-xs" id="btn-p4-tomar-ancla-video" title="Copia el minuto:segundo donde está pausado el reproductor de video">
-                  📍 Tomar min:seg actual del reproductor
-                </button>
-                <button type="button" class="btn-primary btn-sm" id="btn-p4-sync-video">
-                  ✅ Hacer coincidir punto (hacia atrás y adelante)
-                </button>
+        <div class="card" style="margin:0">
+          <h3><span class="paso-num">3</span>Recortar video y/o unir subtítulos</h3>
+          <p class="sub-desc">Dejá los tiempos vacíos para usar el video entero.</p>
+          <div class="grid-2" style="gap:10px;margin-bottom:10px">
+            <div class="campo">
+              <label for="p4-t-ini">Desde</label>
+              <div class="input-con-btn">
+                <input type="text" id="p4-t-ini" class="tiempo" placeholder="02:10">
+                <button type="button" class="btn-outline btn-xs" id="btn-p4-tomar-ini" title="Usar el segundo actual del video">Actual</button>
               </div>
             </div>
-
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-top:8px;border-top:1px dashed #93c5fd">
-              <label style="font-size:0.82rem;font-weight:700">Desfase al reloj del video (seg):</label>
-              <input type="number" id="p4-offset-seg" step="0.5" value="0" style="width:90px;font-family:monospace;font-weight:700">
-              <button type="button" class="btn-outline btn-xs" onclick="invertirSignoOffsetSub()" title="Si te quedó negativo pero el video empezó antes que la transcripción, tocá acá para invertir el signo">🔄 Invertir +/-</button>
-              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(-1)">-1s</button>
-              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(+1)">+1s</button>
-              <button type="button" class="btn-outline btn-xs" onclick="ajustarOffsetSub(0, true)">Reset (0s)</button>
-            </div>
-
-            <!-- Explicación en vivo y vista previa de cómo quedan los subtítulos desde 00:00 -->
-            <div id="p4-preview-sincro" style="margin-top:10px;padding:10px;background:#ffffff;border:1px solid #93c5fd;border-radius:8px;font-size:0.8rem;line-height:1.45"></div>
-          </div>
-
-          <!-- Descargar archivos de subtítulos -->
-          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:14px">
-            <strong style="font-size:0.95rem;display:block;margin-bottom:8px">
-              ⬇ 3. Descargar Subtítulos Sincronizados (Para Drive / YouTube / VLC)
-            </strong>
-            <label style="display:flex;align-items:flex-start;gap:8px;font-size:0.84rem;margin-bottom:8px;cursor:pointer;background:#eff6ff;padding:8px;border-radius:6px;border:1px solid #bfdbfe">
-              <input type="checkbox" id="p4-chk-bloque-00" checked style="margin-top:2px">
-              <span><strong>Si el video empieza ANTES que la transcripción:</strong> agregar marca de tiempo inicial desde <code>00:00:00</code> hasta el minuto:segundo donde empieza la transcripción (y de ahí en adelante cada frase en su minuto del video).</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:0.86rem;margin-bottom:6px;cursor:pointer">
-              <input type="checkbox" id="p4-inc-nom" checked>
-              <span>Incluir el <strong>nombre del hablante</strong> en cada subtítulo (ej. <code>[Nombre]: texto</code>)</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:0.86rem;margin-bottom:10px;cursor:pointer">
-              <input type="checkbox" id="p4-inc-sil">
-              <span>Incluir también fragmentos de hablantes silenciados</span>
-            </label>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#f1f5f9;padding:8px 10px;border-radius:8px;margin-bottom:12px;font-size:0.8rem">
-              <span style="font-weight:700;color:#1e3a8a">📏 Formato en pantalla:</span>
-              <label style="display:inline-flex;align-items:center;gap:4px">
-                <span>Máx. caracteres por cartel:</span>
-                <select id="p4-max-chars" style="width:auto;padding:3px 6px;font-size:0.8rem;font-weight:700">
-                  <option value="70">70 chars (2 líneas de 35)</option>
-                  <option value="84" selected>84 chars (Estándar: 2 líneas de 42)</option>
-                  <option value="100">100 chars (2 líneas de 50)</option>
-                </select>
-              </label>
-              <label style="display:inline-flex;align-items:center;gap:4px">
-                <span>Duración en pantalla:</span>
-                <select id="p4-max-dur" style="width:auto;padding:3px 6px;font-size:0.8rem;font-weight:700">
-                  <option value="4.5">1.2s a 4.5s (Dinámico)</option>
-                  <option value="6.0" selected>1.2s a 6.0s (Estándar cómodo)</option>
-                  <option value="8.0">1.2s a 8.0s (Pausado)</option>
-                </select>
-              </label>
-            </div>
-
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button type="button" class="btn-primary btn-sm" onclick="descargarSubtitulosPaso4('srt')">
-                🎬 Descargar Subtítulos .SRT (Para Google Drive y YouTube)
-              </button>
-              <button type="button" class="btn-outline btn-sm" onclick="descargarSubtitulosPaso4('vtt')">
-                ⬇ Descargar .VTT
-              </button>
-              <button type="button" class="btn-outline btn-sm" onclick="descargarSubtitulosPaso4('txt_ts')">
-                ⬇ Descargar .TXT con tiempos
-              </button>
-            </div>
-          </div>
-
-          <!-- Recortar Video y/o Unir con Subtítulos por Minuto y Segundo -->
-          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:14px">
-            <strong style="font-size:0.93rem;color:#1e3a8a;display:block;margin-bottom:6px">
-              ✂️ 4. Recortar Video (.MP4) por Minuto y Segundo y/o Unirle Subtítulos
-            </strong>
-            <p style="font-size:0.8rem;color:var(--muted);margin:0 0 8px">
-              Podés recortar el video indicando el <strong>minuto y segundo</strong> de inicio y fin (o dejar vacío para usar el video entero), y elegir si querés solo recortar el video o unirle los subtítulos.
-            </p>
-            <div class="grid-2" style="gap:8px;margin-bottom:10px">
-              <div class="campo">
-                <label for="p4-t-ini" style="font-size:0.78rem">⏱️ Desde (min:seg)</label>
-                <div style="display:flex;gap:4px">
-                  <input type="text" id="p4-t-ini" placeholder="ej. 02:10" style="font-family:monospace;font-weight:700">
-                  <button type="button" class="btn-outline btn-xs" id="btn-p4-tomar-ini" title="Usar el segundo actual del video">📍 Actual</button>
-                </div>
-              </div>
-              <div class="campo">
-                <label for="p4-t-fin" style="font-size:0.78rem">⏱️ Hasta (min:seg)</label>
-                <div style="display:flex;gap:4px">
-                  <input type="text" id="p4-t-fin" placeholder="ej. 35:00" style="font-family:monospace;font-weight:700">
-                  <button type="button" class="btn-outline btn-xs" id="btn-p4-tomar-fin" title="Usar el segundo actual del video">📍 Actual</button>
-                </div>
+            <div class="campo">
+              <label for="p4-t-fin">Hasta</label>
+              <div class="input-con-btn">
+                <input type="text" id="p4-t-fin" class="tiempo" placeholder="35:00">
+                <button type="button" class="btn-outline btn-xs" id="btn-p4-tomar-fin" title="Usar el segundo actual del video">Actual</button>
               </div>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <select id="p4-modo-unir" style="width:auto;flex:1">
-                <option value="soft" selected>⚡ Unir Video + Subtítulos internos (Rápido)</option>
-                <option value="burn">🔥 Unir Video + Subtítulos quemados en la imagen</option>
-                <option value="solo_recortar_video">✂️ Solo Recortar el Video MP4 (sin subtítulos)</option>
-              </select>
-              <button type="button" class="btn-secondary btn-sm" id="btn-p4-unir-video">
-                🎬 Procesar Video (.MP4)
-              </button>
-            </div>
-            <div id="p4-res-unir" style="margin-top:8px;font-size:0.84rem"></div>
           </div>
+          <div class="row">
+            <select id="p4-modo-unir" style="flex:1;min-width:200px">
+              <option value="soft" selected>Unir subtítulos internos (rápido)</option>
+              <option value="burn">Subtítulos quemados en la imagen</option>
+              <option value="solo_recortar_video">Solo recortar el video</option>
+            </select>
+            <button type="button" class="btn-secondary btn-sm" id="btn-p4-unir-video">Procesar MP4</button>
+          </div>
+          <div id="p4-res-unir" style="margin-top:8px;font-size:0.84rem"></div>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-
 <!-- ====================================================================== -->
-<!-- PESTAÑA 5: ENTRENAR MODELO ML CON MIS TRANSCRIPCIONES Y CONVERTIR GUIÓN -->
+<!-- PESTAÑA 5: MI ESTILO (ML) Y GUIONES                                     -->
 <!-- ====================================================================== -->
 <section class="step-section" id="step-5">
-  <div class="card" style="background:linear-gradient(135deg,#eff6ff 0%,#f5f3ff 100%);border-color:#c7d2fe">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-      <div>
-        <h2 style="margin:0;color:#1e1b4b">🧠 Laboratorio ML: Entrenar Mi Estilo de Habla y Convertir Guiones</h2>
-        <p style="font-size:0.86rem;color:#3730a3;margin:4px 0 0">
-          Entrená un modelo propio con tus transcripciones (aprende tus muletillas, conectores, ritmo de frase, voseo y vocabulario real) y enviale cualquier guión o texto para que lo reescriba exactamente como hablás vos.
-        </p>
-      </div>
-      <span class="badge badge-azul" id="p5-badge-estado" style="font-size:0.85rem;padding:6px 12px">Cargando estado del modelo…</span>
+  <div class="sec-head">
+    <div>
+      <div class="eyebrow">Herramientas IA</div>
+      <h1>Mi estilo y guiones</h1>
+      <p>Entrená un modelo con tus transcripciones y reescribí cualquier guión con tu forma de hablar.</p>
     </div>
+    <span class="badge badge-azul" id="p5-badge-estado" style="font-size:0.8rem;padding:6px 12px">Cargando estado del modelo…</span>
   </div>
 
-  <div class="grid-2">
-    <!-- COLUMNA IZQUIERDA: 1. ENTRENAR MODELO Y VER ADN DE TU ESTILO -->
-    <div style="display:flex;flex-direction:column;gap:16px">
-      <div class="card">
-        <h3 style="color:#1e3a8a;margin-bottom:6px">1. 🎓 Entrenar Modelo ML con mis Transcripciones</h3>
-        <p style="font-size:0.82rem;color:var(--muted);margin-top:0">
-          Seleccioná qué transcripciones procesadas usar (y cuál hablante sos vos) o subí archivos extra de tus grabaciones para que el modelo aprenda tu forma real de expresarte.
-        </p>
+  <div class="grid-2" style="align-items:start">
+    <!-- Convertir guión (lo más usado, primero) -->
+    <div class="card" style="margin:0">
+      <span class="card-tag">Usar</span>
+      <h2>Convertir un guión a mi estilo</h2>
+      <p class="sub-desc">Pegá un guión formal, notas o cualquier texto neutro.</p>
 
-        <div class="campo" style="margin-bottom:10px">
-          <label>A. Elegir sesiones guardadas y qué hablante usar como "Tu Voz":</label>
-          <div id="p5-lista-sesiones-train" style="display:flex;flex-direction:column;gap:6px;max-height:170px;overflow-y:auto;padding:8px;background:#f8fafc;border:1px solid var(--border);border-radius:8px">
+      <div class="campo" style="margin-bottom:12px">
+        <div class="row-between" style="margin-bottom:5px">
+          <label for="p5-txt-guion" style="margin:0">Texto de entrada</label>
+          <button type="button" class="btn-ghost btn-xs" id="btn-p5-ejemplo-guion">Cargar ejemplo</button>
+        </div>
+        <textarea id="p5-txt-guion" rows="8" placeholder="Ej.: 'A continuación veremos cómo definir una función en Python. Es importante destacar que puedes pasarle múltiples parámetros…'"></textarea>
+      </div>
+
+      <div class="grid-2" style="gap:10px;margin-bottom:12px">
+        <div class="campo">
+          <label for="p5-intensidad">Intensidad</label>
+          <select id="p5-intensidad">
+            <option value="sutil">Sutil (voseo y vocabulario, pocas muletillas)</option>
+            <option value="equilibrado" selected>Equilibrado (recomendado)</option>
+            <option value="conversacional">Muy conversacional (como en vivo)</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="p5-formato-out">Formato de salida</label>
+          <select id="p5-formato-out">
+            <option value="fluido" selected>Párrafos fluidos</option>
+            <option value="teleprompter">Frases cortas (teleprompter / XTTS)</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="check" style="margin-bottom:14px"><input type="checkbox" id="p5-chk-ollama"><span>Usar también Ollama local (Llama3 / Mistral en <code>localhost:11434</code>)</span></label>
+
+      <button type="button" class="btn-primary btn-block btn-lg" id="btn-p5-convertir">Convertir a mi estilo</button>
+
+      <div id="p5-box-resultado" style="display:none;margin-top:18px">
+        <div class="row-between" style="margin-bottom:6px">
+          <strong style="color:var(--ok);font-size:0.92rem">Guión adaptado</strong>
+          <span id="p5-info-out" class="badge badge-verde"></span>
+        </div>
+        <textarea id="p5-txt-salida" rows="9" style="background:#fbfefc;border-color:#86efac;font-size:0.93rem;line-height:1.6"></textarea>
+        <div class="row" style="gap:6px;margin-top:10px">
+          <button type="button" class="btn-primary btn-sm" id="btn-p5-copiar-out">Copiar</button>
+          <button type="button" class="btn-outline btn-sm" id="btn-p5-descargar-out">Descargar TXT</button>
+          <button type="button" class="btn-outline btn-sm" id="btn-p5-copiar-prompt" title="Copia un prompt con tu perfil de estilo y ejemplos reales">Copiar prompt con mi estilo</button>
+        </div>
+        <details class="plegable">
+          <summary>Fragmentos tuyos usados como referencia <span class="hint">· RAG</span></summary>
+          <div class="plegable-body">
+            <div id="p5-rag-ejemplos" style="font-size:0.8rem;color:var(--text-2);display:flex;flex-direction:column;gap:6px"></div>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <!-- Entrenar + perfil -->
+    <div class="stack" style="gap:16px">
+      <div class="card" style="margin:0">
+        <span class="card-tag">Entrenar</span>
+        <h2>Entrenar con mis transcripciones</h2>
+        <p class="sub-desc">Elegí las sesiones y cuál hablante sos vos. Podés sumar archivos extra.</p>
+
+        <div class="campo" style="margin-bottom:12px">
+          <label>Sesiones guardadas</label>
+          <div id="p5-lista-sesiones-train" style="display:flex;flex-direction:column;gap:6px;max-height:190px;overflow-y:auto;padding:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px">
             <span style="font-size:0.82rem;color:var(--muted)">Cargando sesiones…</span>
           </div>
         </div>
 
-        <div class="campo" style="margin-bottom:12px">
-          <label>B. Opcional: Subir archivos extra de transcripciones tuyas (.TXT, .SRT, .DOCX, .PDF):</label>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <input type="file" id="arch-p5-extra" accept=".txt,.srt,.vtt,.docx,.pdf" multiple hidden>
-            <button type="button" class="btn-outline btn-sm" onclick="document.getElementById('arch-p5-extra').click()">
-              📄 Agregar archivos de transcripción al entrenamiento
-            </button>
-            <span id="p5-lbl-extra" style="font-size:0.8rem;color:var(--muted)">Ningún archivo extra seleccionado</span>
-          </div>
+        <div class="row" style="margin-bottom:14px">
+          <input type="file" id="arch-p5-extra" accept=".txt,.srt,.vtt,.docx,.pdf" multiple hidden>
+          <button type="button" class="btn-outline btn-sm" onclick="document.getElementById('arch-p5-extra').click()">+ Archivos extra</button>
+          <span id="p5-lbl-extra" style="font-size:0.8rem;color:var(--muted)">Ningún archivo extra</span>
         </div>
 
-        <button type="button" class="btn-primary" id="btn-p5-entrenar" style="width:100%;justify-content:center">
-          🧠 Entrenar / Actualizar Modelo con mis Transcripciones
-        </button>
+        <button type="button" class="btn-primary btn-block" id="btn-p5-entrenar">Entrenar / actualizar modelo</button>
         <div id="p5-res-entrenar" style="margin-top:8px;font-size:0.84rem"></div>
       </div>
 
-      <!-- Perfil / ADN aprendido por el modelo -->
-      <div class="card" id="p5-card-adn">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-          <h3 style="margin:0;color:#1e3a8a">📊 ADN de Tu Estilo Aprendido por el Modelo</h3>
-          <a href="/api/estilo_dataset_jsonl" download="mi_estilo_finetuning.jsonl" class="btn-outline btn-xs" style="text-decoration:none" title="Descargar pares Guión Neutro -> Tu Estilo en formato JSONL para Fine-Tuning de LLMs">
-            📦 Descargar Dataset .JSONL (Fine-Tuning)
-          </a>
+      <div class="card" id="p5-card-adn" style="margin:0">
+        <div class="card-head" style="margin-bottom:12px">
+          <div>
+            <h2>Tu estilo aprendido</h2>
+          </div>
+          <a href="/api/estilo_dataset_jsonl" download="mi_estilo_finetuning.jsonl" class="btn-outline btn-xs" style="text-decoration:none;display:inline-flex;align-items:center;padding:4px 9px;border:1px solid var(--border-strong);border-radius:6px;font-size:0.75rem;font-weight:600;color:var(--text-2)" title="Pares guión neutro → tu estilo para fine-tuning">Dataset JSONL</a>
         </div>
 
-        <div class="grid-3" style="gap:8px;margin-bottom:12px" id="p5-metricas-grid">
-          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center">
-            <div style="font-size:1.15rem;font-weight:800;color:#1e40af" id="p5-m-frases">0</div>
-            <div style="font-size:0.74rem;color:var(--muted)">Frases tuyas analizadas</div>
-          </div>
-          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center">
-            <div style="font-size:1.15rem;font-weight:800;color:#1e40af" id="p5-m-pal">0</div>
-            <div style="font-size:0.74rem;color:var(--muted)">Palabras en tu corpus</div>
-          </div>
-          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center">
-            <div style="font-size:1.15rem;font-weight:800;color:#1e40af" id="p5-m-long">0</div>
-            <div style="font-size:0.74rem;color:var(--muted)">Palabras / oración promedio</div>
-          </div>
+        <div class="metricas" id="p5-metricas-grid">
+          <div class="metrica"><div class="valor" id="p5-m-frases">0</div><div class="lbl">Frases analizadas</div></div>
+          <div class="metrica"><div class="valor" id="p5-m-pal">0</div><div class="lbl">Palabras</div></div>
+          <div class="metrica"><div class="valor" id="p5-m-long">0</div><div class="lbl">Palabras / oración</div></div>
         </div>
 
-        <div style="margin-bottom:10px">
-          <label style="font-size:0.8rem;font-weight:700;display:block;margin-bottom:4px">
-            🗣️ Tus conectores, muletillas y giros más frecuentes detectados:
-          </label>
-          <div id="p5-chips-marcadores" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+        <div style="margin-bottom:12px">
+          <label class="lbl">Conectores y muletillas frecuentes</label>
+          <div id="p5-chips-marcadores" class="chips"></div>
         </div>
 
-        <div style="margin-bottom:10px">
-          <label style="font-size:0.8rem;font-weight:700;display:block;margin-bottom:4px">
-            ✏️ Ajustar las expresiones que querés que el modelo use al convertir tus guiones (separadas por coma):
-          </label>
-          <div style="display:flex;gap:6px">
-            <input type="text" id="p5-inp-muletillas" placeholder="vamos a ver, o sea, por ejemplo, entonces, fíjense que, acá…">
-            <button type="button" class="btn-outline btn-xs" id="btn-p5-guardar-muletillas">💾 Guardar</button>
+        <div style="margin-bottom:12px">
+          <label class="lbl" for="p5-inp-muletillas">Expresiones a usar al convertir <span style="font-weight:400;color:var(--muted)">(separadas por coma)</span></label>
+          <div class="input-con-btn">
+            <input type="text" id="p5-inp-muletillas" placeholder="vamos a ver, o sea, por ejemplo, fíjense que…">
+            <button type="button" class="btn-outline btn-sm" id="btn-p5-guardar-muletillas">Guardar</button>
           </div>
         </div>
 
         <div>
-          <label style="font-size:0.8rem;font-weight:700;display:block;margin-bottom:4px">
-            🔤 Tus expresiones y trigramas más repetidos al hablar:
-          </label>
-          <div id="p5-chips-ngramas" style="display:flex;flex-wrap:wrap;gap:5px"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- COLUMNA DERECHA: 2. ENVIAR UN GUIÓN Y CONVERTIRLO A MI ESTILO -->
-    <div style="display:flex;flex-direction:column;gap:16px">
-      <div class="card">
-        <h3 style="color:#1e3a8a;margin-bottom:6px">2. ✍️ Enviar un Guión y Convertirlo a Mi Estilo</h3>
-        <p style="font-size:0.82rem;color:var(--muted);margin-top:0">
-          Pegá un guión formal, un resumen, notas o cualquier texto neutro. El modelo lo transformará a tu forma natural de expresarte.
-        </p>
-
-        <div class="campo" style="margin-bottom:10px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-            <label for="p5-txt-guion">📄 Guión o texto de entrada:</label>
-            <button type="button" class="btn-outline btn-xs" id="btn-p5-ejemplo-guion">✨ Cargar guión de prueba</button>
-          </div>
-          <textarea id="p5-txt-guion" rows="6" placeholder="Pegá acá tu guión. Por ejemplo: 'A continuación veremos cómo definir una función en Python. Es importante destacar que puedes pasarle múltiples parámetros. Observa aquí cómo debemos retornar el resultado...'"></textarea>
-        </div>
-
-        <div class="grid-2" style="gap:10px;margin-bottom:10px">
-          <div class="campo">
-            <label for="p5-intensidad">Intensidad de tu estilo:</label>
-            <select id="p5-intensidad">
-              <option value="sutil">🌱 Sutil (Voseo y vocabulario propio, pocas muletillas)</option>
-              <option value="equilibrado" selected>🎯 Equilibrado (Recomendado — suena natural a vos)</option>
-              <option value="conversacional">🎙️ Muy conversacional (Habla espontánea en vivo con aperturas y cierres)</option>
-            </select>
-          </div>
-          <div class="campo">
-            <label for="p5-formato-out">Formato de salida:</label>
-            <select id="p5-formato-out">
-              <option value="fluido" selected>📝 Párrafos fluidos (para leer o grabar de corrido)</option>
-              <option value="teleprompter">🎬 Frases cortas tipo Teleprompter / Clonación XTTS</option>
-            </select>
-          </div>
-        </div>
-
-        <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;margin-bottom:12px;cursor:pointer">
-          <input type="checkbox" id="p5-chk-ollama">
-          <span>Usar también <strong>Ollama Local</strong> (si tenés Llama3/Mistral corriendo en tu PC en <code>localhost:11434</code>)</span>
-        </label>
-
-        <button type="button" class="btn-primary" id="btn-p5-convertir" style="width:100%;justify-content:center;font-size:1rem;padding:12px">
-          🪄 Convertir Guión a Mi Estilo de Hablar
-        </button>
-
-        <!-- Resultado del Guión Convertido -->
-        <div id="p5-box-resultado" style="display:none;margin-top:14px">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">
-            <strong style="color:var(--ok);font-size:0.95rem">✨ Guión adaptado a tu estilo:</strong>
-            <span id="p5-info-out" class="badge badge-verde"></span>
-          </div>
-          <textarea id="p5-txt-salida" rows="7" style="background:#f0fdf4;border:1.5px solid #86efac;font-size:0.95rem;line-height:1.55"></textarea>
-
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-            <button type="button" class="btn-primary btn-sm" id="btn-p5-copiar-out">📋 Copiar Guión Convertido</button>
-            <button type="button" class="btn-outline btn-sm" id="btn-p5-descargar-out">⬇ Descargar Guión (.TXT)</button>
-            <button type="button" class="btn-outline btn-sm" id="btn-p5-copiar-prompt" title="Copia un prompt con todo tu perfil estilométrico y tus ejemplos reales de habla">
-              🧬 Copiar Prompt con mi ADN de Estilo
-            </button>
-          </div>
-
-          <div style="margin-top:12px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px">
-            <strong style="font-size:0.8rem;color:#334155;display:block;margin-bottom:4px">
-              🔍 Fragmentos reales de tus transcripciones que el modelo usó como referencia para este tema (RAG):
-            </strong>
-            <div id="p5-rag-ejemplos" style="font-size:0.8rem;color:#475569;display:flex;flex-direction:column;gap:6px"></div>
-          </div>
-        </div>
-
-        <!-- Deseable a futuro registrado en la UI -->
-        <div style="margin-top:14px;background:#faf5ff;border:1px dashed #c084fc;border-radius:10px;padding:12px">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-            <strong style="font-size:0.86rem;color:#6b21a8">🚀 Deseable a futuro (Próxima etapa): Clonar mi voz y pasar este guión a audio con mi voz</strong>
-            <span class="badge" style="background:#f3e8ff;color:#6b21a8">Roadmap</span>
-          </div>
-          <p style="font-size:0.79rem;color:#581c87;margin:4px 0 0">
-            Conectar el dataset de voz limpia del <strong>Paso 3</strong> con un motor de clonación vocal (XTTS / F5-TTS / RVC) para que el texto ya convertido a tu estilo acá arriba se pueda transformar con 1 clic en un audio <code>.MP3 / .WAV</code> hablado con tu propia voz clonada.
-          </p>
+          <label class="lbl">Expresiones más repetidas</label>
+          <div id="p5-chips-ngramas" class="chips"></div>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-
+</div><!-- /main-inner -->
+</main>
+</div><!-- /app -->
 <script>
 // ==============================================================================
 // ESTADO GLOBAL DEL CLIENTE
@@ -4327,17 +4291,21 @@ let listaGrupos = [];
 let nombresGrupoActual = [];
 let archivoVideoP4 = null;
 
-window.toggleGuiaBienvenida = function() {
+window.toggleGuiaBienvenida = function(forzar) {
   const box = document.getElementById('card-bienvenida-guia');
   if (!box) return;
-  const oculto = box.style.display === 'none';
-  box.style.display = oculto ? 'block' : 'none';
-  try { localStorage.setItem('ocultar_guia_bienvenida', oculto ? '0' : '1'); } catch (e) {}
+  const abrir = (typeof forzar === 'boolean') ? forzar : !box.classList.contains('abierto');
+  box.classList.toggle('abierto', abrir);
+  document.body.style.overflow = abrir ? 'hidden' : '';
+  try { localStorage.setItem('guia_vista_v2', '1'); } catch (e) {}
 };
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') toggleGuiaBienvenida(false);
+});
+// La guía se abre sola solo la primera vez
 try {
-  if (localStorage.getItem('ocultar_guia_bienvenida') === '1') {
-    const b = document.getElementById('card-bienvenida-guia');
-    if (b) b.style.display = 'none';
+  if (!localStorage.getItem('guia_vista_v2')) {
+    window.addEventListener('load', () => toggleGuiaBienvenida(true));
   }
 } catch (e) {}
 
@@ -4385,6 +4353,7 @@ function irAPaso(num) {
   document.querySelectorAll('.step-section').forEach((sec, idx) => {
     sec.classList.toggle('activo', (idx + 1) === Number(num));
   });
+  window.scrollTo({ top: 0, behavior: 'auto' });
   if (num === 2) {
     cargarAudiosDisponibles();
     cargarSesionesGuardadas();
@@ -6104,7 +6073,7 @@ async function cargarEstadoEstiloPaso5() {
 
     const contSes = document.getElementById('p5-lista-sesiones-train');
     if (!sesiones.length) {
-      contSes.innerHTML = '<span style="font-size:0.82rem;color:var(--muted)">No hay sesiones guardadas aún. Podés subir archivos .TXT/.SRT abajo con el botón B.</span>';
+      contSes.innerHTML = '<span style="font-size:0.82rem;color:var(--muted)">No hay sesiones guardadas aún. Podés sumar archivos .TXT/.SRT con «+ Archivos extra».</span>';
     } else {
       contSes.innerHTML = sesiones.map((s, idx) => `
         <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;background:#fff;border:1px solid var(--border);border-radius:6px;font-size:0.83rem;cursor:pointer">
