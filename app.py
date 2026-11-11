@@ -4773,7 +4773,8 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
           <div class="salida-tit">🔇 Audio sin ciertas voces</div>
           <p class="salida-desc">Sacá o silenciá a quienes elijas. Sin nadie marcado, recorta el audio al tramo.</p>
           <div class="row" style="gap:4px;margin-bottom:6px">
-            <button type="button" class="btn-outline btn-xs" id="btn-p3b-todos-menos-yo">Todos menos yo</button>
+            <button type="button" class="btn-outline btn-xs" id="btn-p3b-todos-menos-yo" title="Marca a todos menos a vos: queda solo tu voz">Todos menos yo</button>
+            <button type="button" class="btn-outline btn-xs" id="btn-p3b-solo-yo" title="Marca solo tu voz: se saca o silencia tu voz y quedan los demás">Solo yo</button>
             <button type="button" class="btn-outline btn-xs" id="btn-p3b-ninguno">Nadie</button>
           </div>
           <div id="p3b-voces" class="voces-check"></div>
@@ -7012,8 +7013,15 @@ function renderVocesP3b() {
 document.getElementById('btn-p3b-todos-menos-yo').onclick = () => {
   const st = sesionActiva;
   if (!st) return;
-  if (!st.miVozId) { alert('Primero marcá "☆ Soy yo" en tu voz (paso 1).'); return; }
+  if (!st.miVozId) { alert('Primero marcá "☆ Soy yo" en tu voz (en Hablantes).'); return; }
   st.quitarVoces = new Set(st.hablantes.filter(h => h.id !== st.miVozId).map(h => h.id));
+  renderVocesP3b(); actualizarResumenAudioPaso3();
+};
+document.getElementById('btn-p3b-solo-yo').onclick = () => {
+  const st = sesionActiva;
+  if (!st) return;
+  if (!st.miVozId) { alert('Primero marcá "☆ Soy yo" en tu voz (en Hablantes).'); return; }
+  st.quitarVoces = new Set([st.miVozId]);
   renderVocesP3b(); actualizarResumenAudioPaso3();
 };
 document.getElementById('btn-p3b-ninguno').onclick = () => {
