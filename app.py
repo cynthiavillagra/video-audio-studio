@@ -3330,6 +3330,33 @@ code {
 .step-section.activo { display: block; }
 @keyframes aparecer { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
+/* ---------- "Usalo para" ---------- */
+.uso {
+  display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap;
+  margin: -6px 0 18px; padding: 10px 14px;
+  background: #fff; border: 1px solid var(--border); border-radius: 10px;
+}
+.uso-tit { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--primary); white-space: nowrap; }
+.uso ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.uso li { font-size: 0.84rem; color: var(--text-2); position: relative; padding-left: 16px; }
+.uso li::before {
+  content: ""; position: absolute; left: 2px; top: 0.45em; width: 7px; height: 4px;
+  border-left: 2px solid var(--ok); border-bottom: 2px solid var(--ok); transform: rotate(-45deg);
+}
+
+/* ---------- Ejemplo en la ayuda ---------- */
+.ejemplo { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 16px; }
+.ejemplo h3 { margin: 0 0 4px; font-size: 1rem; }
+.ejemplo > p { margin: 0 0 12px; color: var(--muted); font-size: 0.86rem; }
+.ejemplo ol { margin: 0; padding: 0; list-style: none; counter-reset: ej; display: flex; flex-direction: column; gap: 10px; }
+.ejemplo li { counter-increment: ej; display: grid; grid-template-columns: 26px 1fr; gap: 10px; font-size: 0.86rem; color: var(--text-2); }
+.ejemplo li::before {
+  content: counter(ej); width: 24px; height: 24px; border-radius: 50%; background: var(--primary-light);
+  color: var(--primary); font-weight: 700; font-size: 0.78rem; display: grid; place-items: center;
+}
+.ejemplo li strong { color: var(--text); }
+.ejemplo li em { color: var(--muted); font-style: normal; }
+
 /* ---------- Tarjetas ---------- */
 .card {
   background: var(--card);
@@ -3850,7 +3877,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       </button>
       <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(2)">
         <span class="gnum">2</span>
-        <div><strong>Transcripción</strong><span>A: transcribir un MP3 acá con Whisper (separa las voces). B: subir una ya hecha; detecta sola si es de Tactiq, YouTube, Whisper o SRT.</span></div>
+        <div><strong>Transcripción</strong><span>A: transcribir un audio o video acá con Whisper (separa las voces). B: subir una ya hecha; detecta sola si es de Tactiq, YouTube, Whisper o SRT.</span></div>
         <span class="ir">Ir →</span>
       </button>
       <button type="button" class="guia-item" onclick="toggleGuiaBienvenida(false); irAPaso(3)">
@@ -3877,6 +3904,18 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       </div>
     </div>
 
+    <div class="ejemplo">
+      <h3>Ejemplo: una clase grabada con OBS</h3>
+      <p>Un recorrido típico de punta a punta. No hace falta pasar por todas las secciones.</p>
+      <ol>
+        <li><div><strong>Video / Audio.</strong> Recortás el video (por ejemplo, el principio y el final que sobran) y extraés el audio en MP3.</div></li>
+        <li><div><strong>Transcripción.</strong> Con ese MP3 hacés la transcripción con Whisper, que separa a los hablantes. Si la clase la transcribiste con Tactiq, subís esa: ya viene con los nombres de cada uno. Si tiene partes que quedaron fuera del video recortado, la recortás al subirla.</div></li>
+        <li><div><strong>Hablantes y mi voz.</strong> Etiquetás quién es quién y guardás las voces en el grupo, así en las próximas clases se reconocen solas.</div></li>
+        <li><div><strong>Subtítulos y video.</strong> Generás los subtítulos (SRT) para subirlos junto al video, por ejemplo en Drive. Si el video salió sin audio por error, acá sincronizás la transcripción con la imagen para que no quede desfasada.</div></li>
+        <li><div><strong>Video para publicar</strong> <em>(opcional)</em>. Si vas a compartir la clase fuera del curso, silenciás las voces de los alumnos y lo que dijeron queda como subtítulo.</div></li>
+      </ol>
+    </div>
+
     <div class="guia-nota">
       <strong>Próximas etapas:</strong> clonar tu voz (XTTS / F5-TTS / RVC) con el dataset del paso 3 para pasar el guión convertido directo a audio con tu voz, y organizar los grupos de hablantes en niveles (categoría → área → subgrupo).
     </div>
@@ -3898,6 +3937,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     </div>
     <button type="button" class="btn-ghost btn-sm" onclick="irAPaso(2)">Ya tengo el audio: ir a Transcripción →</button>
   </div>
+  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Recortar un video</li><li>Recortar un audio</li><li>Extraer el audio (MP3) de un video</li><li>Dividir un video o audio en varias partes</li></ul></div>
 
   <div class="card">
     <div class="grid-2-60">
@@ -4013,9 +4053,10 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     <div>
       <div class="eyebrow">Paso 2</div>
       <h1>Transcripción</h1>
-      <p>Abrí una que ya procesaste, transcribí un audio con Whisper o subí una hecha en otro lado.</p>
+      <p>Abrí una que ya procesaste, transcribí un audio o video con Whisper o subí una hecha en otro lado.</p>
     </div>
   </div>
+  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Transcribir un video o un audio con Whisper, separando a los hablantes</li><li>Subir una transcripción hecha con otra herramienta (Tactiq, YouTube…)</li><li>Vincular una transcripción con su audio o video</li><li>Recortar una transcripción (por ejemplo, las partes que quedaron fuera del video)</li></ul></div>
 
   <div class="card" id="card-sesiones-previas">
     <div class="card-head" style="margin-bottom:10px">
@@ -4033,12 +4074,12 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     <!-- OPCIÓN A -->
     <div class="card" style="margin-bottom:0">
       <span class="card-tag">Opción A</span>
-      <h2>Transcribir un audio con Whisper</h2>
+      <h2>Transcribir con Whisper</h2>
       <p class="sub-desc">Se transcribe en tu PC y separa las voces de los hablantes.</p>
 
       <div class="stack">
         <div class="campo">
-          <label for="p2-sel-mp3">Audio de <code>audios/</code></label>
+          <label for="p2-sel-mp3">Audio o video de <code>audios/</code></label>
           <select id="p2-sel-mp3">
             <option value="">Cargando audios…</option>
           </select>
@@ -4099,7 +4140,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       </div>
 
       <div class="campo" style="margin-top:14px">
-        <label for="p2-trans-mp3">Vincular con un audio <span style="font-weight:400;color:var(--muted)">(opcional, para escuchar las voces)</span></label>
+        <label for="p2-trans-mp3">Vincular con su audio o video <span style="font-weight:400;color:var(--muted)">(opcional, para escuchar las voces)</span></label>
         <select id="p2-trans-mp3">
           <option value="">Sin audio (solo transcripción y subtítulos)</option>
         </select>
@@ -4139,6 +4180,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       <p>Poné nombre a cada voz, silenciá a quien no quieras y exportá el audio o la transcripción recortada.</p>
     </div>
   </div>
+  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Etiquetar quién habla (a mano, con una lista de nombres o con Tactiq)</li><li>Guardar las voces para que se reconozcan solas en próximas grabaciones</li><li>Recortar el audio y la transcripción a un tramo</li><li>Aislar tu voz o silenciar a otros en el audio</li></ul></div>
 
   <div id="p3-vacio" class="card vacio">
     <div class="vacio-icon"><svg><use href="#i-users"/></svg></div>
@@ -4377,6 +4419,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       <p>Para videos grabados sin audio: sincronizá la transcripción con el video y exportá los subtítulos o el MP4.</p>
     </div>
   </div>
+  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Crear subtítulos (SRT / VTT) para subir con el video, por ejemplo a Drive o YouTube</li><li>Sincronizar la transcripción con un video que salió sin audio (si no, queda desfasada)</li><li>Recortar el video o unirle los subtítulos en un MP4</li></ul></div>
 
   <div id="p4-vacio" class="card vacio">
     <div class="vacio-icon"><svg><use href="#i-cc"/></svg></div>
@@ -4533,6 +4576,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     </div>
     <span class="badge badge-azul" id="p5-badge-estado" style="font-size:0.8rem;padding:6px 12px">Cargando estado del modelo…</span>
   </div>
+  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Entrenar un modelo con tu forma de hablar a partir de tus clases</li><li>Reescribir un guion o un texto formal como lo dirías vos</li></ul></div>
 
   <div class="grid-2" style="align-items:start">
     <!-- Convertir guión (lo más usado, primero) -->
@@ -4663,6 +4707,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       <p>Silenciá las voces que no querés que se escuchen (por ejemplo, las de alumnos). Lo que dijeron queda como subtítulo.</p>
     </div>
   </div>
+  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Publicar o compartir una clase sin que se escuchen las voces de los alumnos</li><li>Que lo que dijeron quede como subtítulo, con nombre anonimizado o real</li><li>Dejar el volumen parejo en todo el video</li></ul></div>
 
   <!-- 1. Video y análisis -->
   <div class="card">
@@ -5484,13 +5529,15 @@ async function cargarAudiosDisponibles(seleccionarNombre = '') {
         : '<option value="">(Carpeta audios/ vacía)</option>';
     }
 
-    if (!soloAudios.length) {
-      selA.innerHTML = '<option value="">(Aún no hay MP3 en /audios — creá uno en el Paso 1)</option>';
+    const icono = a => a.tipo === 'video' ? '🎬 ' : '🎵 ';
+    const medios = [...soloAudios, ...lista.filter(a => a.tipo === 'video')];
+    if (!medios.length) {
+      selA.innerHTML = '<option value="">(Todavía no hay audios ni videos en audios/ — cargá uno en Video / Audio)</option>';
     } else {
-      selA.innerHTML = soloAudios.map(a => `<option value="${escHtml(a.nombre)}" ${a.nombre === seleccionarNombre ? 'selected' : ''}>${escHtml(a.nombre)} (${fmtMB(a.bytes)})</option>`).join('');
+      selA.innerHTML = medios.map(a => `<option value="${escHtml(a.nombre)}" ${a.nombre === seleccionarNombre ? 'selected' : ''}>${icono(a)}${escHtml(a.nombre)} (${fmtMB(a.bytes)})</option>`).join('');
     }
-    selB.innerHTML = '<option value="">— Sin audio (solo trabajar con la transcripción y subtítulos) —</option>' +
-      soloAudios.map(a => `<option value="${escHtml(a.nombre)}">${escHtml(a.nombre)} (${fmtMB(a.bytes)})</option>`).join('');
+    selB.innerHTML = '<option value="">Sin audio (solo transcripción y subtítulos)</option>' +
+      medios.map(a => `<option value="${escHtml(a.nombre)}">${icono(a)}${escHtml(a.nombre)} (${fmtMB(a.bytes)})</option>`).join('');
   } catch (e) {}
 }
 

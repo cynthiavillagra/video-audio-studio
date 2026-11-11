@@ -19,6 +19,14 @@ No hace falta seguir siempre todos los pasos en orden: **podés entrar directame
 
 
 
+### 🎬 Ejemplo: una clase grabada con OBS
+
+1. **Video / Audio**: recortás el video (por ejemplo, el principio y el final que sobran) y extraés el audio en MP3.
+2. **Transcripción**: con ese MP3 hacés la transcripción con Whisper, que separa a los hablantes. Si la clase la transcribiste con Tactiq, subís esa: ya viene con los nombres de cada uno. Si tiene partes que quedaron fuera del video recortado, la recortás al subirla.
+3. **Hablantes y mi voz**: etiquetás quién es quién y guardás las voces en el grupo, así en las próximas clases se reconocen solas.
+4. **Subtítulos y video**: generás los subtítulos (SRT) para subirlos junto al video, por ejemplo en Drive. Si el video salió sin audio por error, ahí sincronizás la transcripción con la imagen para que no quede desfasada.
+5. **Video para publicar** *(opcional)*: si vas a compartir la clase fuera del curso, silenciás las voces de los alumnos y lo que dijeron queda como subtítulo.
+
 ### 📊 Diagrama de Flujo del Workflow (De arriba hacia abajo)
 
 ```mermaid
