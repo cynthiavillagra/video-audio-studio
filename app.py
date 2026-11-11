@@ -635,6 +635,7 @@ def _worker_publicar(job_id: str, params: dict) -> None:
         offset = float(params.get("offset", 0) or 0)
         margen = max(0.0, min(1.0, float(params.get("margen", 0.2))))
         nivelar = bool(params.get("nivelar", True))
+        igualar = bool(params.get("igualar", False))
         modo_nombre = params.get("modo_nombre", "anon")
         prefijo = (params.get("prefijo_anon") or "Alumno").strip() or "Alumno"
         nombres_edit = params.get("nombres") or {}
@@ -645,8 +646,8 @@ def _worker_publicar(job_id: str, params: dict) -> None:
         segmentos = sesion.get("segmentos", [])
         a_silenciar = [s for s in segmentos if s.get("hablante") in silenciados]
         a_subtitular = [s for s in segmentos if s.get("hablante") in silenciados or s.get("hablante") in solo_sub]
-        if not a_subtitular:
-            raise ValueError("Elegí al menos una voz para silenciar o subtitular.")
+        if not a_subtitular and not ((igualar or nivelar) and tiene_audio):
+            raise ValueError("Elegí al menos una voz para silenciar o subtitular, o activá igualar / nivelar el volumen.")
 
         # Nombres que se muestran en los subtítulos
         orden_spk = []
@@ -669,11 +670,13 @@ def _worker_publicar(job_id: str, params: dict) -> None:
             max_chars_sub=int(params.get("max_chars", 84) or 84), min_dur_seg=1.2,
             max_dur_seg=float(params.get("max_dur", 6.0) or 6.0),
         )
-        texto_srt = _srt_desde_bloques(bloques)
+        texto_srt = _srt_desde_bloques(bloques) if bloques else ""
         base = os.path.splitext(nombre_video)[0] + "_publicar"
-        nombre_srt = nombre_unico(SALIDA, base, ".srt")
-        with open(os.path.join(SALIDA, nombre_srt), "w", encoding="utf-8") as f:
-            f.write(texto_srt)
+        nombre_srt = ""
+        if bloques:
+            nombre_srt = nombre_unico(SALIDA, base, ".srt")
+            with open(os.path.join(SALIDA, nombre_srt), "w", encoding="utf-8") as f:
+                f.write(texto_srt)
 
         # Filtro de audio: silencio en los tramos + nivelación opcional
         intervalos = _unir_intervalos(
@@ -684,6 +687,9 @@ def _worker_publicar(job_id: str, params: dict) -> None:
         if intervalos:
             expr = "+".join(f"between(t,{a:.2f},{b:.2f})" for a, b in intervalos)
             filtros.append(f"volume=enable='{expr}':volume=0")
+        if igualar and tiene_audio:
+            # Normalizador dinámico: sube las voces bajas y baja las altas (sin amplificar el silencio de más)
+            filtros.append("dynaudnorm=f=300:g=15:p=0.9:m=8:s=12")
         if nivelar and tiene_audio:
             filtros += ["loudnorm=I=-16:TP=-1.5:LRA=11", "aresample=48000"]
         filtro = ",".join(filtros)
@@ -704,11 +710,13 @@ def _worker_publicar(job_id: str, params: dict) -> None:
 
         def correr(opciones_filtro: list[str], codec_video: list[str]) -> tuple[int, str]:
             mapa_audio = ["-map", "0:a:0", "-c:a", "aac", "-b:a", "192k"] if tiene_audio else []
-            cmd = ["ffmpeg", "-y", "-i", ruta_video, "-i", ruta_srt_tmp,
-                   "-map", "0:v:0", *mapa_audio[:2], "-map", "1:0",
-                   *opciones_filtro, *codec_video, *mapa_audio[2:],
-                   "-c:s", "mov_text", "-metadata:s:s:0", "language=spa",
-                   "-metadata:s:s:0", "title=Subtitulos", "-disposition:s:0", "default",
+            subs_in = ["-i", ruta_srt_tmp] if bloques else []
+            subs_map = ["-map", "1:0"] if bloques else []
+            subs_opts = (["-c:s", "mov_text", "-metadata:s:s:0", "language=spa",
+                          "-metadata:s:s:0", "title=Subtitulos", "-disposition:s:0", "default"] if bloques else [])
+            cmd = ["ffmpeg", "-y", "-i", ruta_video, *subs_in,
+                   "-map", "0:v:0", *mapa_audio[:2], *subs_map,
+                   *opciones_filtro, *codec_video, *mapa_audio[2:], *subs_opts,
                    "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", ruta_out]
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     text=True, encoding="utf-8", errors="replace")
@@ -762,6 +770,7 @@ def _worker_publicar(job_id: str, params: dict) -> None:
             "subtitulos": len(bloques),
             "etiquetas": mapa_nom,
             "nivelado": nivelar and tiene_audio,
+            "igualado": igualar and tiene_audio,
             "voces_silenciadas": len(silenciados),
             "voces_solo_sub": len(solo_sub),
         })
@@ -3568,6 +3577,85 @@ a.btn-xs { padding: 4px 9px; font-size: 0.75rem; border-radius: 6px; }
 .voz-fila.subtitulo { border-color: var(--primary-border); background: #fafbff; }
 .voz-fila .voz-stats .etq.azul { color: var(--primary); }
 
+/* ---------- Vista previa de Video para publicar ---------- */
+.pub-dos-col { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); gap: 16px; align-items: start; }
+.pub-prev-col { position: sticky; top: 12px; }
+.pub-prev-col .preview { margin-top: 0; }
+@media (max-width: 1000px) { .pub-dos-col { grid-template-columns: 1fr; } .pub-prev-col { position: static; order: -1; } }
+.pub-dos-col .voz-fila { grid-template-columns: 12px minmax(120px, 1fr) auto; }
+.pub-dos-col .voz-fila .voz-stats { grid-column: 2 / -1; order: 5; }
+.pub-dos-col .voz-fila .seg3 { grid-column: 2 / -1; order: 6; justify-self: start; }
+.pub-video-wrap { position: relative; }
+.pub-video-wrap video { width: 100%; max-height: 340px; background: #000; border-radius: 8px; display: block; }
+.pub-overlay { bottom: 44px; }
+.pub-overlay span { font-size: 0.92rem; }
+.pub-mute-tag { position: absolute; top: 8px; left: 8px; background: var(--danger); color: #fff; font-size: 0.74rem; font-weight: 700; padding: 3px 8px; border-radius: 999px; }
+.tl-seg { position: absolute; top: 0; bottom: 0; min-width: 1px; }
+.tl-seg.sil { background: rgba(220,38,38,0.55); }
+.tl-seg.sub { background: rgba(37,99,235,0.55); }
+.tl-leyenda { display: flex; gap: 14px; font-size: 0.74rem; color: var(--muted); margin-top: 4px; }
+.tl-leyenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.pub-ahora { font-size: 0.82rem; color: var(--text-2); margin-top: 8px; min-height: 1.3em; }
+
+/* ---------- Recetas ---------- */
+.recetas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0 0 14px; }
+@media (max-width: 1000px) { .recetas { grid-template-columns: 1fr 1fr; } }
+.recetas-tit { grid-column: 1 / -1; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--primary); }
+.receta {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-weight: 400;
+}
+.receta strong { font-size: 0.84rem; color: var(--text); }
+.receta span { font-size: 0.76rem; color: var(--muted); }
+.receta:hover { border-color: var(--primary-border); background: #fafbff; }
+.receta.activa { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.14); background: var(--primary-light); }
+.btn-yo { background: #fff; border: 1px solid var(--border-strong); color: var(--text-2); padding: 4px 9px; font-size: 0.75rem; border-radius: 6px; white-space: nowrap; }
+.btn-yo.activo { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+
+/* ---------- Hablantes (paso 3) ---------- */
+.ctx-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 18px; }
+.ctx-tit { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ctx-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.ctx-tit strong { font-size: 0.98rem; overflow-wrap: anywhere; }
+.ctx-datos { font-size: 0.82rem; color: var(--text-2); margin-top: 2px; }
+.ctx-datos .ok { color: var(--ok); font-weight: 600; }
+.ctx-datos .pend { color: var(--warn); font-weight: 600; }
+.paso-cab { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+.paso-cab h2 { margin: 0 0 2px; }
+.paso-cab p { margin: 0; font-size: 0.86rem; color: var(--muted); }
+.paso-n {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; background: var(--primary); color: #fff;
+  display: grid; place-items: center; font-weight: 700; font-size: 0.9rem;
+}
+.voz-row {
+  display: grid; grid-template-columns: 12px minmax(180px, 1.3fr) minmax(140px, 1fr) auto auto; gap: 12px; align-items: center;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff;
+}
+.voz-row.es-yo { border-color: #f59e0b; background: #fffdf5; }
+.voz-row .dot { width: 12px; height: 12px; border-radius: 50%; }
+.voz-row input[type="text"] { padding: 6px 8px; font-weight: 600; }
+.voz-ej { font-size: 0.75rem; color: var(--muted); font-style: italic; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.voz-stats { font-size: 0.78rem; color: var(--muted); }
+.voz-stats .guardada { color: var(--ok); }
+.voz-stats .cambio { color: var(--primary); font-weight: 600; }
+.voz-row .voz-nombre { min-width: 0; }
+@media (max-width: 760px) {
+  .voz-row { grid-template-columns: 12px minmax(0, 1fr) auto; }
+  .voz-row .voz-stats { grid-column: 2 / 3; }
+}
+.salidas-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; align-items: start; }
+.salida { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: #fff; display: flex; flex-direction: column; gap: 10px; }
+.salida-tit { font-weight: 650; font-size: 0.95rem; }
+.salida-desc { margin: -6px 0 0; font-size: 0.8rem; color: var(--muted); }
+.salida-resumen { font-size: 0.78rem; color: #1e40af; background: var(--primary-light); border-radius: 8px; padding: 6px 8px; }
+.salida-resumen:empty { display: none; }
+.aviso-mini { font-size: 0.8rem; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 6px 8px; }
+.aviso-mini:empty { display: none; }
+.salida-ok { margin-top: 4px; padding: 10px; border-radius: 8px; background: #f0fdf4; border: 1px solid #bbf7d0; }
+.voces-check { display: flex; flex-direction: column; gap: 4px; max-height: 170px; overflow-y: auto; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.voces-check .check { font-size: 0.82rem; }
+.dot-mini { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+
 /* ---------- Badges ---------- */
 .badge {
   font-size: 0.73rem;
@@ -4291,10 +4379,10 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     <div>
       <div class="eyebrow">Paso 3</div>
       <h1>Hablantes y mi voz</h1>
-      <p>Poné nombre a cada voz, silenciá a quien no quieras y exportá el audio o la transcripción recortada.</p>
+      <p>En 3 pasos: identificá quién es quién, revisá la transcripción y llevate lo que necesites (tu voz, el audio, la transcripción o un video).</p>
     </div>
   </div>
-  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Etiquetar quién habla (a mano, con una lista de nombres o con Tactiq)</li><li>Guardar las voces para que se reconozcan solas en próximas grabaciones</li><li>Recortar el audio y la transcripción a un tramo</li><li>Aislar tu voz o silenciar a otros en el audio</li></ul></div>
+  <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Etiquetar quién habla (a mano, con una lista de nombres o con Tactiq)</li><li>Guardar las voces para que se reconozcan solas en próximas grabaciones</li><li>Recortar el audio y la transcripción a un tramo</li><li>Aislar tu voz o silenciar a otros en el audio</li><li>Llevar la transcripción a un video con subtítulos o voces silenciadas</li></ul></div>
 
   <div id="p3-vacio" class="card vacio">
     <div class="vacio-icon"><svg><use href="#i-users"/></svg></div>
@@ -4304,31 +4392,85 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
   </div>
 
   <div id="p3-contenido" style="display:none">
-    <!-- Grupo activo -->
-    <div class="card" style="padding:14px 18px">
-      <div class="grupo-bar">
-        <div class="row">
-          <label for="p3-sel-grupo" style="font-weight:600;font-size:0.88rem">Grupo de hablantes</label>
-          <select id="p3-sel-grupo"></select>
-          <button type="button" class="btn-outline btn-sm" id="btn-nuevo-grupo">+ Nuevo grupo</button>
-        </div>
-        <span class="badge badge-azul" id="badge-info-grupo">0 nombres · 0 voces guardadas</span>
+    <!-- Barra de contexto: qué transcripción está abierta -->
+    <div class="card ctx-bar">
+      <div class="ctx-main">
+        <div class="ctx-tit"><span class="ctx-label">Transcripción abierta</span><strong id="p3-ctx-nombre">—</strong></div>
+        <div class="ctx-datos" id="p3-ctx-datos"></div>
       </div>
-      <p style="font-size:0.78rem;color:var(--muted);margin:8px 0 0">Los nombres y huellas de voz quedan guardados en el grupo y se reconocen solos en próximas grabaciones.</p>
+      <div class="row" style="gap:6px">
+        <label for="p3-sel-grupo" style="font-size:0.78rem;color:var(--muted)">Grupo</label>
+        <select id="p3-sel-grupo" style="width:auto;min-width:160px;padding:6px 8px;font-size:0.84rem"></select>
+        <button type="button" class="btn-outline btn-xs" id="btn-nuevo-grupo" title="Crear un grupo nuevo (por ejemplo, otro curso)">+ Grupo</button>
+        <button type="button" class="btn-ghost btn-xs" onclick="irAPaso(2)">Cambiar transcripción</button>
+      </div>
+      <span class="badge badge-azul" id="badge-info-grupo" style="display:none"></span>
     </div>
 
-    <!-- Diagnóstico -->
-    <div class="diagnostico-grid">
-      <div class="diag-box" id="diag-hablantes-box">
-        <h4>Hablantes detectados</h4>
-        <p id="diag-hablantes-txt">Analizando…</p>
-        <div class="row" style="margin-top:10px;gap:6px">
-          <span style="font-size:0.78rem;color:var(--muted)">Separar en:</span>
+    <!-- Diagnóstico (compatibilidad: el texto se resume en la barra de contexto) -->
+    <div style="display:none">
+      <div id="diag-hablantes-box"><p id="diag-hablantes-txt"></p></div>
+      <div id="diag-mivoz-box"><p id="diag-mivoz-txt"></p></div>
+    </div>
+
+    <!-- Reproductor -->
+    <div class="player-sticky" id="p3-player-bar">
+      <audio id="p3-audio" controls preload="metadata"></audio>
+      <div style="font-size:0.82rem;color:#d1d5db" id="p3-player-info">Tocá ▶ en una voz o en una línea para escucharla.</div>
+    </div>
+
+    <!-- ============ 1. ¿QUIÉN ES QUIÉN? ============ -->
+    <div class="card paso-bloque">
+      <div class="paso-cab">
+        <span class="paso-n">1</span>
+        <div>
+          <h2>¿Quién es quién?</h2>
+          <p>Escuchá cada voz, escribí su nombre y marcá cuál sos vos. Los nombres se guardan en el grupo para reconocerlos solos la próxima vez.</p>
+        </div>
+      </div>
+
+      <details class="plegable" id="p3-auto-box">
+        <summary>✨ Completar los nombres automáticamente <span class="hint">· con Tactiq, por presentaciones o con una lista</span></summary>
+        <div class="plegable-body">
+          <div class="grid-3">
+            <div class="panel">
+              <span class="panel-titulo">Con la transcripción de Tactiq</span>
+              <p class="panel-desc">La recomendada: toma los nombres de Tactiq y los asigna a cada voz, aunque los tiempos estén corridos.</p>
+              <input type="file" id="arch-tactiq-sync" accept=".txt,.docx,.srt,.vtt,.json" hidden>
+              <button type="button" class="btn-primary btn-sm btn-block" onclick="document.getElementById('arch-tactiq-sync').click()">Subir Tactiq</button>
+              <div id="res-tactiq-sync" style="font-size:0.79rem;margin-top:6px"></div>
+            </div>
+            <div class="panel">
+              <span class="panel-titulo">Por presentaciones</span>
+              <p class="panel-desc">Busca cuando alguien dice <em>"soy…"</em> o <em>"mi nombre es…"</em>.</p>
+              <button type="button" class="btn-outline btn-sm btn-block" id="btn-auto-presentacion">Buscar presentaciones</button>
+              <div id="res-auto-presentacion" style="font-size:0.79rem;margin-top:6px"></div>
+            </div>
+            <div class="panel">
+              <span class="panel-titulo">Lista de nombres del grupo</span>
+              <p class="panel-desc">Cargá los nombres del curso (Excel, CSV o TXT) y te aparecen para elegir al escribir.</p>
+              <div class="row" style="gap:6px">
+                <input type="file" id="arch-listado-nombres" accept=".xlsx,.csv,.txt" hidden>
+                <button type="button" class="btn-outline btn-sm" onclick="document.getElementById('arch-listado-nombres').click()">Subir lista</button>
+                <button type="button" class="btn-outline btn-sm" id="btn-pegar-nombres">Pegar nombres</button>
+              </div>
+              <div id="chips-nombres-grupo" class="chips" style="margin-top:8px;max-height:90px;overflow-y:auto"></div>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <datalist id="p3-dl-nombres"></datalist>
+      <div id="p3-hablantes-grid" class="stack" style="gap:6px"></div>
+
+      <div class="row-between" style="margin-top:12px">
+        <div class="row" style="gap:6px;font-size:0.82rem;color:var(--text-2)">
+          <span>¿Voces mezcladas o repetidas? Separar en</span>
           <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="2">2</button>
           <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="3">3</button>
           <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="4">4</button>
           <button type="button" class="btn-outline btn-xs btn-recluster-k" data-k="5">5</button>
-          <select id="p3-k-otro" aria-label="Otra cantidad de hablantes" style="width:auto;padding:3px 6px;font-size:0.76rem">
+          <select id="p3-k-otro" aria-label="Otra cantidad de voces" style="width:auto;padding:3px 6px;font-size:0.76rem">
             <option value="6">6</option>
             <option value="7">7</option>
             <option value="8">8</option>
@@ -4355,196 +4497,159 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
             <option value="29">29</option>
             <option value="30">30</option>
           </select>
-          <button type="button" class="btn-outline btn-xs btn-recluster-k" id="btn-p3-k-otro" data-k="6">Separar</button>
+          <button type="button" class="btn-outline btn-xs btn-recluster-k" id="btn-p3-k-otro" data-k="6">voces</button>
         </div>
+        <button type="button" class="btn-ghost btn-xs" id="btn-p3-nuevo-spk">+ Agregar una voz</button>
       </div>
-      <div class="diag-box" id="diag-mivoz-box">
-        <h4>Tu voz y voces del grupo</h4>
-        <p id="diag-mivoz-txt">Analizando…</p>
-      </div>
+      <!-- Compatibilidad con funciones anteriores -->
+      <span id="btn-p3-silenciar-todos" hidden></span><span id="btn-p3-activar-todos" hidden></span>
     </div>
 
-    <!-- Reproductor -->
-    <div class="player-sticky" id="p3-player-bar">
-      <audio id="p3-audio" controls preload="metadata"></audio>
-      <div style="font-size:0.82rem;color:#d1d5db" id="p3-player-info">
-        Tocá <strong>▶ Escuchar</strong> en cada hablante para oír su voz.
-      </div>
-    </div>
-
-    <!-- Etiquetado automático -->
-    <details class="plegable card" style="padding:0" open>
-      <summary style="padding:14px 18px;font-size:0.95rem">Etiquetar automáticamente <span class="hint">· lista de nombres, presentaciones o Tactiq</span></summary>
-      <div class="plegable-body" style="padding:0 18px 18px">
-        <div class="grid-3">
-          <div class="panel">
-            <span class="panel-titulo">A · Lista de nombres</span>
-            <p class="panel-desc">Subí un Excel, CSV o TXT con los nombres del grupo para elegirlos de una lista.</p>
-            <div class="row" style="gap:6px">
-              <input type="file" id="arch-listado-nombres" accept=".xlsx,.csv,.txt" hidden>
-              <button type="button" class="btn-outline btn-sm" onclick="document.getElementById('arch-listado-nombres').click()">Subir archivo</button>
-              <button type="button" class="btn-outline btn-sm" id="btn-pegar-nombres">Pegar nombres</button>
-            </div>
-            <div id="chips-nombres-grupo" class="chips" style="margin-top:8px;max-height:90px;overflow-y:auto"></div>
-          </div>
-
-          <div class="panel">
-            <span class="panel-titulo">B · Por presentación en el audio</span>
-            <p class="panel-desc">Busca cuando alguien dice <em>"mi nombre es…"</em> o <em>"yo soy…"</em> y lo etiqueta.</p>
-            <button type="button" class="btn-primary btn-sm btn-block" id="btn-auto-presentacion">Detectar nombres en el audio</button>
-            <div id="res-auto-presentacion" style="font-size:0.79rem;margin-top:6px"></div>
-          </div>
-
-          <div class="panel">
-            <span class="panel-titulo">C · Con la transcripción de Tactiq</span>
-            <p class="panel-desc">Sincroniza el desfase de tiempo y asigna los nombres de Tactiq a cada voz.</p>
-            <input type="file" id="arch-tactiq-sync" accept=".txt,.docx,.srt,.vtt,.json" hidden>
-            <button type="button" class="btn-secondary btn-sm btn-block" onclick="document.getElementById('arch-tactiq-sync').click()">Subir Tactiq y etiquetar</button>
-            <div id="res-tactiq-sync" style="font-size:0.79rem;margin-top:6px"></div>
-          </div>
-        </div>
-      </div>
-    </details>
-
-    <!-- Hablantes -->
-    <div class="card">
-      <div class="card-head">
+    <!-- ============ 2. REVISAR LA TRANSCRIPCIÓN ============ -->
+    <div class="card paso-bloque">
+      <div class="paso-cab">
+        <span class="paso-n">2</span>
         <div>
-          <h2>Hablantes de esta grabación</h2>
-          <p>Escuchá, elegí el nombre y tocá <strong>Guardar en grupo</strong> para registrar su voz.</p>
-        </div>
-        <div class="row" style="gap:6px">
-          <button type="button" class="btn-outline btn-xs" id="btn-p3-silenciar-todos">Silenciar todos</button>
-          <button type="button" class="btn-outline btn-xs" id="btn-p3-activar-todos">Activar todos</button>
-          <button type="button" class="btn-outline btn-xs" id="btn-p3-nuevo-spk">+ Agregar hablante</button>
+          <h2>Revisar la transcripción <span style="font-weight:400;color:var(--muted);font-size:0.86rem">· <span id="p3-cont-seg">0</span> líneas</span></h2>
+          <p>Si una línea quedó con la persona equivocada, cambiala en su nombre. El texto se puede corregir haciendo clic. Con ⛳ y 🏁 marcás el tramo para el paso 3.</p>
         </div>
       </div>
-      <div class="hablantes-grid" id="p3-hablantes-grid"></div>
+      <div class="row" style="margin-bottom:10px">
+        <input type="text" id="p3-buscar" placeholder="Buscar palabra o frase…" style="flex:1;min-width:180px;max-width:320px">
+        <select id="p3-filtro-spk" style="width:200px"><option value="">Todas las voces</option></select>
+        <label class="check" style="font-size:0.8rem"><input type="checkbox" id="p3-chk-ocultar-fuera"><span>Solo las líneas del tramo</span></label>
+      </div>
+      <div class="segmentos-wrap" id="p3-seg-wrap"></div>
     </div>
 
-    <!-- Recorte + Exportación -->
-    <div class="grid-2">
-      <div class="card">
-        <span class="card-tag">Tramo</span>
-        <h3>Recortar por minuto y segundo</h3>
-        <p class="sub-desc">El tramo se aplica al audio y a la transcripción.</p>
+    <!-- ============ 3. ¿QUÉ QUERÉS LLEVARTE? ============ -->
+    <div class="card paso-bloque">
+      <div class="paso-cab">
+        <span class="paso-n">3</span>
+        <div>
+          <h2>¿Qué querés llevarte?</h2>
+          <p>Elegí el tramo (o dejá todo) y lo que necesitás.</p>
+        </div>
+      </div>
 
-        <div class="grid-2" style="gap:10px;margin-bottom:10px">
+      <div class="panel" style="margin-bottom:14px">
+        <div class="row" style="gap:10px;align-items:flex-end">
           <div class="campo">
             <label for="p3-t-ini">Desde</label>
             <div class="input-con-btn">
-              <input type="text" id="p3-t-ini" class="tiempo" placeholder="00:00">
-              <button type="button" class="btn-outline btn-xs" id="btn-p3-tomar-ini-audio" title="Tomar el segundo actual del reproductor">Actual</button>
+              <input type="text" id="p3-t-ini" class="tiempo" placeholder="00:00" style="width:110px">
+              <button type="button" class="btn-outline btn-xs" id="btn-p3-tomar-ini-audio" title="Usar el segundo actual del reproductor">⟦ Actual</button>
             </div>
           </div>
           <div class="campo">
             <label for="p3-t-fin">Hasta</label>
             <div class="input-con-btn">
-              <input type="text" id="p3-t-fin" class="tiempo" placeholder="fin">
-              <button type="button" class="btn-outline btn-xs" id="btn-p3-tomar-fin-audio" title="Tomar el segundo actual del reproductor">Actual</button>
+              <input type="text" id="p3-t-fin" class="tiempo" placeholder="final" style="width:110px">
+              <button type="button" class="btn-outline btn-xs" id="btn-p3-tomar-fin-audio" title="Usar el segundo actual del reproductor">Actual ⟧</button>
             </div>
           </div>
+          <button type="button" class="btn-primary btn-sm" id="btn-p3-aplicar-rango">Aplicar</button>
+          <button type="button" class="btn-outline btn-sm" id="btn-p3-limpiar-rango">Todo el archivo</button>
+          <span id="p3-badge-rango" class="badge badge-azul">Tramo: todo el archivo</span>
         </div>
-        <div class="row" style="gap:8px">
-          <button type="button" class="btn-primary btn-sm" id="btn-p3-aplicar-rango">Aplicar tramo</button>
-          <button type="button" class="btn-outline btn-sm" id="btn-p3-limpiar-rango">Usar todo</button>
-          <span id="p3-badge-rango" class="badge badge-azul">Tramo activo: Todo el archivo</span>
+        <div class="timeline" id="p3-timeline" style="margin-top:10px;height:22px" title="Hacé clic para ir a ese momento">
+          <div class="tl-capa" id="p3-tl-marcas"></div>
+          <div class="tl-cabezal" id="p3-tl-cabezal"></div>
         </div>
-
-        <details class="plegable">
+        <details class="plegable" style="margin:10px 0 0;background:#fff">
           <summary>Buscar el tramo por frase <span class="hint">· de inicio y de fin</span></summary>
           <div class="plegable-body">
             <div class="grid-2" style="gap:8px;margin-bottom:8px">
-              <div class="campo">
-                <input type="text" id="p3-f-ini" placeholder='Frase de inicio, ej. "empezamos"'>
-                <div id="p3-pill-ini"></div>
-              </div>
-              <div class="campo">
-                <input type="text" id="p3-f-fin" placeholder='Frase de fin, ej. "hasta acá"'>
-                <div id="p3-pill-fin"></div>
-              </div>
+              <div class="campo"><input type="text" id="p3-f-ini" placeholder='Frase de inicio, ej. "empezamos"'><div id="p3-pill-ini"></div></div>
+              <div class="campo"><input type="text" id="p3-f-fin" placeholder='Frase de fin, ej. "hasta acá"'><div id="p3-pill-fin"></div></div>
             </div>
             <button type="button" class="btn-outline btn-xs" id="btn-p3-buscar-frases">Buscar y completar tiempos</button>
           </div>
         </details>
-
-        <hr class="divider">
-        <span class="panel-titulo">Descargar la transcripción del tramo</span>
-        <label class="check" style="margin:6px 0 10px"><input type="checkbox" id="p3-chk-reset-reloj" checked><span>Reiniciar el reloj a <code>00:00</code> en "Desde" (si también recortaste el audio o video)</span></label>
-        <div class="row" style="gap:6px">
-          <button type="button" class="btn-primary btn-xs" onclick="descargarTranscripcionRecortadaPaso3('txt_ts')">TXT con tiempos</button>
-          <button type="button" class="btn-outline btn-xs" onclick="descargarTranscripcionRecortadaPaso3('txt_limpio')">TXT solo texto</button>
-          <button type="button" class="btn-outline btn-xs" onclick="descargarTranscripcionRecortadaPaso3('srt')">SRT</button>
-          <button type="button" class="btn-danger-soft btn-xs" id="btn-p3-recortar-sesion-perm" title="Borra de esta sesión lo que está fuera del tramo">Dejar solo este tramo en la sesión</button>
-        </div>
       </div>
 
-      <div class="card">
-        <span class="card-tag">Exportar</span>
-        <h3>Voz / audio procesado</h3>
-        <p class="sub-desc">Usa el tramo de la izquierda y los hablantes activos.</p>
-        <div class="stack" style="gap:10px;margin-bottom:12px">
-          <div class="campo">
-            <label for="p3-modo-audio">Qué hacer</label>
-            <select id="p3-modo-audio">
-              <option value="aislar" selected>Aislar solo las voces activas (para entrenar / clonar)</option>
-              <option value="rango_directo">Recorte directo del audio (Desde → Hasta)</option>
-              <option value="recortar">Quitar a los hablantes silenciados (acorta el audio)</option>
-              <option value="silenciar">Poner en mudo a los hablantes silenciados</option>
-            </select>
-          </div>
-          <div class="campo">
-            <label for="p3-fmt-audio">Formato</label>
+      <div class="salidas-grid">
+        <!-- A. Mi voz limpia -->
+        <div class="salida">
+          <div class="salida-tit">🎙️ Mi voz limpia</div>
+          <p class="salida-desc">Solo tus fragmentos, unidos, para entrenar o clonar tu voz.</p>
+          <div id="p3-mivoz-aviso" class="aviso-mini"></div>
+          <div class="campo"><label for="p3-fmt-audio">Formato</label>
             <select id="p3-fmt-audio">
               <option value="mp3" selected>MP3</option>
-              <option value="wav">WAV 44.1 kHz (para entrenar modelo)</option>
-              <option value="zip">Dataset ZIP (clips WAV + metadata.csv)</option>
+              <option value="wav">WAV 44.1 kHz</option>
+              <option value="zip">Dataset ZIP (clips + metadata.csv)</option>
             </select>
           </div>
-          <div class="grid-2" style="gap:10px">
-            <div class="campo">
-              <label for="p3-max-min">Duración máxima</label>
+          <div class="grid-2" style="gap:8px">
+            <div class="campo"><label for="p3-max-min">Duración</label>
               <select id="p3-max-min">
-                <option value="0" selected>Todo el tramo</option>
-                <option value="2">Mejores 2 min</option>
-                <option value="5">Mejores 5 min</option>
-                <option value="10">Mejores 10 min</option>
+                <option value="0" selected>Todo</option><option value="2">Mejores 2 min</option>
+                <option value="5">Mejores 5 min</option><option value="10">Mejores 10 min</option>
               </select>
             </div>
-            <div class="campo">
-              <label for="p3-min-seg">Frases cortas</label>
+            <div class="campo"><label for="p3-min-seg">Frases cortas</label>
               <select id="p3-min-seg">
-                <option value="0">Conservar todas</option>
-                <option value="1.0" selected>Ignorar &lt; 1 s</option>
-                <option value="2.0">Ignorar &lt; 2 s</option>
+                <option value="0">Todas</option><option value="1.0" selected>Sin &lt; 1 s</option><option value="2.0">Sin &lt; 2 s</option>
               </select>
             </div>
           </div>
+          <div id="p3-resumen-audio" class="salida-resumen"></div>
+          <button type="button" class="btn-primary btn-block" id="btn-p3-export-audio">Generar mi voz</button>
+          <div id="p3-res-audio"></div>
         </div>
-        <div id="p3-resumen-audio" style="font-size:0.82rem;background:var(--primary-light);color:#1e40af;padding:8px 10px;border-radius:8px;margin-bottom:12px"></div>
-        <div class="row">
-          <button type="button" class="btn-primary" id="btn-p3-export-audio">Generar audio</button>
-          <button type="button" class="btn-ghost btn-sm" onclick="irAPaso(4)">Ir a Subtítulos →</button>
-        </div>
-        <div id="p3-res-audio"></div>
-      </div>
-    </div>
 
-    <!-- Transcripción línea por línea -->
-    <div class="card">
-      <div class="card-head">
-        <div>
-          <h2>Transcripción <span style="font-weight:400;color:var(--muted);font-size:0.88rem">· <span id="p3-cont-seg">0</span> fragmentos</span></h2>
-          <label class="check" style="margin-top:4px;font-size:0.8rem"><input type="checkbox" id="p3-chk-ocultar-fuera"><span>Mostrar solo las líneas dentro del tramo</span></label>
+        <!-- B. Audio sin ciertas voces -->
+        <div class="salida">
+          <div class="salida-tit">🔇 Audio sin ciertas voces</div>
+          <p class="salida-desc">Sacá o silenciá a quienes elijas. Sin nadie marcado, recorta el audio al tramo.</p>
+          <div class="row" style="gap:4px;margin-bottom:6px">
+            <button type="button" class="btn-outline btn-xs" id="btn-p3b-todos-menos-yo">Todos menos yo</button>
+            <button type="button" class="btn-outline btn-xs" id="btn-p3b-ninguno">Nadie</button>
+          </div>
+          <div id="p3b-voces" class="voces-check"></div>
+          <div class="grid-2" style="gap:8px">
+            <div class="campo"><label for="p3b-modo">Cómo</label>
+              <select id="p3b-modo">
+                <option value="silenciar" selected>Silenciar</option>
+                <option value="recortar">Quitar (acorta)</option>
+              </select>
+            </div>
+            <div class="campo"><label for="p3b-fmt">Formato</label>
+              <select id="p3b-fmt"><option value="mp3" selected>MP3</option><option value="wav">WAV</option></select>
+            </div>
+          </div>
+          <div id="p3b-resumen" class="salida-resumen"></div>
+          <button type="button" class="btn-primary btn-block" id="btn-p3b-export">Generar audio</button>
+          <div id="p3b-res"></div>
         </div>
-        <div class="row">
-          <input type="text" id="p3-buscar" placeholder="Buscar palabra o frase…" style="width:220px">
-          <select id="p3-filtro-spk" style="width:180px">
-            <option value="">Todos los hablantes</option>
-          </select>
+
+        <!-- C. Transcripción -->
+        <div class="salida">
+          <div class="salida-tit">📄 Transcripción</div>
+          <p class="salida-desc">Del tramo elegido, con los nombres de cada voz.</p>
+          <label class="check" style="margin-bottom:8px"><input type="checkbox" id="p3-chk-reset-reloj" checked><span>Que el tramo empiece en <code>00:00</code> (si también recortaste el audio o el video)</span></label>
+          <div class="stack" style="gap:6px">
+            <button type="button" class="btn-primary btn-sm btn-block" onclick="descargarTranscripcionRecortadaPaso3('txt_ts')">TXT con tiempos</button>
+            <button type="button" class="btn-outline btn-sm btn-block" onclick="descargarTranscripcionRecortadaPaso3('txt_limpio')">TXT solo texto</button>
+            <button type="button" class="btn-outline btn-sm btn-block" onclick="descargarTranscripcionRecortadaPaso3('srt')">Subtítulos SRT</button>
+          </div>
+          <button type="button" class="btn-danger-soft btn-xs" id="btn-p3-recortar-sesion-perm" style="margin-top:10px" title="Borra de esta transcripción lo que está fuera del tramo">Dejar solo el tramo en esta transcripción</button>
+        </div>
+
+        <!-- D. Video -->
+        <div class="salida">
+          <div class="salida-tit">🎬 Video con subtítulos o voces silenciadas</div>
+          <p class="salida-desc">Abre "Video para publicar" con esta transcripción y la receta elegida. Ahí elegís el video.</p>
+          <div class="stack" style="gap:6px">
+            <button type="button" class="btn-outline btn-sm btn-block receta-btn" data-receta="publicar">Silenciar alumnos y subtitularlos (anónimos)</button>
+            <button type="button" class="btn-outline btn-sm btn-block receta-btn" data-receta="sub-alumnos">Subtítulos solo de alumnos (con nombre)</button>
+            <button type="button" class="btn-outline btn-sm btn-block receta-btn" data-receta="sub-todos">Subtítulos de todo el video (con nombres)</button>
+            <button type="button" class="btn-outline btn-sm btn-block receta-btn" data-receta="igualar">Solo igualar el volumen de las voces</button>
+          </div>
+          <button type="button" class="btn-ghost btn-xs" style="margin-top:8px" onclick="irAPaso(4)">Sincronizar subtítulos con un video sin audio →</button>
         </div>
       </div>
-      <div class="segmentos-wrap" id="p3-seg-wrap"></div>
     </div>
   </div>
 </section>
@@ -4921,6 +5026,33 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
         <button type="button" class="btn-primary btn-block" id="btn-pub-analizar">Reconocer voces</button>
       </div>
     </div>
+    <div id="pub-prev-slot1">
+      <div id="pub-preview" class="preview" style="display:none">
+        <div class="pub-video-wrap">
+          <video id="pub-audio" controls preload="metadata" playsinline></video>
+          <div class="sub-overlay pub-overlay"><span id="pub-sub-live" style="display:none"></span></div>
+          <span class="pub-mute-tag" id="pub-mute-tag" style="display:none">🔇 silenciada</span>
+        </div>
+        <div class="prev-reloj">
+          <span class="t-grande" id="pub-prev-t">00:00</span>
+          <span class="t-dur">/ <span id="pub-prev-dur">--:--</span></span>
+          <span class="prev-saltos">
+            <button type="button" class="btn-outline btn-xs" data-salto-pub="-5">−5 s</button>
+            <button type="button" class="btn-outline btn-xs" data-salto-pub="5">+5 s</button>
+          </span>
+        </div>
+        <div class="timeline" id="pub-timeline" title="Hacé clic para ir a ese momento">
+          <div class="tl-capa" id="pub-tl-marcas"></div>
+          <div class="tl-cabezal" id="pub-tl-cabezal"></div>
+        </div>
+        <div class="tl-leyenda" id="pub-tl-leyenda" style="display:none">
+          <span><i style="background:rgba(220,38,38,0.55)"></i>silenciada + subtítulo</span>
+          <span><i style="background:rgba(37,99,235,0.55)"></i>solo subtítulo</span>
+        </div>
+        <div id="pub-audio-info" class="pub-ahora">Dale play para ver el video.</div>
+        <label class="check" id="pub-simular-box" style="display:none;font-size:0.8rem;margin-top:6px"><input type="checkbox" id="pub-simular" checked><span>Simular el resultado al reproducir (silencio y subtítulos, aproximado)</span></label>
+      </div>
+    </div>
     <div id="pub-progreso-analisis"></div>
   </div>
 
@@ -4933,7 +5065,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
           <p>Escuchá cada voz y elegí: <strong>se escucha</strong>, <strong>silenciar</strong> (queda como subtítulo) o <strong>solo subtítulo</strong> (el audio no se toca). <span id="pub-resumen-video"></span></p>
         </div>
         <div class="row" style="gap:6px">
-          <span style="font-size:0.75rem;color:var(--muted)">A los demás (todas menos la que más habla):</span>
+          <span style="font-size:0.75rem;color:var(--muted)">A los demás (todos menos vos):</span>
           <button type="button" class="btn-outline btn-xs" data-bulk="demas:silenciar">Silenciar</button>
           <button type="button" class="btn-outline btn-xs" data-bulk="demas:subtitulo">Solo subtítulo</button>
           <span style="width:1px;height:18px;background:var(--border)"></span>
@@ -4941,11 +5073,17 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
           <button type="button" class="btn-outline btn-xs" data-bulk="todos:normal">Reiniciar</button>
         </div>
       </div>
-      <div class="player-sticky" style="margin-bottom:12px">
-        <audio id="pub-audio" controls preload="none"></audio>
-        <div style="font-size:0.82rem;color:#d1d5db" id="pub-audio-info">Tocá ▶ en una voz para escuchar un ejemplo en el video (cada toque pasa a otro fragmento).</div>
+      <div class="recetas" role="group" aria-label="Recetas">
+        <span class="recetas-tit">Recetas</span>
+        <button type="button" class="receta" data-receta-pub="publicar"><strong>Publicar sin voces de alumnos</strong><span>Los silencia y los subtitula como "Alumno 1, 2…"</span></button>
+        <button type="button" class="receta" data-receta-pub="sub-alumnos"><strong>Subtítulos de los alumnos</strong><span>No se los escuchó: se agregan sus frases con nombre</span></button>
+        <button type="button" class="receta" data-receta-pub="sub-todos"><strong>Subtítulos de todo el video</strong><span>El video salió sin audio: todos con nombre</span></button>
+        <button type="button" class="receta" data-receta-pub="igualar"><strong>Solo igualar el volumen</strong><span>Tu voz y la de los alumnos parejas, sin subtítulos</span></button>
       </div>
-      <div id="pub-lista-voces" class="stack" style="gap:8px"></div>
+      <div class="pub-dos-col">
+        <div id="pub-lista-voces" class="stack" style="gap:8px"></div>
+        <div id="pub-prev-slot2" class="pub-prev-col"></div>
+      </div>
     </div>
 
     <!-- 3. Opciones -->
@@ -4979,7 +5117,8 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
           </div>
         </div>
         <div class="stack" style="gap:10px">
-          <label class="check"><input type="checkbox" id="pub-nivelar" checked><span><strong>Nivelar todo el audio</strong> (volumen parejo en todo el video)</span></label>
+          <label class="check"><input type="checkbox" id="pub-igualar" checked><span><strong>Igualar el volumen entre voces</strong> (sube a quien habla bajo y baja a quien habla alto)</span></label>
+          <label class="check"><input type="checkbox" id="pub-nivelar" checked><span><strong>Nivelar el volumen general</strong> (que todo el video quede a un volumen estándar)</span></label>
           <label class="check"><input type="checkbox" id="pub-margen" checked><span>Margen de seguridad: silenciar también 0,2 s antes y después de cada intervención</span></label>
           <div class="panel" style="font-size:0.8rem;color:var(--text-2)">
             El reconocimiento de voces y los tiempos de la transcripción pueden fallar (sobre todo con Tactiq, que marca solo el inicio de cada frase). Antes de publicar, mirá el video: si se escucha algo que debía silenciarse, corregí el desfase o el hablante de esa línea en el <a href="#" onclick="irAPaso(3);return false">paso 3</a> y volvé a generar.
@@ -5319,7 +5458,7 @@ document.getElementById('btn-p1-recortar-existente').onclick = async () => {
 // ==============================================================================
 // SECCIÓN 6: VIDEO PARA PUBLICAR (silenciar voces + subtítulos de lo que dijeron)
 // ==============================================================================
-const pub = { video: '', sesion: null, modo: {}, nombres: {}, idxMuestra: {} };
+const pub = { video: '', sesion: null, modo: {}, nombres: {}, idxMuestra: {}, miVoz: null, recetaPendiente: null };
 
 async function cargarPublicar() {
   try {
@@ -5335,6 +5474,7 @@ async function cargarPublicar() {
     ss.innerHTML = sesiones.length
       ? sesiones.map(x => `<option value="${escHtml(x.sesion_id)}">${escHtml(x.nombre_original)} · ${fmtHMS(x.duracion)} · ${x.cantidad_hablantes} voces · ${escHtml(x.modelo || '')}</option>`).join('')
       : '<option value="">(No hay transcripciones guardadas: usá "Analizar este video")</option>';
+    if (sel.value) cargarPreviewPub(sel.value);
   } catch (e) {}
 }
 
@@ -5350,7 +5490,102 @@ document.querySelectorAll('input[name="pub-nombres"]').forEach(r => r.addEventLi
   renderVocesPub();
 }));
 document.getElementById('pub-prefijo').addEventListener('input', renderEtiquetasPub);
+['pub-igualar', 'pub-nivelar'].forEach(id => document.getElementById(id).addEventListener('change', renderEtiquetasPub));
 function pubModoNombre() { return document.querySelector('input[name="pub-nombres"]:checked').value; }
+
+// Vista previa del video
+function cargarPreviewPub(nombre) {
+  const box = document.getElementById('pub-preview');
+  const v = document.getElementById('pub-audio');
+  if (!nombre) { box.style.display = 'none'; v.removeAttribute('src'); v.load(); return; }
+  const src = '/audios/' + encodeURIComponent(nombre);
+  if (v.getAttribute('src') !== src) { v.src = src; }
+  box.style.display = 'block';
+}
+function offsetPub() { return parseFloat(document.getElementById('pub-offset').value) || 0; }
+function segActualPub(t) {
+  if (!pub.sesion) return null;
+  const off = offsetPub();
+  let mejor = null;
+  for (const s of pub.sesion.segmentos) {
+    if (s.inicio + off <= t && t < s.fin + off) { if (!mejor || modoPub(s.hablante) !== 'normal') mejor = s; }
+  }
+  return mejor;
+}
+function actualizarVivoPub() {
+  const v = document.getElementById('pub-audio');
+  const t = v.currentTime || 0;
+  document.getElementById('pub-prev-t').textContent = fmtCorte(t);
+  const dur = isFinite(v.duration) ? v.duration : 0;
+  document.getElementById('pub-tl-cabezal').style.left = dur ? `calc(${Math.min(100, t / dur * 100)}% - 1px)` : '0';
+  const sub = document.getElementById('pub-sub-live');
+  const tag = document.getElementById('pub-mute-tag');
+  const info = document.getElementById('pub-audio-info');
+  const seg = segActualPub(t);
+  const simular = pub.sesion && document.getElementById('pub-simular').checked;
+  if (!pub.sesion) return;
+  if (!seg) {
+    if (!pub._escuchando) info.textContent = 'Nadie habla en este momento.';
+    sub.style.display = 'none'; tag.style.display = 'none';
+    if (simular) v.muted = false;
+    return;
+  }
+  const h = pub.sesion.hablantes.find(x => x.id === seg.hablante);
+  const nombre = pub.nombres[seg.hablante] || h?.nombre || seg.hablante;
+  const m = modoPub(seg.hablante);
+  const etiq = etiquetasPub()[seg.hablante];
+  const textoModo = { normal: 'se escucha', silenciar: 'silenciada + subtítulo', subtitulo: 'solo subtítulo' }[m];
+  if (!pub._escuchando) info.innerHTML = `Ahora habla <strong>${escHtml(nombre)}</strong> · ${textoModo}`;
+  if (simular && m !== 'normal') {
+    const pref = pubModoNombre() === 'ninguno' ? '' : `[${etiq}] `;
+    sub.textContent = pref + (seg.texto || '');
+    sub.style.display = 'inline-block';
+  } else {
+    sub.style.display = 'none';
+  }
+  // Al tocar ▶ Escuchar en una voz se la oye aunque esté marcada para silenciar
+  const silenciada = simular && m === 'silenciar' && !pub._escuchando;
+  v.muted = !!silenciada;
+  tag.style.display = silenciada ? 'inline-block' : 'none';
+}
+function renderTimelinePub() {
+  const capa = document.getElementById('pub-tl-marcas');
+  const v = document.getElementById('pub-audio');
+  const dur = isFinite(v.duration) ? v.duration : (pub.sesion?.duracion || 0);
+  if (!capa || !dur) return;
+  document.getElementById('pub-prev-dur').textContent = fmtCorte(dur);
+  if (!pub.sesion) { capa.innerHTML = ''; return; }
+  const off = offsetPub();
+  const pct = t => Math.max(0, Math.min(100, t / dur * 100));
+  let html = '';
+  for (const s of pub.sesion.segmentos) {
+    const m = modoPub(s.hablante);
+    if (m === 'normal') continue;
+    const a = pct(s.inicio + off), b = pct(s.fin + off);
+    if (b <= a) continue;
+    html += `<div class="tl-seg ${m === 'silenciar' ? 'sil' : 'sub'}" style="left:${a}%;width:${b - a}%"></div>`;
+  }
+  capa.innerHTML = html;
+  document.getElementById('pub-tl-leyenda').style.display = html ? 'flex' : 'none';
+}
+(function () {
+  const v = document.getElementById('pub-audio');
+  v.addEventListener('timeupdate', actualizarVivoPub);
+  v.addEventListener('seeked', actualizarVivoPub);
+  v.addEventListener('loadedmetadata', () => { renderTimelinePub(); actualizarVivoPub(); });
+  v.addEventListener('pause', () => { pub._escuchando = false; });
+  document.getElementById('pub-timeline').addEventListener('click', e => {
+    const dur = isFinite(v.duration) ? v.duration : 0;
+    if (!dur) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    v.currentTime = Math.max(0, Math.min(dur, (e.clientX - r.left) / r.width * dur));
+  });
+  document.querySelectorAll('[data-salto-pub]').forEach(b => b.onclick = () => {
+    v.currentTime = Math.max(0, (v.currentTime || 0) + Number(b.dataset.saltoPub));
+  });
+  document.getElementById('pub-simular').addEventListener('change', () => { if (!document.getElementById('pub-simular').checked) v.muted = false; actualizarVivoPub(); });
+  document.getElementById('pub-offset').addEventListener('input', () => { renderTimelinePub(); actualizarVivoPub(); });
+})();
 
 // Subir video
 const pubZona = document.getElementById('pub-zona');
@@ -5372,12 +5607,13 @@ async function subirVideoPub(file) {
     await cargarPublicar();
     document.getElementById('pub-sel-video').value = d.nombre_video;
     tit.textContent = `✔ ${d.nombre_video}`;
+    cargarPreviewPub(d.nombre_video);
   } catch (e) {
     tit.textContent = 'Arrastrá o elegí un video';
     alert('No se pudo subir el video: ' + e.message);
   }
 }
-document.getElementById('pub-sel-video').addEventListener('change', e => { pub.video = e.target.value; });
+document.getElementById('pub-sel-video').addEventListener('change', e => { pub.video = e.target.value; cargarPreviewPub(pub.video); });
 
 function barraProgreso(cont, texto) {
   const box = document.createElement('div');
@@ -5440,13 +5676,16 @@ document.getElementById('btn-pub-analizar').onclick = async () => {
     }
     document.getElementById('pub-offset').value = off;
     document.getElementById('pub-box-offset').style.display = pubFuente() === 'guardada' ? 'block' : 'none';
-    const audio = document.getElementById('pub-audio');
-    audio.src = '/audios/' + encodeURIComponent(pub.video);
+    cargarPreviewPub(pub.video);
+    document.getElementById('pub-prev-slot2').appendChild(document.getElementById('pub-preview'));
+    document.getElementById('pub-simular-box').style.display = 'flex';
     document.getElementById('pub-resumen-video').textContent =
       `${pub.sesion.hablantes.length} voces en ${fmtHMS(pub.sesion.duracion)}.`;
+    pub.miVoz = detectarMiVoz(pub.sesion.sesion_id, pub.sesion.hablantes) || (vocesOrdenadas()[0] || {}).id || null;
     document.getElementById('pub-paso2').style.display = 'block';
     document.getElementById('pub-progreso-render').innerHTML = '';
     renderVocesPub();
+    if (pub.recetaPendiente) { aplicarRecetaPub(pub.recetaPendiente); pub.recetaPendiente = null; }
     document.getElementById('pub-paso2').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     cont.innerHTML = `<div style="color:var(--danger);font-weight:600;margin-top:10px">✘ ${escHtml(e.message)}</div>`;
@@ -5478,6 +5717,8 @@ function etiquetasPub() {
   return m;
 }
 function renderEtiquetasPub() {
+  renderTimelinePub();
+  if (document.getElementById('pub-audio').readyState > 0) actualizarVivoPub();
   const et = etiquetasPub();
   document.querySelectorAll('#pub-lista-voces .voz-fila').forEach(f => {
     const spk = f.dataset.spk, m = modoPub(spk);
@@ -5498,7 +5739,9 @@ function renderEtiquetasPub() {
   document.getElementById('pub-resumen-sel').textContent = partes.length
     ? `${partes.join(' · ')} · ${nLineas} intervenciones subtituladas`
     : 'Todavía no elegiste ninguna voz para silenciar o subtitular.';
-  document.getElementById('btn-pub-generar').disabled = !subs.size;
+  const soloAudio = document.getElementById('pub-igualar').checked || document.getElementById('pub-nivelar').checked;
+  document.getElementById('btn-pub-generar').disabled = !subs.size && !soloAudio;
+  if (!partes.length && soloAudio) document.getElementById('pub-resumen-sel').textContent = 'Sin subtítulos: solo se procesa el volumen.';
 }
 function renderVocesPub() {
   const cont = document.getElementById('pub-lista-voces');
@@ -5509,8 +5752,11 @@ function renderVocesPub() {
     <div class="voz-fila" data-spk="${escHtml(h.id)}">
       <span class="dot" style="background:${escHtml(h.color || '#94a3b8')}"></span>
       <input type="text" value="${escHtml(pub.nombres[h.id] ?? h.nombre ?? h.id)}" aria-label="Nombre de la voz" data-spk="${escHtml(h.id)}" class="pub-inp-nombre">
-      <div class="voz-stats">${h.cantidad || 0} intervenciones · ${fmtHMS(h.duracion || 0)}${i === 0 ? ' · <strong style="color:var(--text-2)">la que más habla</strong>' : ''}<br><span class="etq"></span></div>
-      <button type="button" class="btn-outline btn-xs" data-play="${escHtml(h.id)}">▶ Escuchar</button>
+      <div class="voz-stats">${h.cantidad || 0} ${h.cantidad === 1 ? 'intervención' : 'intervenciones'} · ${fmtHMS(h.duracion || 0)}<br><span class="etq"></span></div>
+      <div class="row" style="gap:4px;flex-wrap:nowrap">
+        <button type="button" class="btn-outline btn-xs" data-play="${escHtml(h.id)}">▶ Escuchar</button>
+        <button type="button" class="btn-yo ${pub.miVoz === h.id ? 'activo' : ''}" data-yo="${escHtml(h.id)}">${pub.miVoz === h.id ? '★ Soy yo' : '☆ Soy yo'}</button>
+      </div>
       <div class="seg3" role="radiogroup" aria-label="Qué hacer con esta voz">
         ${opciones.map(([v, t]) => `<label><input type="radio" name="pubm-${escHtml(h.id)}" value="${v}" data-spk="${escHtml(h.id)}" ${modoPub(h.id) === v ? 'checked' : ''}><span>${t}</span></label>`).join('')}
       </div>
@@ -5518,6 +5764,12 @@ function renderVocesPub() {
   cont.querySelectorAll('.seg3 input').forEach(r => r.onchange = () => { pub.modo[r.dataset.spk] = r.value; renderEtiquetasPub(); });
   cont.querySelectorAll('.pub-inp-nombre').forEach(inp => inp.oninput = () => { pub.nombres[inp.dataset.spk] = inp.value; renderEtiquetasPub(); });
   cont.querySelectorAll('[data-play]').forEach(b => b.onclick = () => escucharVozPub(b.dataset.play));
+  cont.querySelectorAll('[data-yo]').forEach(b => b.onclick = () => {
+    pub.miVoz = b.dataset.yo;
+    const h = pub.sesion.hablantes.find(x => x.id === pub.miVoz);
+    recordarMiVoz(pub.sesion.sesion_id, h ? { ...h, nombre: pub.nombres[h.id] || h.nombre } : null);
+    renderVocesPub();
+  });
   renderEtiquetasPub();
 }
 window.ajustarOffsetPub = function(d) {
@@ -5536,6 +5788,7 @@ function escucharVozPub(spk) {
   const h = pub.sesion.hablantes.find(x => x.id === spk);
   document.getElementById('pub-audio-info').innerHTML =
     `<strong>${escHtml(pub.nombres[spk] || h?.nombre || spk)}</strong> · ${fmtHMS(s.inicio)} · “${escHtml((s.texto || '').slice(0, 90))}”`;
+  pub._escuchando = true;
   audio.currentTime = Math.max(0, s.inicio + (parseFloat(document.getElementById('pub-offset').value) || 0));
   audio.play().catch(() => {});
   clearTimeout(pub._stop);
@@ -5544,14 +5797,51 @@ function escucharVozPub(spk) {
 document.querySelectorAll('[data-bulk]').forEach(b => b.onclick = () => {
   const [quien, accion] = b.dataset.bulk.split(':');
   const v = vocesOrdenadas();
-  const objetivo = quien === 'demas' ? v.slice(1) : v;
-  if (quien === 'demas' && v[0]) pub.modo[v[0].id] = 'normal';
+  const objetivo = quien === 'demas' ? v.filter(h => h.id !== pub.miVoz) : v;
+  if (quien === 'demas' && pub.miVoz) pub.modo[pub.miVoz] = 'normal';
+  document.querySelectorAll('.receta').forEach(x => x.classList.remove('activa'));
   objetivo.forEach(h => { pub.modo[h.id] = accion; });
   renderVocesPub();
 });
 
+function aplicarRecetaPub(receta) {
+  if (!pub.sesion) return;
+  const v = vocesOrdenadas();
+  const demas = v.filter(h => h.id !== pub.miVoz);
+  const nombres = valor => { document.querySelector(`input[name="pub-nombres"][value="${valor}"]`).checked = true;
+    document.getElementById('pub-box-prefijo').style.display = valor === 'anon' ? 'block' : 'none'; };
+  pub.modo = {};
+  if (receta === 'publicar') { demas.forEach(h => pub.modo[h.id] = 'silenciar'); nombres('anon'); }
+  if (receta === 'sub-alumnos') { demas.forEach(h => pub.modo[h.id] = 'subtitulo'); nombres('real'); }
+  if (receta === 'sub-todos') { v.forEach(h => pub.modo[h.id] = 'subtitulo'); nombres('real'); }
+  document.getElementById('pub-igualar').checked = receta !== 'sub-todos';
+  document.getElementById('pub-nivelar').checked = receta !== 'sub-todos';
+  document.querySelectorAll('.receta').forEach(x => x.classList.toggle('activa', x.dataset.recetaPub === receta));
+  renderVocesPub();
+}
+document.querySelectorAll('[data-receta-pub]').forEach(b => b.onclick = () => aplicarRecetaPub(b.dataset.recetaPub));
+
+window.abrirPublicarConSesion = async function(sid, receta) {
+  irAPaso(6);
+  await cargarPublicar();
+  const radio = document.querySelector('input[name="pub-fuente"][value="guardada"]');
+  radio.checked = true;
+  radio.dispatchEvent(new Event('change'));
+  document.getElementById('pub-sel-sesion').value = sid;
+  pub.recetaPendiente = receta;
+  const selV = document.getElementById('pub-sel-video');
+  if (selV.value) {
+    document.getElementById('btn-pub-analizar').click();
+  } else {
+    document.getElementById('pub-progreso-analisis').innerHTML =
+      '<div class="aviso-mini" style="margin-top:12px">Elegí o subí el <strong>video</strong> de esta clase y tocá <strong>Usar esta transcripción</strong>: la receta se aplica sola.</div>';
+    document.getElementById('pub-zona').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+};
+
 document.getElementById('btn-pub-generar').onclick = async () => {
-  if (!pub.sesion || !subtituladosPub().size) return;
+  const igualarPub = document.getElementById('pub-igualar').checked;
+  if (!pub.sesion || (!subtituladosPub().size && !igualarPub && !document.getElementById('pub-nivelar').checked)) return;
   const cont = document.getElementById('pub-progreso-render');
   const btn = document.getElementById('btn-pub-generar');
   btn.disabled = true;
@@ -5569,6 +5859,7 @@ document.getElementById('btn-pub-generar').onclick = async () => {
         modo_nombre: pubModoNombre(),
         prefijo_anon: document.getElementById('pub-prefijo').value.trim() || 'Alumno',
         nivelar: document.getElementById('pub-nivelar').checked,
+        igualar: igualarPub,
         margen: document.getElementById('pub-margen').checked ? 0.2 : 0
       })
     });
@@ -5581,17 +5872,17 @@ document.getElementById('btn-pub-generar').onclick = async () => {
         <strong style="color:var(--ok)">✔ Video listo: ${escHtml(res.nombre_video)}</strong>
         <div class="row" style="gap:6px">
           <a class="btn-primary btn-sm" style="text-decoration:none" href="${urlV}" download>Descargar MP4</a>
-          <a class="btn-outline btn-sm" style="text-decoration:none" href="${urlS}" download>Descargar SRT</a>
+          ${res.nombre_srt ? `<a class="btn-outline btn-sm" style="text-decoration:none" href="${urlS}" download>Descargar SRT</a>` : ''}
         </div>
       </div>
       <video id="pub-video-res" controls preload="metadata" src="${urlV}"></video>
       <div style="font-size:0.8rem;color:var(--muted);margin-top:8px">
-        ${res.tramos_silenciados ? `${res.tramos_silenciados} tramos silenciados (${fmtHMS(res.segundos_silenciados)}) · ` : ''}${res.subtitulos} subtítulos${res.nivelado ? ' · audio nivelado' : ''}.
-        El MP4 lleva los subtítulos como pista interna; si la plataforma no los muestra, subí también el SRT.
+        ${res.tramos_silenciados ? `${res.tramos_silenciados} tramos silenciados (${fmtHMS(res.segundos_silenciados)}) · ` : ''}${res.subtitulos} subtítulos${res.igualado ? ' · voces igualadas' : ''}${res.nivelado ? ' · audio nivelado' : ''}.
+        ${res.nombre_srt ? 'El MP4 lleva los subtítulos como pista interna; si la plataforma no los muestra, subí también el SRT.' : ''}
       </div>
     </div>`;
     // Vista previa con los subtítulos superpuestos (convierte el SRT a VTT en el navegador)
-    try {
+    if (res.nombre_srt) try {
       const srt = await (await fetch(urlS)).text();
       const vtt = 'WEBVTT\n\n' + srt.replace(/\r/g, '').replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
       const tr = document.createElement('track');
@@ -6125,6 +6416,33 @@ function activarSesion(datos) {
     matchFin: rd.match_fin ?? null,
     offsetSub: 0
   };
+  for (const h of (sesionActiva.hablantes || [])) h.silenciado = false;
+  sesionActiva.miVozId = detectarMiVoz(sesionActiva.sesion_id, sesionActiva.hablantes || []);
+}
+
+// "Soy yo": se recuerda por transcripción y por nombre, para reconocerte en las próximas
+function normNombre(t) { return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
+function detectarMiVoz(sid, hablantes) {
+  try {
+    const porSesion = localStorage.getItem('ea_mivoz_' + sid);
+    if (porSesion && hablantes.some(h => h.id === porSesion)) return porSesion;
+    const miNombre = normNombre(localStorage.getItem('ea_mi_nombre'));
+    if (miNombre) {
+      const h = hablantes.find(x => normNombre(x.nombre) === miNombre);
+      if (h) return h.id;
+    }
+  } catch (e) {}
+  return null;
+}
+function recordarMiVoz(sid, h) {
+  try {
+    if (h) {
+      localStorage.setItem('ea_mivoz_' + sid, h.id);
+      if (h.nombre && !/^hablante\s*\d+$/i.test(h.nombre) && !/^spk_/i.test(h.nombre)) localStorage.setItem('ea_mi_nombre', h.nombre);
+    } else {
+      localStorage.removeItem('ea_mivoz_' + sid);
+    }
+  } catch (e) {}
 }
 
 async function cargarGruposYListado() {
@@ -6145,12 +6463,14 @@ async function cargarGruposYListado() {
 
     const gObj = listaGrupos.find(g => g.nombre === grupoActivo) || listaGrupos[0];
     nombresGrupoActual = gObj.nombres || [];
+    const dl = document.getElementById('p3-dl-nombres');
+    if (dl) dl.innerHTML = nombresGrupoActual.map(n => `<option value="${escHtml(n)}"></option>`).join('');
     document.getElementById('badge-info-grupo').textContent =
       `Grupo "${gObj.nombre}": ${nombresGrupoActual.length} nombres en lista · ${(gObj.perfiles || []).length} voces con huella`;
 
     const chips = document.getElementById('chips-nombres-grupo');
     if (!nombresGrupoActual.length) {
-      chips.innerHTML = '<span style="font-size:0.78rem;color:var(--muted)">Aún no cargaste lista de nombres en este grupo.</span>';
+      chips.innerHTML = '<span style="font-size:0.78rem;color:var(--muted)">Todavía no hay nombres cargados en este grupo.</span>';
     } else {
       chips.innerHTML = nombresGrupoActual.map(n => `
         <span class="badge" style="display:inline-flex;align-items:center;gap:4px">
@@ -6229,10 +6549,12 @@ document.getElementById('btn-auto-presentacion').onclick = async () => {
   });
   if (!r.ok) { resBox.innerHTML = '✘ Error'; return; }
   const d = await r.json();
+  const antes = Object.fromEntries(sesionActiva.hablantes.map(h => [h.id, h.nombre]));
   sesionActiva.segmentos = d.segmentos;
   sesionActiva.hablantes = d.hablantes;
+  sesionActiva.ultimosCambios = cambiosDeNombres(antes, d.hablantes);
   if (!d.hallazgos.length) {
-    resBox.innerHTML = `<span style="color:#b45309">No se encontraron frases explícitas tipo "soy [Nombre]" o "mi nombre es [Nombre]". Podés subir el archivo de Tactiq al lado o elegir el nombre en las tarjetas abajo.</span>`;
+    resBox.innerHTML = `<span style="color:#b45309">No se encontraron frases tipo "soy…" o "mi nombre es…". Probá con Tactiq o escribí los nombres en la lista.</span>`;
   } else {
     resBox.innerHTML = `<span style="color:var(--ok);font-weight:700">✔ Se detectaron ${d.hallazgos.length} presentaciones automáticas: ${d.hallazgos.map(h => escHtml(h.nombre_detectado)).join(', ')}.</span>`;
   }
@@ -6258,8 +6580,11 @@ document.getElementById('arch-tactiq-sync').onchange = async e => {
     return;
   }
   const d = await r.json();
+  const antes = Object.fromEntries(sesionActiva.hablantes.map(h => [h.id, h.nombre]));
   sesionActiva.segmentos = d.segmentos;
   sesionActiva.hablantes = d.hablantes;
+  sesionActiva.ultimosCambios = cambiosDeNombres(antes, d.hablantes);
+  if (!sesionActiva.miVozId) sesionActiva.miVozId = detectarMiVoz(sesionActiva.sesion_id, d.hablantes);
   const absOff = Math.round(Math.abs(Number(d.offset_segundos || 0)) * 10) / 10;
   resBox.innerHTML = `
     <div style="color:var(--ok);font-weight:700;margin-bottom:4px">
@@ -6274,6 +6599,11 @@ document.getElementById('arch-tactiq-sync').onchange = async e => {
   await cargarGruposYListado();
   renderPaso3();
 };
+
+function cambiosDeNombres(antes, hablantes) {
+  return hablantes.filter(h => antes[h.id] !== undefined && antes[h.id] !== h.nombre)
+    .map(h => ({ id: h.id, de: antes[h.id], a: h.nombre }));
+}
 
 function renderPaso3() {
   if (!sesionActiva) {
@@ -6304,6 +6634,7 @@ function renderPaso3() {
     }
   };
 
+  audioEl.addEventListener('timeupdate', actualizarCabezalP3);
   cargarGruposYListado().then(() => {
     renderHablantesPaso3();
     renderSegmentosPaso3();
@@ -6324,33 +6655,20 @@ function recalcularEstadisticasSesion() {
 
 function renderDiagnosticoClaridad() {
   const st = sesionActiva;
-  const boxH = document.getElementById('diag-hablantes-box');
-  const txtH = document.getElementById('diag-hablantes-txt');
-  const boxV = document.getElementById('diag-mivoz-box');
-  const txtV = document.getElementById('diag-mivoz-txt');
-
-  const nSpk = st.hablantes.length;
-  if (nSpk <= 1) {
-    boxH.className = 'diag-box warn';
-    txtH.innerHTML = `⚠️ <strong>Hay 1 solo hablante agrupado</strong> (${st.segmentos.length} frases). Si en la grabación hablan varias personas, hacé clic abajo en <strong>"2 hablantes"</strong>, <strong>"3 hablantes"</strong> o <strong>"4 hablantes"</strong> para separar sus voces.`;
-  } else {
-    boxH.className = 'diag-box ok';
-    txtH.innerHTML = `✅ <strong>Se separaron ${nSpk} hablantes distintos</strong> en los ${st.segmentos.length} fragmentos de la grabación. Abajo tenés una tarjeta por cada hablante para escuchar su voz y ponerle su nombre.`;
-  }
-
-  const autoReconocidos = st.hablantes.filter(h => h.auto_etiquetado);
-  const miHablante = st.hablantes.find(h => h.id === st.miVozId && !h.silenciado);
-
-  if (miHablante) {
-    boxV.className = 'diag-box ok';
-    txtV.innerHTML = `✅ <strong>Elegiste cuál es tu voz:</strong> Marcaste a <strong>"${escHtml(miHablante.nombre)}"</strong> como tu voz (${miHablante.cantidad} frases · ${fmtHMS(miHablante.duracion)} hablados). Los demás hablantes están silenciados para que puedas extraer solo tu voz limpia.`;
-  } else if (autoReconocidos.length > 0) {
-    boxV.className = 'diag-box ok';
-    txtV.innerHTML = `🧠 <strong>Voces reconocidas automáticamente:</strong> El sistema reconoció a <strong>${autoReconocidos.map(x => escHtml(x.nombre)).join(', ')}</strong> usando las huellas guardadas en el grupo. Si uno sos vos, tocá <strong>"⭐ Esta es mi voz"</strong> en su tarjeta.`;
-  } else {
-    boxV.className = 'diag-box warn';
-    txtV.innerHTML = `ℹ️ <strong>Todavía no sabés cuál tarjeta corresponde a cada persona:</strong> Tocá el botón <strong>"▶ Escuchar ejemplo"</strong> en cada tarjeta abajo. Cuando escuches la tuya, tocá <strong>"⭐ Esta es mi voz"</strong>; y a los demás elegiles el nombre y tocá <strong>"💾 Guardar en Grupo"</strong>.`;
-  }
+  document.getElementById('p3-ctx-nombre').textContent = st.nombre_original || st.sesion_id;
+  const yo = st.hablantes.find(h => h.id === st.miVozId);
+  const sinNombre = st.hablantes.filter(h => /^(hablante\s*\d+|spk_\d+)$/i.test(String(h.nombre || '').trim())).length;
+  const partes = [
+    `${st.hablantes.length} ${st.hablantes.length === 1 ? 'voz' : 'voces'}`,
+    fmtHMS(st.duracion),
+    st.nombre_mp3 ? `audio: ${st.nombre_mp3}` : 'sin audio vinculado',
+    yo ? `<span class="ok">tu voz: ${escHtml(yo.nombre)}</span>` : '<span class="pend">tu voz: sin marcar</span>',
+    sinNombre ? `<span class="pend">${sinNombre} sin nombre</span>` : '<span class="ok">todas con nombre</span>'
+  ];
+  document.getElementById('p3-ctx-datos').innerHTML = partes.join(' · ');
+  // El panel de "completar automáticamente" se abre solo si faltan nombres
+  const auto = document.getElementById('p3-auto-box');
+  if (auto && !auto.dataset.tocado) auto.open = sinNombre > 0;
 }
 
 function renderHablantesPaso3() {
@@ -6361,143 +6679,84 @@ function renderHablantesPaso3() {
   const grid = document.getElementById('p3-hablantes-grid');
   const selFiltro = document.getElementById('p3-filtro-spk');
   const filtroActual = selFiltro.value;
-  selFiltro.innerHTML = '<option value="">Todos los hablantes</option>';
+  selFiltro.innerHTML = '<option value="">Todas las voces</option>';
   grid.innerHTML = '';
 
+  const cambios = Object.fromEntries((st.ultimosCambios || []).map(c => [c.id, c]));
+  const ordenadas = [...st.hablantes].sort((a, b) => (b.duracion || 0) - (a.duracion || 0));
   for (const h of st.hablantes) {
     const opt = document.createElement('option');
     opt.value = h.id;
-    opt.textContent = `${h.nombre} (${h.cantidad} frases)`;
+    opt.textContent = `${h.nombre} (${h.cantidad})`;
     selFiltro.appendChild(opt);
+  }
 
-    const esMiVoz = st.miVozId === h.id && !h.silenciado;
-    const card = document.createElement('div');
-    card.className = 'spk-card' + (h.silenciado ? ' silenciado' : '') + (esMiVoz ? ' es-mi-voz' : '');
-
-    const opcionesLista = `<option value="">— Elegir nombre del Grupo (${nombresGrupoActual.length}) —</option>` +
-      nombresGrupoActual.map(nom => `<option value="${escHtml(nom)}" ${nom === h.nombre ? 'selected' : ''}>${escHtml(nom)}</option>`).join('');
-
-    const ejemplosTexto = h.muestras.slice(0, 2).map(m => `[${fmtHMS(m.inicio)}] "${escHtml(m.texto)}"`).join('<br>');
-
-    card.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="width:14px;height:14px;border-radius:50%;background:${h.color};display:inline-block"></span>
-          <strong style="font-size:1.02rem">${escHtml(h.nombre)}</strong>
-        </div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap">
-          ${h.auto_etiquetado ? '<span class="badge badge-azul">🧠 Voz reconocida</span>' : '<span class="badge">Sin guardar huella</span>'}
-          ${esMiVoz ? '<span class="badge badge-verde">⭐ Es tu voz</span>' : ''}
-          <span class="badge ${h.silenciado ? 'badge-ambar' : 'badge-verde'}">${h.silenciado ? '🔇 Silenciado' : '🔊 Se escucha'}</span>
-        </div>
+  for (const h of ordenadas) {
+    const esYo = st.miVozId === h.id;
+    const row = document.createElement('div');
+    row.className = 'voz-row' + (esYo ? ' es-yo' : '');
+    const ejemplo = (h.muestras && h.muestras[0]) ? `“${escHtml(h.muestras[0].texto)}”` : '';
+    const cambio = cambios[h.id];
+    row.innerHTML = `
+      <span class="dot" style="background:${h.color}"></span>
+      <div class="voz-nombre">
+        <input type="text" class="inp-nom-manual" list="p3-dl-nombres" value="${escHtml(h.nombre)}" aria-label="Nombre de esta voz">
+        <div class="voz-ej">${ejemplo}</div>
       </div>
-
-      <div style="font-size:0.82rem;color:var(--muted)">
-        <strong>${h.cantidad}</strong> intervenciones · <strong>${fmtHMS(h.duracion)}</strong> hablados en total
+      <div class="voz-stats">
+        ${h.cantidad} ${h.cantidad === 1 ? 'intervención' : 'intervenciones'} · ${fmtHMS(h.duracion)}
+        ${cambio ? `<br><span class="cambio">✨ antes "${escHtml(cambio.de)}"</span>` : (h.auto_etiquetado ? '<br><span class="guardada">✓ guardada en el grupo</span>' : '')}
       </div>
-
-      <div class="spk-frases-preview">
-        ${ejemplosTexto || 'Sin frases asignadas'}
-      </div>
-
-      <!-- Etiquetar por nombre (desde listado o escribiendo) -->
-      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:8px">
-        <label style="font-size:0.76rem;font-weight:700;color:#334155;display:block;margin-bottom:4px">
-          🏷️ Etiquetar nombre de este hablante (elegí de la lista o escribí):
-        </label>
-        ${nombresGrupoActual.length ? `<select class="sel-nom-lista" style="margin-bottom:6px;font-size:0.84rem">${opcionesLista}</select>` : ''}
-        <div style="display:flex;gap:6px">
-          <input type="text" class="inp-nom-manual" value="${escHtml(h.nombre)}" placeholder="Escribir nombre del hablante…" style="font-size:0.86rem;padding:6px 8px">
-          <button type="button" class="btn-primary btn-xs btn-guardar-hablante" title="Asigna este nombre y guarda su huella de voz en el Grupo activo para reconocerlo en el futuro">
-            💾 Guardar en Grupo
-          </button>
-        </div>
-      </div>
-
-      <!-- Botones de escuchar muestra, marcar Mi Voz y Silenciar -->
-      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-        <button type="button" class="btn-outline btn-sm btn-muestra" ${(!st.nombre_mp3 || !h.muestras.length) ? 'disabled' : ''}>
-          ▶ Escuchar ejemplo
-        </button>
-        <button type="button" class="btn-gold btn-sm btn-mi-voz ${esMiVoz ? 'activo' : ''}">
-          ${esMiVoz ? '✔ Es mi voz (activa)' : '⭐ Esta es mi voz'}
-        </button>
-        <button type="button" class="btn-outline btn-sm btn-mute-spk" style="${h.silenciado ? 'background:#dc2626;color:#fff;border-color:#dc2626' : ''}">
-          ${h.silenciado ? '🔇 Silenciado (clic para activar)' : '🔇 Silenciar / Excluir'}
-        </button>
-      </div>
+      <button type="button" class="btn-outline btn-xs btn-muestra" ${(!st.nombre_mp3 || !h.muestras.length) ? 'disabled title="Esta transcripción no tiene audio vinculado"' : ''}>▶ Escuchar</button>
+      <button type="button" class="btn-yo btn-mi-voz ${esYo ? 'activo' : ''}" aria-pressed="${esYo}">${esYo ? '★ Soy yo' : '☆ Soy yo'}</button>
     `;
 
-    const inpNom = card.querySelector('.inp-nom-manual');
-    const selLista = card.querySelector('.sel-nom-lista');
-    if (selLista) {
-      selLista.onchange = () => {
-        if (selLista.value) inpNom.value = selLista.value;
-      };
-    }
-
-    card.querySelector('.btn-guardar-hablante').onclick = async () => {
-      const nuevoNom = inpNom.value.trim();
-      if (!nuevoNom) return;
-      h.nombre = nuevoNom;
-      const r = await fetch('/api/guardar_voz_registro', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          sesion_id: st.sesion_id,
-          spk_id: h.id,
-          nombre: nuevoNom,
-          color: h.color,
-          grupo: grupoActivo
-        })
-      });
-      if (r.ok) {
+    const inp = row.querySelector('.inp-nom-manual');
+    const guardar = async () => {
+      const nuevo = inp.value.trim();
+      if (!nuevo || nuevo === h.nombre) { inp.value = h.nombre; return; }
+      h.nombre = nuevo;
+      inp.disabled = true;
+      try {
+        const r = await fetch('/api/guardar_voz_registro', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ sesion_id: st.sesion_id, spk_id: h.id, nombre: nuevo, color: h.color, grupo: grupoActivo })
+        });
+        if (!r.ok) throw new Error(await r.text());
         h.auto_etiquetado = true;
+        if (st.miVozId === h.id) recordarMiVoz(st.sesion_id, h);
+        if (st.ultimosCambios) st.ultimosCambios = st.ultimosCambios.filter(c => c.id !== h.id);
         await cargarGruposYListado();
-        renderHablantesPaso3();
-        renderSegmentosPaso3();
-      } else {
-        alert(await r.text());
+      } catch (e) {
+        alert('No se pudo guardar el nombre: ' + e.message);
       }
+      renderHablantesPaso3(); renderSegmentosPaso3(); actualizarResumenAudioPaso3();
     };
+    inp.addEventListener('change', guardar);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
 
-    const btnMuestra = card.querySelector('.btn-muestra');
+    const btnMuestra = row.querySelector('.btn-muestra');
     btnMuestra.onclick = () => {
       if (!h.muestras.length) return;
       const idx = (st.muestraIdx[h.id] || 0) % h.muestras.length;
       st.muestraIdx[h.id] = idx + 1;
       const m = h.muestras[idx];
-      btnMuestra.textContent = `⏭ Ejemplo (${idx + 1}/${h.muestras.length})`;
+      btnMuestra.textContent = `▶ ${idx + 1}/${h.muestras.length}`;
       reproducirFragmentoPaso3(m.inicio, m.fin, `${h.nombre}: "${m.texto}"`);
     };
 
-    card.querySelector('.btn-mi-voz').onclick = () => {
-      st.miVozId = h.id;
-      for (const otro of st.hablantes) {
-        otro.silenciado = (otro.id !== h.id);
-      }
-      for (const s of st.segmentos) delete s.override_mute;
-      renderHablantesPaso3();
-      renderSegmentosPaso3();
-      actualizarResumenAudioPaso3();
+    row.querySelector('.btn-mi-voz').onclick = () => {
+      st.miVozId = esYo ? null : h.id;
+      recordarMiVoz(st.sesion_id, esYo ? null : h);
+      renderHablantesPaso3(); actualizarResumenAudioPaso3();
     };
-
-    card.querySelector('.btn-mute-spk').onclick = () => {
-      h.silenciado = !h.silenciado;
-      if (h.silenciado && st.miVozId === h.id) st.miVozId = null;
-      for (const s of st.segmentos) {
-        if (s.hablante === h.id) delete s.override_mute;
-      }
-      renderHablantesPaso3();
-      renderSegmentosPaso3();
-      actualizarResumenAudioPaso3();
-    };
-
-    grid.appendChild(card);
+    grid.appendChild(row);
   }
-
   selFiltro.value = filtroActual;
+  renderVocesP3b();
 }
+
+document.getElementById('p3-auto-box').addEventListener('toggle', e => { e.currentTarget.dataset.tocado = '1'; });
 
 // Botones rápidos para separar en 2 a 30 hablantes
 document.getElementById('p3-k-otro').onchange = e => { document.getElementById('btn-p3-k-otro').dataset.k = e.target.value; };
@@ -6516,7 +6775,8 @@ document.querySelectorAll('.btn-recluster-k').forEach(btn => {
       const d = await r.json();
       sesionActiva.hablantes = d.hablantes;
       sesionActiva.segmentos = d.segmentos;
-      sesionActiva.miVozId = null;
+      sesionActiva.miVozId = detectarMiVoz('__nada__', d.hablantes);
+      sesionActiva.ultimosCambios = [];
       renderPaso3();
     } catch (e) {
       alert('No se pudo reagrupar: ' + e.message);
@@ -6611,9 +6871,9 @@ function renderSegmentosPaso3() {
       <select style="border-left:4px solid ${spk.color};font-weight:700;font-size:0.82rem">${opts}</select>
       <div class="seg-texto" contenteditable="true" spellcheck="false" style="font-size:0.9rem;padding:4px">${escHtml(seg.texto)}</div>
       <div style="display:flex;gap:4px">
-        <button type="button" class="btn-outline btn-xs btn-ini" title="Marcar inicio de recorte acá">⛳ Inicio</button>
-        <button type="button" class="btn-outline btn-xs btn-fin" title="Marcar fin de recorte acá">🏁 Fin</button>
-        <button type="button" class="btn-outline btn-xs btn-mute">${sil ? '🔇' : '🔊'}</button>
+        <button type="button" class="btn-outline btn-xs btn-ini" title="El tramo empieza en esta línea">⛳</button>
+        <button type="button" class="btn-outline btn-xs btn-fin" title="El tramo termina en esta línea">🏁</button>
+        <button type="button" class="btn-outline btn-xs btn-mute" title="${sil ? 'Línea excluida: tocá para volver a incluirla' : 'Excluir esta línea del audio y la transcripción que generes'}">${sil ? '🚫' : '✓'}</button>
       </div>
     `;
 
@@ -6799,83 +7059,200 @@ document.getElementById('btn-p3-recortar-sesion-perm').onclick = async () => {
   renderPaso3();
 };
 
+function rangoP3() {
+  const st = sesionActiva;
+  return [st.rangoInicio ?? 0, st.rangoFin ?? st.duracion];
+}
+function durEnRango(segs) {
+  const [r0, r1] = rangoP3();
+  return segs.reduce((acc, s) => acc + Math.max(0, Math.min(s.fin, r1) - Math.max(s.inicio, r0)), 0);
+}
+function lineaExcluida(s) { return s.override_mute === true; }
+
 function actualizarResumenAudioPaso3() {
   if (!sesionActiva) return;
   const st = sesionActiva;
-  const modo = document.getElementById('p3-modo-audio').value;
+  const [r0, r1] = rangoP3();
+  const badgeRango = document.getElementById('p3-badge-rango');
+  if (st.rangoInicio !== null || st.rangoFin !== null) {
+    badgeRango.textContent = `Tramo: ${fmtHMS(r0)} → ${fmtHMS(r1)} (${fmtHMS(r1 - r0)})`;
+    badgeRango.className = 'badge badge-verde';
+  } else {
+    badgeRango.textContent = `Tramo: todo el archivo (${fmtHMS(st.duracion)})`;
+    badgeRango.className = 'badge badge-azul';
+  }
+  renderTimelineP3();
+
+  // A · Mi voz limpia
+  const aviso = document.getElementById('p3-mivoz-aviso');
+  const btnA = document.getElementById('btn-p3-export-audio');
+  const yo = st.hablantes.find(h => h.id === st.miVozId);
   const minSeg = Number(document.getElementById('p3-min-seg').value || 0);
   const maxMin = Number(document.getElementById('p3-max-min').value || 0);
-  const r0 = st.rangoInicio ?? 0;
-  const r1 = st.rangoFin ?? st.duracion;
-  const badgeRango = document.getElementById('p3-badge-rango');
-  if (badgeRango) {
-    if (st.rangoInicio !== null || st.rangoFin !== null) {
-      badgeRango.textContent = `✂️ Recorte activo: ${fmtHMS(r0)} → ${fmtHMS(r1)}`;
-      badgeRango.className = 'badge badge-verde';
-    } else {
-      badgeRango.textContent = `Tramo activo: Todo (${fmtHMS(st.duracion)})`;
-      badgeRango.className = 'badge badge-azul';
-    }
+  if (!st.nombre_mp3) {
+    aviso.innerHTML = 'Esta transcripción no tiene audio vinculado.';
+    btnA.disabled = true;
+    document.getElementById('p3-resumen-audio').innerHTML = '';
+  } else if (!yo) {
+    aviso.innerHTML = 'Primero marcá <strong>☆ Soy yo</strong> en tu voz (paso 1).';
+    btnA.disabled = true;
+    document.getElementById('p3-resumen-audio').innerHTML = '';
+  } else {
+    aviso.innerHTML = '';
+    btnA.disabled = false;
+    let mios = st.segmentos.filter(s => s.hablante === yo.id && !lineaExcluida(s) && estaEnRango(st, s));
+    if (minSeg > 0) mios = mios.filter(s => (Math.min(s.fin, r1) - Math.max(s.inicio, r0)) >= minSeg);
+    let dur = durEnRango(mios);
+    if (maxMin > 0) dur = Math.min(dur, maxMin * 60);
+    document.getElementById('p3-resumen-audio').innerHTML = `${mios.length} fragmentos de <strong>${escHtml(yo.nombre)}</strong> · sale ≈ ${fmtHMS(dur)}`;
   }
-  const segsR = st.segmentos.filter(s => estaEnRango(st, s));
-  let activos = segsR.filter(s => !esSegSilenciado(st, s));
-  if (modo === 'aislar' && minSeg > 0) {
-    activos = activos.filter(s => (Math.min(s.fin, r1) - Math.max(s.inicio, r0)) >= minSeg);
+
+  // B · Audio sin ciertas voces
+  const q = vocesElegidasP3b();
+  const btnB = document.getElementById('btn-p3b-export');
+  btnB.disabled = !st.nombre_mp3;
+  const quitar = st.segmentos.filter(s => estaEnRango(st, s) && (q.has(s.hablante) || lineaExcluida(s)));
+  const resB = document.getElementById('p3b-resumen');
+  if (!st.nombre_mp3) resB.innerHTML = 'Esta transcripción no tiene audio vinculado.';
+  else if (!quitar.length) resB.innerHTML = `Nadie marcado: se recorta el audio al tramo (${fmtHMS(r1 - r0)}).`;
+  else {
+    const modo = document.getElementById('p3b-modo').value;
+    resB.innerHTML = `${modo === 'silenciar' ? 'Se silencian' : 'Se quitan'} ${quitar.length} fragmentos (${fmtHMS(durEnRango(quitar))})` +
+      (modo === 'recortar' ? ` · sale ≈ ${fmtHMS(Math.max(0, (r1 - r0) - durEnRango(quitar)))}` : '');
   }
-  let durAct = modo === 'rango_directo'
-    ? Math.max(0, r1 - r0)
-    : activos.reduce((acc, s) => acc + Math.max(0, Math.min(s.fin, r1) - Math.max(s.inicio, r0)), 0);
-  if (modo === 'aislar' && maxMin > 0 && durAct > maxMin * 60) durAct = maxMin * 60;
-  document.getElementById('p3-resumen-audio').innerHTML =
-    `⏱️ Rango: <strong>${fmtHMS(r0)} → ${fmtHMS(r1)}</strong> · Fragmentos en rango: <strong>${activos.length}</strong> · Duración de salida: <strong>${fmtHMS(durAct)}</strong>`;
 }
 
-['p3-modo-audio','p3-fmt-audio','p3-max-min','p3-min-seg'].forEach(id => {
+['p3-fmt-audio', 'p3-max-min', 'p3-min-seg', 'p3b-modo', 'p3b-fmt'].forEach(id => {
   document.getElementById(id).onchange = () => actualizarResumenAudioPaso3();
 });
 
-document.getElementById('btn-p3-export-audio').onclick = async () => {
-  if (!sesionActiva || !sesionActiva.nombre_mp3) {
-    alert('Esta sesión no tiene un archivo de audio MP3 vinculado.');
-    return;
-  }
+// Línea de tiempo del tramo en el paso 3
+function renderTimelineP3() {
   const st = sesionActiva;
-  const btn = document.getElementById('btn-p3-export-audio');
-  const resBox = document.getElementById('p3-res-audio');
-  btn.disabled = true;
-  resBox.innerHTML = '<div style="margin-top:8px;font-size:0.85rem">⏳ Generando audio…</div>';
+  const capa = document.getElementById('p3-tl-marcas');
+  if (!st || !capa || !st.duracion) return;
+  const pct = t => `${Math.max(0, Math.min(100, t / st.duracion * 100))}%`;
+  const [r0, r1] = rangoP3();
+  capa.innerHTML = (st.rangoInicio !== null || st.rangoFin !== null)
+    ? `<div class="tl-rango" style="left:${pct(r0)};width:calc(${pct(r1)} - ${pct(r0)})"></div>` : '';
+  actualizarCabezalP3();
+}
+function actualizarCabezalP3() {
+  const st = sesionActiva;
+  const a = document.getElementById('p3-audio');
+  const cab = document.getElementById('p3-tl-cabezal');
+  if (!st || !a || !cab || !st.duracion) return;
+  cab.style.left = `calc(${Math.min(100, (a.currentTime || 0) / st.duracion * 100)}% - 1px)`;
+}
+document.getElementById('p3-timeline').addEventListener('click', e => {
+  const st = sesionActiva;
+  const a = document.getElementById('p3-audio');
+  if (!st || !st.nombre_mp3 || !st.duracion) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  st.pararEn = null;
+  a.currentTime = Math.max(0, Math.min(st.duracion, (e.clientX - r.left) / r.width * st.duracion));
+});
 
+// B · elegir voces
+function vocesElegidasP3b() {
+  const st = sesionActiva;
+  if (!st) return new Set();
+  if (!st.quitarVoces) st.quitarVoces = new Set();
+  return st.quitarVoces;
+}
+function renderVocesP3b() {
+  const st = sesionActiva;
+  const cont = document.getElementById('p3b-voces');
+  if (!st || !cont) return;
+  const q = vocesElegidasP3b();
+  cont.innerHTML = [...st.hablantes].sort((a, b) => (b.duracion || 0) - (a.duracion || 0)).map(h => `
+    <label class="check"><input type="checkbox" data-spk="${escHtml(h.id)}" ${q.has(h.id) ? 'checked' : ''}>
+      <span><span class="dot-mini" style="background:${h.color}"></span>${escHtml(h.nombre)}${h.id === st.miVozId ? ' <em>(vos)</em>' : ''}</span></label>`).join('');
+  cont.querySelectorAll('input').forEach(c => c.onchange = () => {
+    c.checked ? q.add(c.dataset.spk) : q.delete(c.dataset.spk);
+    actualizarResumenAudioPaso3();
+  });
+}
+document.getElementById('btn-p3b-todos-menos-yo').onclick = () => {
+  const st = sesionActiva;
+  if (!st) return;
+  if (!st.miVozId) { alert('Primero marcá "☆ Soy yo" en tu voz (paso 1).'); return; }
+  st.quitarVoces = new Set(st.hablantes.filter(h => h.id !== st.miVozId).map(h => h.id));
+  renderVocesP3b(); actualizarResumenAudioPaso3();
+};
+document.getElementById('btn-p3b-ninguno').onclick = () => {
+  if (!sesionActiva) return;
+  sesionActiva.quitarVoces = new Set();
+  renderVocesP3b(); actualizarResumenAudioPaso3();
+};
+
+function mostrarAudioGenerado(box, d) {
+  box.innerHTML = `
+    <div class="salida-ok">
+      <div style="font-weight:600;color:var(--ok);margin-bottom:6px">✔ ${escHtml(d.nombre_archivo)} (${fmtHMS(d.duracion_final)})</div>
+      ${/\.zip$/i.test(d.nombre_archivo) ? '' : `<audio controls src="/audios/${encodeURIComponent(d.nombre_archivo)}" style="width:100%;height:34px;margin-bottom:6px"></audio>`}
+      <a class="btn-primary btn-sm" href="/audios/${encodeURIComponent(d.nombre_archivo)}" download>Descargar</a>
+    </div>`;
+}
+async function exportarAudioP3(payload, btn, box) {
+  btn.disabled = true;
+  const txt = btn.textContent;
+  btn.textContent = 'Generando…';
+  box.innerHTML = '';
   try {
-    const r = await fetch('/api/exportar_mp3', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        sesion_id: st.sesion_id,
-        modo: document.getElementById('p3-modo-audio').value,
-        formato: document.getElementById('p3-fmt-audio').value,
-        max_minutos: Number(document.getElementById('p3-max-min').value || 0),
-        min_dur_seg: Number(document.getElementById('p3-min-seg').value || 0),
-        pausa_seg: 0.3,
-        rango_inicio: st.rangoInicio,
-        rango_fin: st.rangoFin,
-        intervalos: st.segmentos.filter(s => esSegSilenciado(st, s)).map(s => [s.inicio, s.fin]),
-        activos: st.segmentos.filter(s => !esSegSilenciado(st, s)).map(s => ({inicio:s.inicio, fin:s.fin, texto:s.texto, confianza:s.confianza||0.8}))
-      })
-    });
+    const r = await fetch('/api/exportar_mp3', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
     if (!r.ok) throw new Error(await r.text());
-    const d = await r.json();
-    resBox.innerHTML = `
-      <div style="margin-top:10px;padding:10px;border-radius:8px;background:#f0fdf4;border:1px solid #86efac">
-        <div style="font-weight:700;color:var(--ok);margin-bottom:6px">✔ Listo: ${escHtml(d.nombre_archivo)} (${fmtHMS(d.duracion_final)})</div>
-        <audio controls src="/audios/${encodeURIComponent(d.nombre_archivo)}" style="width:100%;height:34px;margin-bottom:6px"></audio>
-        <a class="btn-primary btn-sm" style="text-decoration:none" href="/audios/${encodeURIComponent(d.nombre_archivo)}" download>⬇ Descargar ${escHtml(d.nombre_archivo)}</a>
-      </div>
-    `;
+    mostrarAudioGenerado(box, await r.json());
   } catch (e) {
-    resBox.innerHTML = `<div style="margin-top:8px;color:var(--danger);font-weight:700">✘ ${escHtml(e.message)}</div>`;
+    box.innerHTML = `<div style="margin-top:8px;color:var(--danger);font-weight:600">✘ ${escHtml(e.message)}</div>`;
   } finally {
     btn.disabled = false;
+    btn.textContent = txt;
   }
+}
+
+// A · Mi voz limpia
+document.getElementById('btn-p3-export-audio').onclick = () => {
+  const st = sesionActiva;
+  if (!st || !st.nombre_mp3 || !st.miVozId) return;
+  const mios = st.segmentos.filter(s => s.hablante === st.miVozId && !lineaExcluida(s));
+  exportarAudioP3({
+    sesion_id: st.sesion_id, modo: 'aislar',
+    formato: document.getElementById('p3-fmt-audio').value,
+    max_minutos: Number(document.getElementById('p3-max-min').value || 0),
+    min_dur_seg: Number(document.getElementById('p3-min-seg').value || 0),
+    pausa_seg: 0.3, rango_inicio: st.rangoInicio, rango_fin: st.rangoFin,
+    intervalos: [],
+    activos: mios.map(s => ({ inicio: s.inicio, fin: s.fin, texto: s.texto, confianza: s.confianza || 0.8 }))
+  }, document.getElementById('btn-p3-export-audio'), document.getElementById('p3-res-audio'));
 };
+
+// B · Audio sin ciertas voces
+document.getElementById('btn-p3b-export').onclick = () => {
+  const st = sesionActiva;
+  if (!st || !st.nombre_mp3) return;
+  const q = vocesElegidasP3b();
+  const quitar = st.segmentos.filter(s => q.has(s.hablante) || lineaExcluida(s));
+  const modo = quitar.length ? document.getElementById('p3b-modo').value : 'rango_directo';
+  if (modo === 'rango_directo' && st.rangoInicio === null && st.rangoFin === null) {
+    alert('Marcá al menos una voz para sacar o elegí un tramo.');
+    return;
+  }
+  exportarAudioP3({
+    sesion_id: st.sesion_id, modo,
+    formato: document.getElementById('p3b-fmt').value,
+    max_minutos: 0, min_dur_seg: 0, pausa_seg: 0.3,
+    rango_inicio: st.rangoInicio, rango_fin: st.rangoFin,
+    intervalos: quitar.map(s => [s.inicio, s.fin]),
+    activos: st.segmentos.filter(s => !quitar.includes(s)).map(s => ({ inicio: s.inicio, fin: s.fin, texto: s.texto, confianza: s.confianza || 0.8 }))
+  }, document.getElementById('btn-p3b-export'), document.getElementById('p3b-res'));
+};
+
+// D · Recetas de video: abren "Video para publicar" con esta transcripción
+document.querySelectorAll('.receta-btn').forEach(b => b.onclick = () => {
+  if (!sesionActiva) return;
+  abrirPublicarConSesion(sesionActiva.sesion_id, b.dataset.receta);
+});
 
 // ==============================================================================
 // PASO 4: CONVERTIR A SUBTÍTULOS Y SINCRONIZAR CON VIDEO SIN AUDIO (DRIVE)
