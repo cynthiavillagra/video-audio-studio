@@ -4857,7 +4857,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       <div class="card-head" style="margin-bottom:10px">
         <div>
           <h2>🎬 Silenciar o subtitular voces</h2>
-          <p>Elegí una receta o decidí voz por voz. Mirá el efecto en el reproductor de arriba antes de generar. <span id="pub-resumen-video"></span></p>
+          <p>Usa la transcripción sincronizada con su video. Elegí una receta o decidí voz por voz y mirá el efecto en la vista previa de arriba. <span id="pub-resumen-video"></span></p>
         </div>
       </div>
       <div class="recetas" role="group" aria-label="Recetas">
@@ -4909,7 +4909,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
 
     <div class="card">
       <h3>✂️ Recortar el video y/o unirle subtítulos</h3>
-      <p class="sub-desc">Usa el tramo de arriba (vacío = video entero) y los subtítulos de esta transcripción.</p>
+      <p class="sub-desc">Usa el tramo de arriba (vacío = video entero) y los subtítulos ya sincronizados de esta transcripción.</p>
       <div class="row">
         <input type="hidden" id="p4-t-ini"><input type="hidden" id="p4-t-fin">
         <select id="p4-modo-unir" style="flex:1;min-width:220px;max-width:420px">
@@ -5629,6 +5629,7 @@ function aplicarRecetaPub(receta) {
 document.querySelectorAll('[data-receta-pub]').forEach(b => b.onclick = () => aplicarRecetaPub(b.dataset.recetaPub));
 
 document.getElementById('btn-pub-generar').onclick = async () => {
+  if (!sesionActiva || !sesionActiva.sincronizado) { alert('Primero sincronizá la transcripción con su video (paso 2).'); return; }
   const igualarPub = document.getElementById('pub-igualar').checked;
   if (!pub.sesion || (!subtituladosPub().size && !igualarPub && !document.getElementById('pub-nivelar').checked)) return;
   const cont = document.getElementById('pub-progreso-render');
@@ -7338,9 +7339,10 @@ async function renderPaso4() {
   aviso.innerHTML = !st.nombre_mp3
     ? 'Para generar videos, vinculá el video de esta clase en <a href="#" onclick="irAPaso(2);return false">Transcripción</a>.'
     : !esVid ? 'Esta transcripción está vinculada a un <strong>audio</strong>. Para generar video, vinculá el video en <a href="#" onclick="irAPaso(2);return false">Transcripción</a>.'
-    : !st.sincronizado ? '⚠ La sincronización no está confirmada: revisala en <a href="#" onclick="irAPaso(2);return false">Transcripción</a> antes de silenciar.' : '';
-  document.getElementById('btn-p4-unir-video').disabled = !esVid;
-  document.getElementById('res-video-card').classList.toggle('deshabilitada', !esVid);
+    : !st.sincronizado ? 'Para generar el video, la transcripción tiene que estar <strong>sincronizada</strong> con este video (si no, se silenciarían o subtitularían momentos equivocados). <button type="button" class="btn-primary btn-xs" onclick="abrirSesionGuardada(sesionActiva.sesion_id, 2)">Sincronizar ahora</button> Podés ir eligiendo las voces y probar en la vista previa.' : '';
+  const listoVideo = esVid && st.sincronizado;
+  document.getElementById('btn-p4-unir-video').disabled = !listoVideo;
+  document.getElementById('res-video-card').classList.toggle('deshabilitada', !listoVideo);
   document.getElementById('pub-resumen-video').textContent = '';
 
   renderVocesPub();
@@ -7586,6 +7588,7 @@ window.descargarSubtitulosPaso4 = function(formato) {
 document.getElementById('btn-p4-unir-video').onclick = async () => {
   const st = sesionActiva;
   if (!st || !st.nombre_mp3 || !esVideoNombre(st.nombre_mp3)) return;
+  if (!st.sincronizado) { alert('Primero sincronizá la transcripción con su video (paso 2).'); return; }
   const btn = document.getElementById('btn-p4-unir-video');
   const resDiv = document.getElementById('p4-res-unir');
   btn.disabled = true;
