@@ -3608,6 +3608,25 @@ a.btn-xs { padding: 4px 9px; font-size: 0.75rem; border-radius: 6px; }
 .dropzone.dz-compacta { flex-direction: row; justify-content: flex-start; gap: 14px; padding: 12px 14px; }
 .dropzone.dz-compacta .dz-icon { margin: 0; width: 38px; height: 38px; flex-shrink: 0; }
 
+/* ---------- Vista previa (paso 1) ---------- */
+.dropzone.con-archivo { min-height: 0 !important; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 12px 14px; text-align: left; }
+.dropzone.con-archivo .dz-icon { margin: 0; width: 36px; height: 36px; flex-shrink: 0; }
+.preview { margin-top: 12px; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--surface-2); }
+.preview video { width: 100%; max-height: 300px; background: #000; border-radius: 8px; display: block; }
+.prev-reloj { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin: 10px 0 6px; }
+.t-grande { font-family: var(--mono); font-size: 1.7rem; font-weight: 600; color: var(--text); letter-spacing: 0.02em; }
+.t-dur { font-family: var(--mono); font-size: 0.9rem; color: var(--muted); }
+.prev-saltos { margin-left: auto; display: inline-flex; gap: 4px; }
+.timeline { position: relative; height: 34px; background: #e9ecf1; border-radius: 6px; cursor: pointer; overflow: hidden; }
+.tl-capa { position: absolute; inset: 0; }
+.tl-rango { position: absolute; top: 0; bottom: 0; background: rgba(37,99,235,0.22); border-left: 2px solid var(--primary); border-right: 2px solid var(--primary); }
+.tl-parte { position: absolute; top: 0; bottom: 0; display: grid; place-items: center; font-size: 0.68rem; font-weight: 700; color: var(--primary-hover); font-family: var(--mono); overflow: hidden; }
+.tl-parte.par { background: rgba(37,99,235,0.18); }
+.tl-parte.impar { background: rgba(37,99,235,0.08); }
+.tl-corte { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--danger); }
+.tl-cabezal { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #111827; pointer-events: none; left: 0; }
+.tl-cabezal::before { content: ""; position: absolute; top: 0; left: -4px; border: 5px solid transparent; border-top-color: #111827; }
+
 /* ---------- Cola y progreso ---------- */
 .cola-lista { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 6px; }
 .cola-item {
@@ -3969,9 +3988,46 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
       <div>
         <div class="dropzone" id="zona-p1" style="min-height:260px">
           <div class="dz-icon"><svg><use href="#i-upload"/></svg></div>
-          <div class="dz-title">Arrastrá acá tu video o audio</div>
-          <div class="dz-sub">o hacé clic para elegirlo · MP4, MKV, MOV, AVI, WEBM, WAV, M4A, MP3</div>
+          <div>
+            <div class="dz-title" id="zona-p1-titulo">Arrastrá acá tu video o audio</div>
+            <div class="dz-sub">o hacé clic para elegirlo · MP4, MKV, MOV, AVI, WEBM, WAV, M4A, MP3</div>
+          </div>
           <input type="file" id="arch-p1" accept=".mkv,.mp4,.mov,.avi,.webm,.mp3,.wav,.m4a,.ogg,video/*,audio/*" multiple hidden>
+        </div>
+
+        <!-- Vista previa con minuto:segundo y marcas -->
+        <div id="p1-preview" class="preview" style="display:none">
+          <div class="row-between" style="margin-bottom:8px">
+            <strong id="p1-prev-nombre" style="font-size:0.86rem;overflow-wrap:anywhere"></strong>
+            <span class="badge" id="p1-prev-tipo"></span>
+          </div>
+          <video id="p1-prev-video" controls preload="metadata" playsinline></video>
+          <audio id="p1-prev-audio" controls preload="metadata" style="display:none;width:100%"></audio>
+          <div id="p1-prev-error" style="display:none;font-size:0.8rem;color:var(--warn);margin-top:6px">Este formato no se puede previsualizar en el navegador (igual se puede procesar). Podés escribir los tiempos a mano.</div>
+          <div class="prev-reloj">
+            <span class="t-grande" id="p1-prev-t">00:00</span>
+            <span class="t-dur">/ <span id="p1-prev-dur">--:--</span></span>
+            <span class="prev-saltos">
+              <button type="button" class="btn-outline btn-xs" data-salto="-5">−5 s</button>
+              <button type="button" class="btn-outline btn-xs" data-salto="-1">−1 s</button>
+              <button type="button" class="btn-outline btn-xs" data-salto="1">+1 s</button>
+              <button type="button" class="btn-outline btn-xs" data-salto="5">+5 s</button>
+            </span>
+          </div>
+          <div class="timeline" id="p1-timeline" title="Hacé clic para ir a ese momento">
+            <div class="tl-capa" id="p1-tl-marcas"></div>
+            <div class="tl-cabezal" id="p1-tl-cabezal"></div>
+          </div>
+          <div class="row" style="gap:6px;margin-top:10px" id="p1-prev-acciones-tramo">
+            <button type="button" class="btn-outline btn-sm" id="btn-p1-marcar-desde">⟦ Marcar Desde</button>
+            <button type="button" class="btn-outline btn-sm" id="btn-p1-marcar-hasta">Marcar Hasta ⟧</button>
+            <span style="font-size:0.76rem;color:var(--muted)">Pausá donde quieras cortar y tocá el botón.</span>
+          </div>
+          <div class="row" style="gap:6px;margin-top:10px;display:none" id="p1-prev-acciones-partes">
+            <button type="button" class="btn-outline btn-sm" id="btn-p1-agregar-corte">✂ Agregar corte acá</button>
+            <button type="button" class="btn-outline btn-sm" id="btn-p1-quitar-corte">Quitar el último</button>
+            <span style="font-size:0.76rem;color:var(--muted)">Se suma a "En estos puntos".</span>
+          </div>
         </div>
       </div>
 
@@ -4065,6 +4121,7 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     </div>
     <div class="row">
       <select id="p1-sel-existente" style="flex:1;min-width:220px;max-width:460px"></select>
+      <button type="button" class="btn-outline btn-sm" id="btn-p1-ver-existente">Vista previa</button>
       <button type="button" class="btn-outline btn-sm" id="btn-p1-recortar-existente">Recortar este archivo</button>
     </div>
   </div>
@@ -5008,10 +5065,14 @@ zonaP1.ondrop = e => { e.preventDefault(); zonaP1.classList.remove('sobre'); agr
 archP1.onchange = () => { agregarColaP1(archP1.files); archP1.value = ''; };
 
 function agregarColaP1(files) {
+  let primero = null;
   for (const f of files) {
-    colaP1.push({ id: Math.random().toString(36).slice(2), file: f, nombre: f.name, bytes: f.size });
+    const it = { id: Math.random().toString(36).slice(2), file: f, nombre: f.name, bytes: f.size };
+    colaP1.push(it);
+    primero = primero || it;
   }
   renderColaP1();
+  if (primero) verColaP1(primero.id);
 }
 
 function renderColaP1() {
@@ -5030,7 +5091,10 @@ function renderColaP1() {
   lista.innerHTML = colaP1.map(it => `
     <li class="cola-item">
       <span><strong>${escHtml(it.nombre)}</strong> <small style="color:var(--muted)">(${fmtMB(it.bytes)})</small></span>
-      <button type="button" class="btn-danger-soft btn-xs" onclick="quitarColaP1('${it.id}')">✕ Quitar</button>
+      <span class="row" style="gap:4px;flex-wrap:nowrap">
+        <button type="button" class="btn-outline btn-xs" onclick="verColaP1('${it.id}')">Ver</button>
+        <button type="button" class="btn-danger-soft btn-xs" onclick="quitarColaP1('${it.id}')">✕ Quitar</button>
+      </span>
     </li>
   `).join('');
 }
@@ -5038,8 +5102,14 @@ function renderColaP1() {
 window.quitarColaP1 = function(id) {
   colaP1 = colaP1.filter(x => x.id !== id);
   renderColaP1();
+  if (prevP1.origen === 'cola:' + id) {
+    if (colaP1.length) verColaP1(colaP1[0].id); else ocultarPreviewP1();
+  }
 };
-document.getElementById('btn-p1-limpiar').onclick = () => { colaP1 = []; renderColaP1(); };
+document.getElementById('btn-p1-limpiar').onclick = () => {
+  colaP1 = []; renderColaP1();
+  if (prevP1.origen.startsWith('cola:')) ocultarPreviewP1();
+};
 
 btnP1Convertir.onclick = async () => {
   if (!colaP1.length) return;
@@ -5447,6 +5517,148 @@ document.getElementById('btn-pub-generar').onclick = async () => {
   }
 };
 
+// ---------- Vista previa con minuto:segundo (paso 1) ----------
+const prevP1 = { origen: '', dur: 0, el: null };
+const EXT_VIDEO_P1 = /\.(mp4|mkv|mov|avi|webm)$/i;
+
+function fmtCorte(seg) {
+  seg = Math.max(0, Math.floor(seg || 0));
+  const h = Math.floor(seg / 3600), m = Math.floor((seg % 3600) / 60), s = seg % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+           : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function cargarPreviewP1(src, nombre, esVideo, origen) {
+  const box = document.getElementById('p1-preview');
+  const v = document.getElementById('p1-prev-video');
+  const a = document.getElementById('p1-prev-audio');
+  [v, a].forEach(x => { x.pause(); x.removeAttribute('src'); x.load(); });
+  prevP1.origen = origen;
+  prevP1.dur = 0;
+  prevP1.el = esVideo ? v : a;
+  v.style.display = esVideo ? 'block' : 'none';
+  a.style.display = esVideo ? 'none' : 'block';
+  document.getElementById('p1-prev-error').style.display = 'none';
+  document.getElementById('p1-prev-nombre').textContent = nombre;
+  document.getElementById('p1-prev-tipo').textContent = esVideo ? 'Video' : 'Audio';
+  document.getElementById('p1-prev-t').textContent = '00:00';
+  document.getElementById('p1-prev-dur').textContent = '--:--';
+  prevP1.el.src = src;
+  box.style.display = 'block';
+  document.getElementById('zona-p1').classList.add('con-archivo');
+  document.getElementById('zona-p1-titulo').textContent = 'Agregar otro video o audio';
+  renderTimelineP1();
+}
+function ocultarPreviewP1() {
+  const v = document.getElementById('p1-prev-video'), a = document.getElementById('p1-prev-audio');
+  [v, a].forEach(x => { x.pause(); x.removeAttribute('src'); x.load(); });
+  prevP1.origen = ''; prevP1.dur = 0; prevP1.el = null;
+  document.getElementById('p1-preview').style.display = 'none';
+  document.getElementById('zona-p1').classList.remove('con-archivo');
+  document.getElementById('zona-p1-titulo').textContent = 'Arrastrá acá tu video o audio';
+}
+window.verColaP1 = function(id) {
+  const it = colaP1.find(x => x.id === id);
+  if (!it) return;
+  if (!it.url) it.url = URL.createObjectURL(it.file);
+  const esVideo = (it.file.type || '').startsWith('video') || EXT_VIDEO_P1.test(it.nombre);
+  cargarPreviewP1(it.url, it.nombre, esVideo, 'cola:' + id);
+};
+document.getElementById('btn-p1-ver-existente').onclick = () => {
+  const sel = document.getElementById('p1-sel-existente');
+  if (!sel.value) return;
+  cargarPreviewP1('/audios/' + encodeURIComponent(sel.value), sel.value, EXT_VIDEO_P1.test(sel.value), 'audios:' + sel.value);
+  document.getElementById('p1-preview').scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
+
+['p1-prev-video', 'p1-prev-audio'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('loadedmetadata', () => {
+    if (el !== prevP1.el) return;
+    prevP1.dur = isFinite(el.duration) ? el.duration : 0;
+    document.getElementById('p1-prev-dur').textContent = prevP1.dur ? fmtCorte(prevP1.dur) : '--:--';
+    renderTimelineP1();
+  });
+  el.addEventListener('timeupdate', () => { if (el === prevP1.el) actualizarCabezalP1(); });
+  el.addEventListener('seeked', () => { if (el === prevP1.el) actualizarCabezalP1(); });
+  el.addEventListener('error', () => {
+    if (el !== prevP1.el || !el.getAttribute('src')) return;
+    document.getElementById('p1-prev-error').style.display = 'block';
+  });
+});
+
+function actualizarCabezalP1() {
+  const el = prevP1.el;
+  if (!el) return;
+  document.getElementById('p1-prev-t').textContent = fmtCorte(el.currentTime);
+  const pct = prevP1.dur ? Math.min(100, el.currentTime / prevP1.dur * 100) : 0;
+  document.getElementById('p1-tl-cabezal').style.left = `calc(${pct}% - 1px)`;
+}
+
+function renderTimelineP1() {
+  const capa = document.getElementById('p1-tl-marcas');
+  const partes = tipoCorteP1() === 'partes';
+  document.getElementById('p1-prev-acciones-tramo').style.display = partes ? 'none' : 'flex';
+  document.getElementById('p1-prev-acciones-partes').style.display = partes ? 'flex' : 'none';
+  const dur = prevP1.dur;
+  if (!capa || !dur) { if (capa) capa.innerHTML = ''; actualizarCabezalP1(); return; }
+  const pct = t => `${Math.max(0, Math.min(100, t / dur * 100))}%`;
+  let html = '';
+  if (partes) {
+    const lista = calcularPartesCliente(dur);
+    lista.forEach(([a, b], i) => {
+      html += `<div class="tl-parte ${i % 2 ? 'impar' : 'par'}" style="left:${pct(a)};width:calc(${pct(b)} - ${pct(a)})" title="Parte ${i + 1}: ${fmtCorte(a)} → ${fmtCorte(b)}">${i + 1}</div>`;
+      if (i > 0) html += `<div class="tl-corte" style="left:calc(${pct(a)} - 1px)"></div>`;
+    });
+  } else {
+    const d = parseTiempoCliente(document.getElementById('p1-desde').value);
+    const h = parseTiempoCliente(document.getElementById('p1-hasta').value);
+    if ((d !== null && !isNaN(d)) || (h !== null && !isNaN(h))) {
+      const a = (d !== null && !isNaN(d)) ? d : 0;
+      const b = (h !== null && !isNaN(h)) ? Math.min(h, dur) : dur;
+      if (b > a) html += `<div class="tl-rango" style="left:${pct(a)};width:calc(${pct(b)} - ${pct(a)})" title="${fmtCorte(a)} → ${fmtCorte(b)}"></div>`;
+    }
+  }
+  capa.innerHTML = html;
+  actualizarCabezalP1();
+}
+
+document.getElementById('p1-timeline').addEventListener('click', e => {
+  if (!prevP1.el || !prevP1.dur) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  prevP1.el.currentTime = Math.max(0, Math.min(prevP1.dur, (e.clientX - r.left) / r.width * prevP1.dur));
+});
+document.querySelectorAll('[data-salto]').forEach(b => b.onclick = () => {
+  if (!prevP1.el) return;
+  prevP1.el.currentTime = Math.max(0, Math.min(prevP1.dur || Infinity, prevP1.el.currentTime + Number(b.dataset.salto)));
+});
+function tiempoActualP1() { return prevP1.el ? prevP1.el.currentTime : 0; }
+document.getElementById('btn-p1-marcar-desde').onclick = () => {
+  document.getElementById('p1-desde').value = fmtCorte(tiempoActualP1());
+  renderTimelineP1(); actualizarPreviewSplitP1();
+};
+document.getElementById('btn-p1-marcar-hasta').onclick = () => {
+  document.getElementById('p1-hasta').value = fmtCorte(Math.ceil(tiempoActualP1()));
+  renderTimelineP1(); actualizarPreviewSplitP1();
+};
+document.getElementById('btn-p1-agregar-corte').onclick = () => {
+  document.querySelector('input[name="p1-split-modo"][value="puntos"]').checked = true;
+  const inp = document.getElementById('p1-split-puntos');
+  const actuales = inp.value.split(/[\s,;]+/).filter(Boolean);
+  const nuevo = fmtCorte(tiempoActualP1());
+  if (!actuales.includes(nuevo)) actuales.push(nuevo);
+  actuales.sort((x, y) => (parseTiempoCliente(x) || 0) - (parseTiempoCliente(y) || 0));
+  inp.value = actuales.join(', ');
+  renderTimelineP1(); actualizarPreviewSplitP1();
+};
+document.getElementById('btn-p1-quitar-corte').onclick = () => {
+  const inp = document.getElementById('p1-split-puntos');
+  const actuales = inp.value.split(/[\s,;]+/).filter(Boolean);
+  actuales.pop();
+  inp.value = actuales.join(', ');
+  renderTimelineP1(); actualizarPreviewSplitP1();
+};
+
 // ---------- División en partes (split) ----------
 function tipoCorteP1() {
   const r = document.querySelector('input[name="p1-tipo-corte"]:checked');
@@ -5518,7 +5730,10 @@ function actualizarPreviewSplitP1() {
     const box = document.getElementById('p1-split-preview');
     if (!box || tipoCorteP1() !== 'partes') return;
     let dur = null, nombre = '';
-    if (colaP1.length) {
+    if (prevP1.dur) {
+      dur = prevP1.dur;
+      nombre = document.getElementById('p1-prev-nombre').textContent;
+    } else if (colaP1.length) {
       const it = colaP1[0];
       nombre = it.nombre;
       if (!it.url) it.url = URL.createObjectURL(it.file);
@@ -5549,10 +5764,11 @@ function actualizarUiCorteP1() {
   btnP1Convertir.textContent = partes ? 'Dividir en partes' : 'Procesar archivo(s)';
   document.getElementById('btn-p1-recortar-existente').textContent = partes ? 'Dividir este archivo' : 'Recortar este archivo';
   actualizarPreviewSplitP1();
+  renderTimelineP1();
 }
 document.querySelectorAll('input[name="p1-tipo-corte"], input[name="p1-split-modo"]').forEach(r => r.addEventListener('change', actualizarUiCorteP1));
 ['p1-split-puntos', 'p1-split-duracion', 'p1-desde', 'p1-hasta'].forEach(id =>
-  document.getElementById(id).addEventListener('input', actualizarPreviewSplitP1));
+  document.getElementById(id).addEventListener('input', () => { actualizarPreviewSplitP1(); renderTimelineP1(); }));
 document.getElementById('p1-split-puntos').addEventListener('focus', () => { document.querySelector('input[name="p1-split-modo"][value="puntos"]').checked = true; actualizarPreviewSplitP1(); });
 document.getElementById('p1-split-duracion').addEventListener('focus', () => { document.querySelector('input[name="p1-split-modo"][value="duracion"]').checked = true; actualizarPreviewSplitP1(); });
 document.getElementById('p1-modo-salida').addEventListener('change', actualizarUiCorteP1);
