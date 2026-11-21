@@ -2721,6 +2721,52 @@ def cargar_sesiones_disco() -> None:
             print(f"Error cargando sesión {fn}: {e}")
 
 
+def exportar_transcripcion_texto(s: dict, formato: str) -> tuple[str, str]:
+    """Arma el texto de una transcripción guardada sin depender de ningún paso de la interfaz.
+    formato: 'txt_ts' (con tiempos), 'txt_limpio' (solo texto) o 'srt'. Devuelve (contenido, nombre)."""
+    nombres = {h.get("id"): h.get("nombre") or h.get("id") for h in s.get("hablantes", [])}
+    off = float(s.get("offset", 0) or 0)
+    segs = sorted(s.get("segmentos", []), key=lambda x: float(x.get("inicio", 0) or 0))
+
+    def hms(t):
+        t = max(0.0, float(t))
+        h, r = divmod(int(t), 3600)
+        m, sec = divmod(r, 60)
+        return f"{h:02d}:{m:02d}:{sec:02d}"
+
+    def srt_t(t):
+        t = max(0.0, float(t))
+        ms = int(round((t - int(t)) * 1000))
+        if ms == 1000:
+            t, ms = int(t) + 1, 0
+        h, r = divmod(int(t), 3600)
+        m, sec = divmod(r, 60)
+        return f"{h:02d}:{m:02d}:{sec:02d},{ms:03d}"
+
+    def quien(sg):
+        hab = sg.get("hablante")
+        return f"{nombres.get(hab, hab)}: " if hab not in (None, "") else ""
+
+    lineas = []
+    if formato == "srt":
+        for i, sg in enumerate(segs, 1):
+            ini = float(sg.get("inicio", 0) or 0) + off
+            fin = max(ini + 0.2, float(sg.get("fin", ini) or ini) + off)
+            lineas.append(f"{i}\n{srt_t(ini)} --> {srt_t(fin)}\n{quien(sg)}{sg.get('texto', '').strip()}\n")
+        contenido, ext = "\n".join(lineas), "_transcripcion.srt"
+    elif formato == "txt_limpio":
+        contenido = "\n".join(f"{quien(sg)}{sg.get('texto', '').strip()}" for sg in segs)
+        ext = "_transcripcion_texto.txt"
+    else:
+        for sg in segs:
+            ini = float(sg.get("inicio", 0) or 0) + off
+            fin = max(ini, float(sg.get("fin", ini) or ini) + off)
+            lineas.append(f"[{hms(ini)} - {hms(fin)}] {quien(sg)}{sg.get('texto', '').strip()}")
+        contenido, ext = "\n".join(lineas), "_transcripcion_tiempos.txt"
+    base = os.path.splitext(s.get("nombre_original") or s.get("sesion_id", "transcripcion"))[0]
+    return contenido + "\n", base + ext
+
+
 # ==============================================================================
 # LISTADO DE NOMBRES DE HABLANTES (EXCEL .XLSX, .CSV, .TXT) POR GRUPO
 # ==============================================================================
@@ -4337,10 +4383,22 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
     <div>
       <div class="eyebrow">Paso 2</div>
       <h1>Transcripción</h1>
-      <p>Transcribí un audio o video con Whisper, subí una transcripción hecha en otro lado o abrí una que ya procesaste (al final).</p>
+      <p>Transcribí un audio o video con Whisper, subí una transcripción hecha en otro lado o descargá / abrí una que ya procesaste (arriba de todo).</p>
     </div>
   </div>
   <div class="uso"><span class="uso-tit">Usalo para</span><ul><li>Transcribir un video o un audio con Whisper, separando a los hablantes</li><li>Subir una transcripción hecha con otra herramienta (Tactiq, YouTube…)</li><li>Vincular la transcripción con su video y sincronizarla (por ej. si viene de Tactiq)</li><li>Recortar una transcripción (por ejemplo, las partes que quedaron fuera del video)</li></ul></div>
+
+  <div class="card" id="card-sesiones-previas" style="margin-bottom:16px">
+    <div class="card-head" style="margin-bottom:10px">
+      <div>
+        <h2>Transcripciones ya hechas</h2>
+        <p>Descargá cualquiera directamente (TXT o SRT), o abrila para vincularla con su video, revisar los hablantes o ir a Resultados.</p>
+      </div>
+    </div>
+    <div id="lista-sesiones-guardadas" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto">
+      <span style="font-size:0.85rem;color:var(--muted)">Cargando transcripciones guardadas…</span>
+    </div>
+  </div>
 
   <div class="grid-2">
     <!-- OPCIÓN A -->
@@ -4545,18 +4603,6 @@ input.tiempo::placeholder { font-family: var(--font); font-weight: 400; letter-s
           <button type="button" class="btn-primary" onclick="irAPaso(3)">Seguir: Hablantes →</button>
         </div>
       </div>
-    </div>
-  </div>
-
-  <div class="card" id="card-sesiones-previas" style="margin-top:16px">
-    <div class="card-head" style="margin-bottom:10px">
-      <div>
-        <h2>Transcripciones guardadas</h2>
-        <p>Abrí una para vincularla con su video, revisar los hablantes o ir directo a Resultados.</p>
-      </div>
-    </div>
-    <div id="lista-sesiones-guardadas" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto">
-      <span style="font-size:0.85rem;color:var(--muted)">Cargando transcripciones guardadas…</span>
     </div>
   </div>
 
@@ -6174,7 +6220,7 @@ async function cargarSesionesGuardadas() {
         : s.sincronizado ? '<span class="badge badge-verde">✓ vinculada y sincronizada</span>'
         : '<span class="badge badge-ambar">vinculada · falta sincronizar</span>';
       return `
-      <div class="ses-item">
+      <div class="ses-item" style="flex-wrap:wrap">
         <div style="min-width:0">
           <strong style="overflow-wrap:anywhere">${escHtml(s.nombre_original)}</strong>
           <div style="font-size:0.78rem;color:var(--muted);margin-top:2px">
@@ -6186,6 +6232,12 @@ async function cargarSesionesGuardadas() {
           <button type="button" class="btn-outline btn-xs" onclick="abrirSesionGuardada('${escHtml(s.sesion_id)}', 2)">Vincular / sincronizar</button>
           <button type="button" class="btn-outline btn-xs" onclick="abrirSesionGuardada('${escHtml(s.sesion_id)}', 3)">Hablantes</button>
           <button type="button" class="btn-primary btn-xs" onclick="abrirSesionGuardada('${escHtml(s.sesion_id)}', 4)">Resultados</button>
+        </div>
+        <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px;width:100%">
+          <span style="font-size:0.78rem;color:var(--muted)">⬇ Descargar:</span>
+          <a class="btn-outline btn-xs" href="/api/descargar_transcripcion?formato=txt_ts&id=${encodeURIComponent(s.sesion_id)}">TXT con tiempos</a>
+          <a class="btn-outline btn-xs" href="/api/descargar_transcripcion?formato=txt_limpio&id=${encodeURIComponent(s.sesion_id)}">TXT solo texto</a>
+          <a class="btn-outline btn-xs" href="/api/descargar_transcripcion?formato=srt&id=${encodeURIComponent(s.sesion_id)}">SRT</a>
         </div>
       </div>`;
     }).join('');
@@ -8179,6 +8231,24 @@ class Handler(BaseHTTPRequestHandler):
                         "sincronizado": bool(s.get("sincronizado", False)),
                     })
             return self._send_json(200, lista)
+
+        if p.path == "/api/descargar_transcripcion":
+            q = urllib.parse.parse_qs(p.query)
+            sid = q.get("id", [""])[0]
+            formato = q.get("formato", ["txt_ts"])[0]
+            with JOBS_LOCK:
+                s = SESIONES.get(sid)
+            if not s:
+                return self._send_text(404, "Transcripción no encontrada")
+            contenido, nombre = exportar_transcripcion_texto(s, formato)
+            raw = contenido.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + urllib.parse.quote(nombre))
+            self.end_headers()
+            self.wfile.write(raw)
+            return
 
         if p.path == "/api/sesion":
             q = urllib.parse.parse_qs(p.query)
